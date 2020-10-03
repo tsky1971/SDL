@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2019 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2020 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -82,7 +82,7 @@ WINRT_ShowMessageBox(const SDL_MessageBoxData *messageboxdata, int *buttonid)
             sdlButton = &messageboxdata->buttons[i];
         }
         UICommand ^ button = ref new UICommand(WINRT_UTF8ToPlatformString(sdlButton->text));
-        button->Id = safe_cast<IntPtr>(sdlButton - messageboxdata->buttons);
+        button->Id = IntPtr((int)((size_t)(sdlButton - messageboxdata->buttons)));
         dialog->Commands->Append(button);
         if (sdlButton->flags & SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT) {
             dialog->CancelCommandIndex = i;

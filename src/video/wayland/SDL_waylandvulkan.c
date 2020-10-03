@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2019 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2020 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -36,6 +36,12 @@
 #include "SDL_waylandvulkan.h"
 #include "SDL_syswm.h"
 
+#if defined(__OpenBSD__)
+#define DEFAULT_VULKAN  "libvulkan.so"
+#else
+#define DEFAULT_VULKAN  "libvulkan.so.1"
+#endif
+
 int Wayland_Vulkan_LoadLibrary(_THIS, const char *path)
 {
     VkExtensionProperties *extensions = NULL;
@@ -50,7 +56,7 @@ int Wayland_Vulkan_LoadLibrary(_THIS, const char *path)
     if(!path)
         path = SDL_getenv("SDL_VULKAN_LIBRARY");
     if(!path)
-        path = "libvulkan.so.1";
+        path = DEFAULT_VULKAN;
     _this->vulkan_config.loader_handle = SDL_LoadObject(path);
     if(!_this->vulkan_config.loader_handle)
         return -1;
@@ -153,7 +159,7 @@ SDL_bool Wayland_Vulkan_CreateSurface(_THIS,
         (PFN_vkGetInstanceProcAddr)_this->vulkan_config.vkGetInstanceProcAddr;
     PFN_vkCreateWaylandSurfaceKHR vkCreateWaylandSurfaceKHR =
         (PFN_vkCreateWaylandSurfaceKHR)vkGetInstanceProcAddr(
-                                            (VkInstance)instance,
+                                            instance,
                                             "vkCreateWaylandSurfaceKHR");
     VkWaylandSurfaceCreateInfoKHR createInfo;
     VkResult result;

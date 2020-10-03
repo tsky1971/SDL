@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2019 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2020 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -67,7 +67,6 @@ extern "C" {
 #include "SDL_winrtmouse_c.h"
 #include "SDL_main.h"
 #include "SDL_system.h"
-//#include "SDL_log.h"
 
 
 /* Initialization/Query functions */
@@ -95,12 +94,6 @@ SDL_Window * WINRT_GlobalSDLWindow = NULL;
 
 
 /* WinRT driver bootstrap functions */
-
-static int
-WINRT_Available(void)
-{
-    return (1);
-}
 
 static void
 WINRT_DeleteDevice(SDL_VideoDevice * device)
@@ -175,7 +168,7 @@ WINRT_CreateDevice(int devindex)
 #define WINRTVID_DRIVER_NAME "winrt"
 VideoBootStrap WINRT_bootstrap = {
     WINRTVID_DRIVER_NAME, "SDL WinRT video driver",
-    WINRT_Available, WINRT_CreateDevice
+    WINRT_CreateDevice
 };
 
 int

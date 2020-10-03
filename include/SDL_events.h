@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2019 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2020 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -84,6 +84,8 @@ typedef enum
                                      Called on iOS in applicationDidBecomeActive()
                                      Called on Android in onResume()
                                 */
+
+    SDL_LOCALECHANGED,  /**< The user's locale preferences have changed. */
 
     /* Display events */
     SDL_DISPLAYEVENT   = 0x150,  /**< Display state change */
@@ -559,7 +561,7 @@ typedef union SDL_Event
 {
     Uint32 type;                    /**< Event type, shared with all events */
     SDL_CommonEvent common;         /**< Common event data */
-    SDL_DisplayEvent display;       /**< Window event data */
+    SDL_DisplayEvent display;       /**< Display event data */
     SDL_WindowEvent window;         /**< Window event data */
     SDL_KeyboardEvent key;          /**< Keyboard event data */
     SDL_TextEditingEvent edit;      /**< Text editing event data */

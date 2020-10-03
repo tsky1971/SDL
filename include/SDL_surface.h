@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2019 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2020 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -80,7 +80,9 @@ typedef struct SDL_Surface
 
     /** information needed for surfaces requiring locks */
     int locked;                 /**< Read-only */
-    void *lock_data;            /**< Read-only */
+
+    /** list of BlitMap that hold a reference to this surface */
+    void *list_blitmap;         /**< Private */
 
     /** clipping information */
     SDL_Rect clip_rect;         /**< Read-only */
