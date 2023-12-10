@@ -62,7 +62,7 @@ In SDL2, you might have done something like this to play audio...
 ```c
     void SDLCALL MyAudioCallback(void *userdata, Uint8 * stream, int len)
     {
-        /* calculate a little more audio here, maybe using `userdata`, write it to `stream` */
+        /* Calculate a little more audio here, maybe using `userdata`, write it to `stream` */
     }
 
     /* ...somewhere near startup... */
@@ -81,15 +81,25 @@ In SDL2, you might have done something like this to play audio...
 ...in SDL3, you can do this...
 
 ```c
-    void SDLCALL MyAudioCallback(SDL_AudioStream *stream, int len, void *userdata)
+    void SDLCALL MyNewAudioCallback(void *userdata, SDL_AudioStream *stream, int additional_amount, int total_amount)
     {
-        /* calculate a little more audio here, maybe using `userdata`, write it to `stream` */
-        SDL_PutAudioStreamData(stream, newdata, len);
+        /* Calculate a little more audio here, maybe using `userdata`, write it to `stream`
+         *
+         * If you want to use the original callback, you could do something like this:
+         */
+        if (additional_amount > 0) {
+            Uint8 *data = SDL_stack_alloc(Uint8, additional_amount);
+            if (data) {
+                MyAudioCallback(userdata, data, additional_amount);
+                SDL_PutAudioStreamData(stream, data, additional_amount);
+                SDL_stack_free(data);
+            }
+        }
     }
 
     /* ...somewhere near startup... */
     const SDL_AudioSpec spec = { SDL_AUDIO_S16, 2, 44100 };
-    SDL_AudioStream *stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_OUTPUT, &spec, MyAudioCallback, &my_audio_callback_user_data);
+    SDL_AudioStream *stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_OUTPUT, &spec, MyNewAudioCallback, &my_audio_callback_user_data);
     SDL_ResumeAudioDevice(SDL_GetAudioStreamDevice(stream));
 ```
 
@@ -280,6 +290,11 @@ SDL_HasRDTSC() has been removed; there is no replacement. Don't use the RDTSC op
 
 SDL_SIMDAlloc(), SDL_SIMDRealloc(), and SDL_SIMDFree() have been removed. You can use SDL_aligned_alloc() and SDL_aligned_free() with SDL_SIMDGetAlignment() to get the same functionality.
 
+## SDL_error.h
+
+The following functions have been removed:
+* SDL_GetErrorMsg() - Can be implemented as `SDL_strlcpy(errstr, SDL_GetError(), maxlen);`
+
 ## SDL_events.h
 
 The timestamp member of the SDL_Event structure now represents nanoseconds, and is populated with SDL_GetTicksNS()
@@ -287,6 +302,8 @@ The timestamp member of the SDL_Event structure now represents nanoseconds, and 
 The timestamp_us member of the sensor events has been renamed sensor_timestamp and now represents nanoseconds. This value is filled in from the hardware, if available, and may not be synchronized with values returned from SDL_GetTicksNS().
 
 You should set the event.common.timestamp field before passing an event to SDL_PushEvent(). If the timestamp is 0 it will be filled in with SDL_GetTicksNS().
+
+Event memory is now managed by SDL, so you should not free the data in SDL_EVENT_DROP_FILE, and if you want to hold onto the text in SDL_EVENT_TEXT_EDITING and SDL_EVENT_TEXT_INPUT events, you should make a copy of it.
 
 Mouse events use floating point values for mouse coordinates and relative motion values. You can get sub-pixel motion depending on the platform and display scaling.
 
@@ -301,6 +318,8 @@ The SDL_EVENT_WINDOW_SIZE_CHANGED event has been removed, and you can use SDL_EV
 The gamepad event structures caxis, cbutton, cdevice, ctouchpad, and csensor have been renamed gaxis, gbutton, gdevice, gtouchpad, and gsensor.
 
 SDL_QUERY, SDL_IGNORE, SDL_ENABLE, and SDL_DISABLE have been removed. You can use the functions SDL_SetEventEnabled() and SDL_EventEnabled() to set and query event processing state.
+
+SDL_AddEventWatch() now returns -1 if it fails because it ran out of memory and couldn't add the event watch callback.
 
 The following symbols have been renamed:
 * SDL_APP_DIDENTERBACKGROUND => SDL_EVENT_DID_ENTER_BACKGROUND
@@ -375,6 +394,8 @@ SDL_gamecontroller.h has been renamed SDL_gamepad.h, and all APIs have been rena
 The SDL_EVENT_GAMEPAD_ADDED event now provides the joystick instance ID in the which member of the cdevice event structure.
 
 The functions SDL_GetGamepads(), SDL_GetGamepadInstanceName(), SDL_GetGamepadInstancePath(), SDL_GetGamepadInstancePlayerIndex(), SDL_GetGamepadInstanceGUID(), SDL_GetGamepadInstanceVendor(), SDL_GetGamepadInstanceProduct(), SDL_GetGamepadInstanceProductVersion(), and SDL_GetGamepadInstanceType() have been added to directly query the list of available gamepads.
+
+The gamepad face buttons have been renamed from A/B/X/Y to North/South/East/West to indicate that they are positional rather than hardware-specific. You can use SDL_GetGamepadButtonLabel() to get the labels for the face buttons, e.g. A/B/X/Y or Cross/Circle/Square/Triangle. The hint SDL_HINT_GAMECONTROLLER_USE_BUTTON_LABELS is ignored, and mappings that use this hint are translated correctly into positional buttons. Applications will now need to provide a way for users to swap between South/East as their accept/cancel buttons, as this varies based on region and muscle memory. Using South as the accept button and East as the cancel button is a good default.
 
 SDL_GameControllerGetSensorDataWithTimestamp() has been removed. If you want timestamps for the sensor data, you should use the sensor_timestamp member of SDL_EVENT_GAMEPAD_SENSOR_UPDATE events.
 
@@ -452,9 +473,7 @@ The following functions have been renamed:
 * SDL_GameControllerIsSensorEnabled() => SDL_GamepadSensorEnabled()
 * SDL_GameControllerMapping() => SDL_GetGamepadMapping()
 * SDL_GameControllerMappingForGUID() => SDL_GetGamepadMappingForGUID()
-* SDL_GameControllerMappingForIndex() => SDL_GetGamepadMappingForIndex()
 * SDL_GameControllerName() => SDL_GetGamepadName()
-* SDL_GameControllerNumMappings() => SDL_GetNumGamepadMappings()
 * SDL_GameControllerOpen() => SDL_OpenGamepad()
 * SDL_GameControllerPath() => SDL_GetGamepadPath()
 * SDL_GameControllerRumble() => SDL_RumbleGamepad()
@@ -474,6 +493,8 @@ The following functions have been removed:
 * SDL_GameControllerNameForIndex() - replaced with SDL_GetGamepadInstanceName()
 * SDL_GameControllerPathForIndex() - replaced with SDL_GetGamepadInstancePath()
 * SDL_GameControllerTypeForIndex() - replaced with SDL_GetGamepadInstanceType()
+* SDL_GameControllerNumMappings() - replaced with SDL_GetGamepadMappings()
+* SDL_GameControllerMappingForIndex() - replaced with SDL_GetGamepadMappings()
 
 The following symbols have been renamed:
 * SDL_CONTROLLER_AXIS_INVALID => SDL_GAMEPAD_AXIS_INVALID
@@ -488,8 +509,8 @@ The following symbols have been renamed:
 * SDL_CONTROLLER_BINDTYPE_BUTTON => SDL_GAMEPAD_BINDTYPE_BUTTON
 * SDL_CONTROLLER_BINDTYPE_HAT => SDL_GAMEPAD_BINDTYPE_HAT
 * SDL_CONTROLLER_BINDTYPE_NONE => SDL_GAMEPAD_BINDTYPE_NONE
-* SDL_CONTROLLER_BUTTON_A => SDL_GAMEPAD_BUTTON_A
-* SDL_CONTROLLER_BUTTON_B => SDL_GAMEPAD_BUTTON_B
+* SDL_CONTROLLER_BUTTON_A => SDL_GAMEPAD_BUTTON_SOUTH
+* SDL_CONTROLLER_BUTTON_B => SDL_GAMEPAD_BUTTON_EAST
 * SDL_CONTROLLER_BUTTON_BACK => SDL_GAMEPAD_BUTTON_BACK
 * SDL_CONTROLLER_BUTTON_DPAD_DOWN => SDL_GAMEPAD_BUTTON_DPAD_DOWN
 * SDL_CONTROLLER_BUTTON_DPAD_LEFT => SDL_GAMEPAD_BUTTON_DPAD_LEFT
@@ -509,8 +530,8 @@ The following symbols have been renamed:
 * SDL_CONTROLLER_BUTTON_RIGHTSTICK => SDL_GAMEPAD_BUTTON_RIGHT_STICK
 * SDL_CONTROLLER_BUTTON_START => SDL_GAMEPAD_BUTTON_START
 * SDL_CONTROLLER_BUTTON_TOUCHPAD => SDL_GAMEPAD_BUTTON_TOUCHPAD
-* SDL_CONTROLLER_BUTTON_X => SDL_GAMEPAD_BUTTON_X
-* SDL_CONTROLLER_BUTTON_Y => SDL_GAMEPAD_BUTTON_Y
+* SDL_CONTROLLER_BUTTON_X => SDL_GAMEPAD_BUTTON_WEST
+* SDL_CONTROLLER_BUTTON_Y => SDL_GAMEPAD_BUTTON_NORTH
 * SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_JOYCON_LEFT => SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_LEFT
 * SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_JOYCON_PAIR => SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR
 * SDL_CONTROLLER_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT => SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT
@@ -538,10 +559,16 @@ SDL_AddHintCallback() now returns a standard int result instead of void, returni
 Calling SDL_GetHint() with the name of the hint being changed from within a hint callback will now return the new value rather than the old value. The old value is still passed as a parameter to the hint callback.
 
 The following hints have been removed:
-* SDL_HINT_VIDEO_HIGHDPI_DISABLED - high DPI support is always enabled
+* SDL_HINT_GAMECONTROLLER_USE_BUTTON_LABELS - gamepad buttons are always positional
 * SDL_HINT_IDLE_TIMER_DISABLED - use SDL_DisableScreenSaver instead
+* SDL_HINT_IME_SUPPORT_EXTENDED_TEXT - the normal text editing event has extended text
 * SDL_HINT_MOUSE_RELATIVE_SCALING - mouse coordinates are no longer automatically scaled by the SDL renderer
 * SDL_HINT_RENDER_LOGICAL_SIZE_MODE - the logical size mode is explicitly set with SDL_SetRenderLogicalPresentation()
+* SDL_HINT_RENDER_BATCHING - Render batching is always enabled, apps should call SDL_FlushRenderer() before calling into a lower-level graphics API.
+* SDL_HINT_VIDEO_FOREIGN_WINDOW_OPENGL - replaced with the "opengl" property in SDL_CreateWindowWithProperties()
+* SDL_HINT_VIDEO_FOREIGN_WINDOW_VULKAN - replaced with the "vulkan" property in SDL_CreateWindowWithProperties()
+* SDL_HINT_VIDEO_HIGHDPI_DISABLED - high DPI support is always enabled
+* SDL_HINT_VIDEO_WINDOW_SHARE_PIXEL_FORMAT - replaced with the "win32.pixel_format_hwnd" in SDL_CreateWindowWithProperties()
 * SDL_HINT_VIDEO_X11_FORCE_EGL - use SDL_HINT_VIDEO_FORCE_EGL instead
 * SDL_HINT_VIDEO_X11_XINERAMA - Xinerama no longer supported by the X11 backend
 * SDL_HINT_VIDEO_X11_XVIDMODE - Xvidmode no longer supported by the X11 backend
@@ -790,6 +817,13 @@ The following functions have been renamed:
 
 ## SDL_render.h
 
+The 2D renderer API always uses batching in SDL3. There is no magic to turn
+it on and off; it doesn't matter if you select a specific renderer or try to
+use any hint. This means that all apps that use SDL3's 2D renderer and also
+want to call directly into the platform's lower-layer graphics API _must_ call
+SDL_FlushRenderer() before doing so. This will make sure any pending rendering
+work from SDL is done before the app starts directly drawing.
+
 SDL_GetRenderDriverInfo() has been removed, since most of the information it reported were
 estimates and could not be accurate before creating a renderer. Often times this function
 was used to figure out the index of a driver, so one would call it in a for-loop, looking
@@ -839,6 +873,7 @@ The following functions have been renamed:
 * SDL_RenderDrawRectsF() => SDL_RenderRects()
 * SDL_RenderFillRectF() => SDL_RenderFillRect()
 * SDL_RenderFillRectsF() => SDL_RenderFillRects()
+* SDL_RenderFlush() => SDL_FlushRenderer()
 * SDL_RenderGetClipRect() => SDL_GetRenderClipRect()
 * SDL_RenderGetIntegerScale() => SDL_GetRenderIntegerScale()
 * SDL_RenderGetLogicalSize() => SDL_GetRenderLogicalPresentation()
@@ -1063,6 +1098,10 @@ The following functions have been removed:
 * SDL_SensorGetDeviceType() - replaced with SDL_GetSensorInstanceType()
 * SDL_UnlockSensors()
 
+## SDL_shape.h
+
+This header has been removed. You can create a window with the SDL_WINDOW_TRANSPARENT flag and then render using the alpha channel to achieve a similar effect. You can see an example of this in test/testshape.c
+
 ## SDL_stdinc.h
 
 The standard C headers like stdio.h and stdlib.h are no longer included, you should include them directly in your project if you use non-SDL C runtime functions.
@@ -1135,20 +1174,40 @@ The following functions have been renamed:
 
 ## SDL_system.h
 
+SDL_WindowsMessageHook has changed signatures so the message may be modified and it can block further message processing.
+
 SDL_AndroidGetExternalStorageState() takes the state as an output parameter and returns 0 if the function succeeds or a negative error code if there was an error.
 
-The following functions have been renamed:
-* SDL_RenderGetD3D11Device() => SDL_GetRenderD3D11Device()
-* SDL_RenderGetD3D9Device() => SDL_GetRenderD3D9Device()
+The following functions have been removed:
+* SDL_RenderGetD3D11Device() - replaced with the "SDL.renderer.d3d11.device" property
+* SDL_RenderGetD3D12Device() - replaced with the "SDL.renderer.d3d12.device" property
+* SDL_RenderGetD3D9Device() - replaced with the "SDL.renderer.d3d9.device" property
 
 ## SDL_syswm.h
 
-The structures in this file are versioned separately from the rest of SDL, allowing better backwards compatibility and limited forwards compatibility with your application. Instead of calling `SDL_VERSION(&info.version)` before calling SDL_GetWindowWMInfo(), you pass the version in explicitly as SDL_SYSWM_CURRENT_VERSION so SDL knows what fields you expect to be filled out.
+This header has been removed.
 
-### SDL_GetWindowWMInfo
+The Windows and X11 events are now available via callbacks which you can set with SDL_SetWindowsMessageHook() and SDL_SetX11EventHook().
 
-This function now returns a standard int result instead of SDL_bool, returning 0 if the function succeeds or a negative error code if there was an error. You should also pass SDL_SYSWM_CURRENT_VERSION as the new third version parameter. The version member of the info structure will be filled in with the version of data that is returned, the minimum of the version you requested and the version supported by the runtime SDL library.
-
+The information previously available in SDL_GetWindowWMInfo() is now available as window properties, e.g.
+```c
+    HWND hwnd = NULL;
+    SDL_SysWMinfo info;
+    SDL_VERSION(&info.version);
+    if (SDL_GetWindowWMInfo(window, &info) && info.subsystem == SDL_SYSWM_WINDOWS) {
+        hwnd = info.info.win.window;
+    }
+    if (hwnd) {
+        ...
+    }
+```
+becomes:
+```c
+    HWND hwnd = (HWND)SDL_GetProperty(SDL_GetWindowProperties(window), "SDL.window.win32.hwnd");
+    if (hwnd) {
+        ...
+    }
+```
 
 ## SDL_thread.h
 
@@ -1186,6 +1245,13 @@ If you were using this macro for other things besides SDL ticks values, you can 
 
 SDL_GetNumTouchFingers() returns a negative error code if there was an error.
 
+SDL_GetTouchName is replaced with SDL_GetTouchDeviceName(), which takes an SDL_TouchID instead of an index.
+
+The following functions have been removed:
+* SDL_GetNumTouchDevices() - replaced with SDL_GetTouchDevices()
+* SDL_GetTouchDevice() - replaced with SDL_GetTouchDevices()
+
+
 ## SDL_version.h
 
 SDL_GetRevisionNumber() has been removed from the API, it always returned 0 in SDL 2.0.
@@ -1215,7 +1281,7 @@ Rather than iterating over displays using display index, there is a new function
 }
 ```
 
-SDL_CreateWindow() has been simplified and no longer takes a window position. You can use SDL_CreateWindowWithPosition() if you need to set the window position when creating it.
+SDL_CreateWindow() has been simplified and no longer takes a window position. You can use SDL_CreateWindowWithProperties() if you need to set the window position when creating it.
 
 The SDL_WINDOWPOS_UNDEFINED_DISPLAY() and SDL_WINDOWPOS_CENTERED_DISPLAY() macros take a display ID instead of display index. The display ID 0 has a special meaning in this case, and is used to indicate the primary display.
 
@@ -1284,6 +1350,7 @@ The following functions have been removed:
 * SDL_GetNumVideoDisplays() - replaced with SDL_GetDisplays()
 * SDL_GetWindowData() - use SDL_GetWindowProperties() instead
 * SDL_SetWindowData() - use SDL_GetWindowProperties() instead
+* SDL_CreateWindowFrom() - use SDL_CreateWindowWithProperties() with the properties that allow you to wrap an existing window
 
 SDL_Window id type is named SDL_WindowID
 
@@ -1291,10 +1358,27 @@ The following symbols have been renamed:
 * SDL_WINDOW_ALLOW_HIGHDPI => SDL_WINDOW_HIGH_PIXEL_DENSITY
 * SDL_WINDOW_INPUT_GRABBED => SDL_WINDOW_MOUSE_GRABBED
 
+The following window operations are now considered to be asynchronous requests and should not be assumed to succeed unless
+a corresponding event has been received:
+* SDL_SetWindowSize() (SDL_EVENT_WINDOW_RESIZED)
+* SDL_SetWindowPosition() (SDL_EVENT_WINDOW_MOVED)
+* SDL_MinimizeWindow() (SDL_EVENT_WINDOW_MINIMIZED)
+* SDL_MaximizeWindow() (SDL_EVENT_WINDOW_MAXIMIZED)
+* SDL_RestoreWindow() (SDL_EVENT_WINDOW_RESTORED)
+* SDL_SetWindowFullscreen() (SDL_EVENT_WINDOW_ENTER_FULLSCREEN / SDL_EVENT_WINDOW_LEAVE_FULLSCREEN)
+
+If it is required that operations be applied immediately after one of the preceeding calls, the `SDL_SyncWindow()` function
+will attempt to wait until all pending window operations have completed. Be aware that this function can potentially block for
+long periods of time, as it may have to wait for window animations to complete. Also note that windowing systems can deny or
+not precisely obey these requests (e.g. windows may not be allowed to be larger than the usable desktop space or placed
+offscreen), so a corresponding event may never arrive or not contain the expected values.
+
 ## SDL_vulkan.h
 
-SDL_Vulkan_GetInstanceExtensions() no longer takes a window parameter.
+SDL_Vulkan_GetInstanceExtensions() no longer takes a window parameter, and no longer makes the app allocate query/allocate space for the result, instead returning a static const internal string.
 
 SDL_Vulkan_GetVkGetInstanceProcAddr() now returns `SDL_FunctionPointer` instead of `void *`, and should be cast to PFN_vkGetInstanceProcAddr.
+
+SDL_Vulkan_CreateSurface() now takes a VkAllocationCallbacks pointer as its third parameter. If you don't have an allocator to supply, pass a NULL here to use the system default allocator (SDL2 always used the system default allocator here).
 
 SDL_Vulkan_GetDrawableSize() has been removed. SDL_GetWindowSizeInPixels() can be used in its place.

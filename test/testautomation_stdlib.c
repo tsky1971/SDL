@@ -8,7 +8,7 @@
 /* Test case functions */
 
 /**
- * \brief Call to SDL_strnlen
+ * Call to SDL_strnlen
  */
 #undef SDL_strnlen
 static int stdlib_strnlen(void *arg)
@@ -36,7 +36,7 @@ static int stdlib_strnlen(void *arg)
 }
 
 /**
- * \brief Call to SDL_strlcpy
+ * Call to SDL_strlcpy
  */
 #undef SDL_strlcpy
 static int stdlib_strlcpy(void *arg)
@@ -60,6 +60,68 @@ static int stdlib_strlcpy(void *arg)
     return TEST_COMPLETED;
 }
 
+/**
+ * Call to SDL_strstr
+ */
+static int stdlib_strstr(void *arg)
+{
+    char *result;
+    const char *text = "abcdef";
+    const char *expected;
+
+    result = SDL_strstr(text, "");
+    expected = text;
+    SDLTest_AssertPass("Call to SDL_strstr(text, \"\")");
+    SDLTest_AssertCheck(result == expected, "Check result, expected: %s, got: %s", expected, result);
+
+    result = SDL_strstr(text, "abc");
+    expected = text;
+    SDLTest_AssertPass("Call to SDL_strstr(text, \"abc\")");
+    SDLTest_AssertCheck(result == expected, "Check result, expected: %s, got: %s", expected, result);
+
+    result = SDL_strstr(text, "bcd");
+    expected = text+1;
+    SDLTest_AssertPass("Call to SDL_strstr(text, \"bcd\")");
+    SDLTest_AssertCheck(result == expected, "Check result, expected: %s, got: %s", expected, result);
+
+    result = SDL_strstr(text, "xyz");
+    expected = NULL;
+    SDLTest_AssertPass("Call to SDL_strstr(text, \"xyz\")");
+    SDLTest_AssertCheck(result == expected, "Check result, expected: (null), got: %s", result);
+
+    result = SDL_strnstr(text, "", SDL_strlen(text));
+    expected = text;
+    SDLTest_AssertPass("Call to SDL_strnstr(text, \"\", SDL_strlen(text))");
+    SDLTest_AssertCheck(result == expected, "Check result, expected: %s, got: %s", expected, result);
+
+    result = SDL_strnstr(text, "abc", SDL_strlen(text));
+    expected = text;
+    SDLTest_AssertPass("Call to SDL_strnstr(text, \"abc\", SDL_strlen(text))");
+    SDLTest_AssertCheck(result == expected, "Check result, expected: %s, got: %s", expected, result);
+
+    result = SDL_strnstr(text, "bcd", SDL_strlen(text));
+    expected = text+1;
+    SDLTest_AssertPass("Call to SDL_strnstr(text, \"bcd\", SDL_strlen(text))");
+    SDLTest_AssertCheck(result == expected, "Check result, expected: %s, got: %s", expected, result);
+
+    result = SDL_strnstr(text, "bcd", 3);
+    expected = NULL;
+    SDLTest_AssertPass("Call to SDL_strnstr(text, \"bcd\", 3)");
+    SDLTest_AssertCheck(result == expected, "Check result, expected: (null), got: %s", result);
+
+    result = SDL_strnstr(text, "xyz", 3);
+    expected = NULL;
+    SDLTest_AssertPass("Call to SDL_strnstr(text, \"xyz\", 3)");
+    SDLTest_AssertCheck(result == expected, "Check result, expected: (null), got: %s", result);
+
+    result = SDL_strnstr(text, "xyz", SDL_strlen(text)*100000);
+    expected = NULL;
+    SDLTest_AssertPass("Call to SDL_strnstr(text, \"xyz\", SDL_strlen(text)*100000)");
+    SDLTest_AssertCheck(result == expected, "Check result, expected: (null), got: %s", result);
+
+    return TEST_COMPLETED;
+}
+
 #if defined(HAVE_WFORMAT) || defined(HAVE_WFORMAT_EXTRA_ARGS)
 #pragma GCC diagnostic push
 #ifdef HAVE_WFORMAT
@@ -71,7 +133,7 @@ static int stdlib_strlcpy(void *arg)
 #endif
 
 /**
- * \brief Call to SDL_snprintf
+ * Call to SDL_snprintf
  */
 #undef SDL_snprintf
 static int stdlib_snprintf(void *arg)
@@ -262,7 +324,7 @@ static int stdlib_snprintf(void *arg)
 }
 
 /**
- * \brief Call to SDL_swprintf
+ * Call to SDL_swprintf
  */
 #undef SDL_swprintf
 static int stdlib_swprintf(void *arg)
@@ -429,7 +491,7 @@ static int stdlib_swprintf(void *arg)
 #endif
 
 /**
- * \brief Call to SDL_getenv and SDL_setenv
+ * Call to SDL_getenv and SDL_setenv
  */
 static int stdlib_getsetenv(void *arg)
 {
@@ -453,10 +515,10 @@ static int stdlib_getsetenv(void *arg)
 
         text = SDL_getenv(name);
         SDLTest_AssertPass("Call to SDL_getenv('%s')", name);
-        if (text != NULL) {
+        if (text) {
             SDLTest_Log("Expected: NULL, Got: '%s' (%i)", text, (int)SDL_strlen(text));
         }
-    } while (text != NULL);
+    } while (text);
 
     /* Create random values to set */
     value1 = SDLTest_RandomAsciiStringOfSize(10);
@@ -572,7 +634,7 @@ static int stdlib_getsetenv(void *arg)
 #endif
 
 /**
- * \brief Call to SDL_sscanf
+ * Call to SDL_sscanf
  */
 #undef SDL_sscanf
 static int stdlib_sscanf(void *arg)
@@ -741,7 +803,7 @@ static int stdlib_sscanf(void *arg)
 #endif
 
 /**
- * \brief Call to SDL_aligned_alloc
+ * Call to SDL_aligned_alloc
  */
 static int stdlib_aligned_alloc(void *arg)
 {
@@ -930,22 +992,26 @@ static const SDLTest_TestCaseReference stdlibTest2 = {
 };
 
 static const SDLTest_TestCaseReference stdlibTest3 = {
-    stdlib_snprintf, "stdlib_snprintf", "Call to SDL_snprintf", TEST_ENABLED
+    stdlib_strstr, "stdlib_strstr", "Call to SDL_strstr", TEST_ENABLED
 };
 
 static const SDLTest_TestCaseReference stdlibTest4 = {
-    stdlib_swprintf, "stdlib_swprintf", "Call to SDL_swprintf", TEST_ENABLED
+    stdlib_snprintf, "stdlib_snprintf", "Call to SDL_snprintf", TEST_ENABLED
 };
 
 static const SDLTest_TestCaseReference stdlibTest5 = {
-    stdlib_getsetenv, "stdlib_getsetenv", "Call to SDL_getenv and SDL_setenv", TEST_ENABLED
+    stdlib_swprintf, "stdlib_swprintf", "Call to SDL_swprintf", TEST_ENABLED
 };
 
 static const SDLTest_TestCaseReference stdlibTest6 = {
-    stdlib_sscanf, "stdlib_sscanf", "Call to SDL_sscanf", TEST_ENABLED
+    stdlib_getsetenv, "stdlib_getsetenv", "Call to SDL_getenv and SDL_setenv", TEST_ENABLED
 };
 
 static const SDLTest_TestCaseReference stdlibTest7 = {
+    stdlib_sscanf, "stdlib_sscanf", "Call to SDL_sscanf", TEST_ENABLED
+};
+
+static const SDLTest_TestCaseReference stdlibTest8 = {
     stdlib_aligned_alloc, "stdlib_aligned_alloc", "Call to SDL_aligned_alloc", TEST_ENABLED
 };
 
@@ -962,6 +1028,7 @@ static const SDLTest_TestCaseReference *stdlibTests[] = {
     &stdlibTest5,
     &stdlibTest6,
     &stdlibTest7,
+    &stdlibTest8,
     &stdlibTestOverflow,
     NULL
 };

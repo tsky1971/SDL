@@ -307,7 +307,9 @@ macro(CheckX11)
       sdl_glob_sources("${SDL3_SOURCE_DIR}/src/video/x11/*.c")
       set(SDL_VIDEO_DRIVER_X11 1)
 
-      # !!! FIXME: why is this disabled for Apple?
+      # Note: Disabled on Apple because the dynamic mode backend for X11 doesn't
+      # work properly on Apple during several issues like inconsistent paths
+      # among platforms. See #6778 (https://github.com/libsdl-org/SDL/issues/6778)
       if(APPLE)
         set(SDL_X11_SHARED OFF)
       endif()
@@ -532,11 +534,6 @@ macro(CheckWayland)
         string(REGEX REPLACE "\\.xml$" "" _PROTL "${_XML}")
         WaylandProtocolGen("${WAYLAND_SCANNER}" "${WAYLAND_SCANNER_CODE_MODE}" "${SDL3_SOURCE_DIR}/wayland-protocols/${_XML}" "${_PROTL}")
       endforeach()
-
-      if(SDL_WAYLAND_QT_TOUCH)
-        set(HAVE_WAYLAND_QT_TOUCH TRUE)
-        set(SDL_VIDEO_DRIVER_WAYLAND_QT_TOUCH 1)
-      endif()
 
       if(SDL_WAYLAND_SHARED AND NOT HAVE_SDL_LOADSO)
         message(WARNING "You must have SDL_LoadObject() support for dynamic Wayland loading")
@@ -1024,7 +1021,7 @@ macro(CheckHIDAPI)
     if(SDL_HIDAPI_LIBUSB)
       set(HAVE_LIBUSB FALSE)
 
-      set(LibUSB_PKG_CONFIG_SPEC libusb-1.0)
+      set(LibUSB_PKG_CONFIG_SPEC libusb-1.0>=1.0.16)
       pkg_check_modules(PC_LIBUSB IMPORTED_TARGET ${LibUSB_PKG_CONFIG_SPEC})
       if(PC_LIBUSB_FOUND)
         cmake_push_check_state()

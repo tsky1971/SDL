@@ -66,8 +66,7 @@ SDL_Semaphore *SDL_CreateSemaphore(Uint32 initial_value)
     SDL_Semaphore *sem;
 
     sem = (SDL_Semaphore *)SDL_malloc(sizeof(*sem));
-    if (sem == NULL) {
-        SDL_OutOfMemory();
+    if (!sem) {
         return NULL;
     }
     sem->count = initial_value;
@@ -108,7 +107,7 @@ int SDL_WaitSemaphoreTimeoutNS(SDL_Semaphore *sem, Sint64 timeoutNS)
 {
     int retval;
 
-    if (sem == NULL) {
+    if (!sem) {
         return SDL_InvalidParamError("sem");
     }
 
@@ -156,7 +155,7 @@ Uint32 SDL_GetSemaphoreValue(SDL_Semaphore *sem)
 
 int SDL_PostSemaphore(SDL_Semaphore *sem)
 {
-    if (sem == NULL) {
+    if (!sem) {
         return SDL_InvalidParamError("sem");
     }
 

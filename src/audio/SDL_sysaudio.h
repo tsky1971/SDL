@@ -175,7 +175,6 @@ typedef struct SDL_AudioDriver
     // !!! FIXME: most (all?) of these don't have to be atomic.
     SDL_AtomicInt output_device_count;
     SDL_AtomicInt capture_device_count;
-    SDL_AtomicInt last_device_instance_id;  // increments on each device add to provide unique instance IDs
     SDL_AtomicInt shutting_down;  // non-zero during SDL_Quit, so we known not to accept any last-minute device hotplugs.
 } SDL_AudioDriver;
 
@@ -257,6 +256,9 @@ struct SDL_AudioDevice
 {
     // A mutex for locking access to this struct
     SDL_Mutex *lock;
+
+    // A condition variable to protect device close, where we can't hold the device lock forever.
+    SDL_Condition *close_cond;
 
     // Reference count of the device; logical devices, device threads, etc, add to this.
     SDL_AtomicInt refcount;

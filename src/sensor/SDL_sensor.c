@@ -115,7 +115,7 @@ void SDL_UnlockSensors(void)
 
 SDL_bool SDL_SensorsLocked(void)
 {
-    return (SDL_sensors_locked > 0) ? SDL_TRUE : SDL_FALSE;
+    return (SDL_sensors_locked > 0);
 }
 
 void SDL_AssertSensorsLocked(void)
@@ -208,8 +208,6 @@ SDL_SensorID *SDL_GetSensors(int *count)
             if (count) {
                 *count = 0;
             }
-
-            SDL_OutOfMemory();
         }
     }
     SDL_UnlockSensors();
@@ -238,7 +236,7 @@ static SDL_bool SDL_GetDriverAndSensorIndex(SDL_SensorID instance_id, SDL_Sensor
             }
         }
     }
-    SDL_SetError("Sensor %" SDL_PRIs32 " not found", instance_id);
+    SDL_SetError("Sensor %" SDL_PRIu32 " not found", instance_id);
     return SDL_FALSE;
 }
 
@@ -329,8 +327,7 @@ SDL_Sensor *SDL_OpenSensor(SDL_SensorID instance_id)
 
     /* Create and initialize the sensor */
     sensor = (SDL_Sensor *)SDL_calloc(sizeof(*sensor), 1);
-    if (sensor == NULL) {
-        SDL_OutOfMemory();
+    if (!sensor) {
         SDL_UnlockSensors();
         return NULL;
     }

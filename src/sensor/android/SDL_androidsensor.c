@@ -138,7 +138,7 @@ static int SDL_ANDROID_SensorInit(void)
     ASensorList sensors;
 
     SDL_sensor_manager = ASensorManager_getInstance();
-    if (SDL_sensor_manager == NULL) {
+    if (!SDL_sensor_manager) {
         return SDL_SetError("Couldn't create sensor manager");
     }
 
@@ -146,8 +146,8 @@ static int SDL_ANDROID_SensorInit(void)
     sensors_count = ASensorManager_getSensorList(SDL_sensor_manager, &sensors);
     if (sensors_count > 0) {
         SDL_sensors = (SDL_AndroidSensor *)SDL_calloc(sensors_count, sizeof(*SDL_sensors));
-        if (SDL_sensors == NULL) {
-            return SDL_OutOfMemory();
+        if (!SDL_sensors) {
+            return -1;
         }
 
         for (i = 0; i < sensors_count; ++i) {

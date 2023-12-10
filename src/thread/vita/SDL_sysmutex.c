@@ -35,7 +35,7 @@ struct SDL_Mutex
 SDL_Mutex *SDL_CreateMutex(void)
 {
     SDL_Mutex *mutex = (SDL_Mutex *)SDL_malloc(sizeof(*mutex));
-    if (mutex != NULL) {
+    if (mutex) {
         const SceInt32 res = sceKernelCreateLwMutex(
                                 &mutex->lock,
                                 "SDL mutex",
@@ -48,15 +48,13 @@ SDL_Mutex *SDL_CreateMutex(void)
             mutex = NULL;
             SDL_SetError("Error trying to create mutex: %x", res);
         }
-    } else {
-        SDL_OutOfMemory();
     }
     return mutex;
 }
 
 void SDL_DestroyMutex(SDL_Mutex *mutex)
 {
-    if (mutex != NULL) {
+    if (mutex) {
         sceKernelDeleteLwMutex(&mutex->lock);
         SDL_free(mutex);
     }
@@ -79,7 +77,7 @@ int SDL_TryLockMutex(SDL_Mutex *mutex)
 #else
     SceInt32 res = 0;
 
-    if (mutex == NULL) {
+    if (!mutex) {
         return 0;
     }
 

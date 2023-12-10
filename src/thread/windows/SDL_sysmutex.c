@@ -58,15 +58,10 @@ static pfnTryAcquireSRWLockExclusive pTryAcquireSRWLockExclusive = NULL;
 
 static SDL_Mutex *SDL_CreateMutex_srw(void)
 {
-    SDL_mutex_srw *mutex;
-
-    mutex = (SDL_mutex_srw *)SDL_calloc(1, sizeof(*mutex));
-    if (mutex == NULL) {
-        SDL_OutOfMemory();
+    SDL_mutex_srw *mutex = (SDL_mutex_srw *)SDL_calloc(1, sizeof(*mutex));
+    if (mutex) {
+        pInitializeSRWLock(&mutex->srw);
     }
-
-    pInitializeSRWLock(&mutex->srw);
-
     return (SDL_Mutex *)mutex;
 }
 
@@ -145,7 +140,7 @@ static const SDL_mutex_impl_t SDL_mutex_impl_srw = {
 static SDL_Mutex *SDL_CreateMutex_cs(void)
 {
     SDL_mutex_cs *mutex = (SDL_mutex_cs *)SDL_malloc(sizeof(*mutex));
-    if (mutex != NULL) {
+    if (mutex) {
         // Initialize
         // On SMP systems, a non-zero spin count generally helps performance
 #ifdef __WINRT__
@@ -153,8 +148,6 @@ static SDL_Mutex *SDL_CreateMutex_cs(void)
 #else
         InitializeCriticalSectionAndSpinCount(&mutex->cs, 2000);
 #endif
-    } else {
-        SDL_OutOfMemory();
     }
     return (SDL_Mutex *)mutex;
 }
@@ -199,7 +192,7 @@ static const SDL_mutex_impl_t SDL_mutex_impl_cs = {
 
 SDL_Mutex *SDL_CreateMutex(void)
 {
-    if (SDL_mutex_impl_active.Create == NULL) {
+    if (!SDL_mutex_impl_active.Create) {
         // Default to fallback implementation
         const SDL_mutex_impl_t *impl = &SDL_mutex_impl_cs;
 
@@ -239,7 +232,7 @@ void SDL_DestroyMutex(SDL_Mutex *mutex)
 
 void SDL_LockMutex(SDL_Mutex *mutex)
 {
-    if (mutex != NULL) {
+    if (mutex) {
         SDL_mutex_impl_active.Lock(mutex);
     }
 }
@@ -251,7 +244,7 @@ int SDL_TryLockMutex(SDL_Mutex *mutex)
 
 void SDL_UnlockMutex(SDL_Mutex *mutex)
 {
-    if (mutex != NULL) {
+    if (mutex) {
         SDL_mutex_impl_active.Unlock(mutex);
     }
 }

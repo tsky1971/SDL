@@ -31,8 +31,6 @@ SDL_Mutex *SDL_CreateMutex(void)
     SDL_Mutex *mutex = (SDL_Mutex *)SDL_malloc(sizeof(*mutex));
     if (mutex) {
         RecursiveLock_Init(&mutex->lock);
-    } else {
-        SDL_OutOfMemory();
     }
     return mutex;
 }
@@ -53,7 +51,7 @@ void SDL_LockMutex(SDL_Mutex *mutex) SDL_NO_THREAD_SAFETY_ANALYSIS  // clang doe
 
 int SDL_TryLockMutex(SDL_Mutex *mutex)
 {
-    return (mutex == NULL) ? 0 : RecursiveLock_TryLock(&mutex->lock);
+    return (!mutex) ? 0 : RecursiveLock_TryLock(&mutex->lock);
 }
 
 void SDL_UnlockMutex(SDL_Mutex *mutex) SDL_NO_THREAD_SAFETY_ANALYSIS // clang doesn't know about NULL mutexes

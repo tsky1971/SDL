@@ -56,8 +56,7 @@ static SDL_VideoDevice *OFFSCREEN_CreateDevice(void)
 
     /* Initialize all variables that we clean on shutdown */
     device = (SDL_VideoDevice *)SDL_calloc(1, sizeof(SDL_VideoDevice));
-    if (device == NULL) {
-        SDL_OutOfMemory();
+    if (!device) {
         return 0;
     }
 
@@ -87,6 +86,7 @@ static SDL_VideoDevice *OFFSCREEN_CreateDevice(void)
     /* "Window" */
     device->CreateSDLWindow = OFFSCREEN_CreateWindow;
     device->DestroyWindow = OFFSCREEN_DestroyWindow;
+    device->SetWindowSize = OFFSCREEN_SetWindowSize;
 
     return device;
 }

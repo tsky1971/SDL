@@ -41,7 +41,7 @@ SDL_Semaphore *SDL_CreateSemaphore(Uint32 initial_value)
     SDL_Semaphore *sem;
 
     sem = (SDL_Semaphore *)SDL_malloc(sizeof(*sem));
-    if (sem != NULL) {
+    if (sem) {
         /* TODO: Figure out the limit on the maximum value. */
         sem->semid = sceKernelCreateSema("SDL sema", 0, initial_value, 255, NULL);
         if (sem->semid < 0) {
@@ -49,8 +49,6 @@ SDL_Semaphore *SDL_CreateSemaphore(Uint32 initial_value)
             SDL_free(sem);
             sem = NULL;
         }
-    } else {
-        SDL_OutOfMemory();
     }
 
     return sem;
@@ -59,7 +57,7 @@ SDL_Semaphore *SDL_CreateSemaphore(Uint32 initial_value)
 /* Free the semaphore */
 void SDL_DestroySemaphore(SDL_Semaphore *sem)
 {
-    if (sem != NULL) {
+    if (sem) {
         if (sem->semid > 0) {
             sceKernelDeleteSema(sem->semid);
             sem->semid = 0;
@@ -79,7 +77,7 @@ int SDL_WaitSemaphoreTimeoutNS(SDL_Semaphore *sem, Sint64 timeoutNS)
     SceUInt *pTimeout;
     int res;
 
-    if (sem == NULL) {
+    if (!sem) {
         return SDL_InvalidParamError("sem");
     }
 
@@ -114,7 +112,7 @@ Uint32 SDL_GetSemaphoreValue(SDL_Semaphore *sem)
 {
     SceKernelSemaInfo info;
 
-    if (sem == NULL) {
+    if (!sem) {
         SDL_InvalidParamError("sem");
         return 0;
     }
@@ -130,7 +128,7 @@ int SDL_PostSemaphore(SDL_Semaphore *sem)
 {
     int res;
 
-    if (sem == NULL) {
+    if (!sem) {
         return SDL_InvalidParamError("sem");
     }
 

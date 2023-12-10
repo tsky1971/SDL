@@ -1240,18 +1240,8 @@ typedef SDL_GameControllerButton, SDL_GamepadButton;
   (...)
 @@
 @@
-- SDL_GameControllerMappingForIndex
-+ SDL_GetGamepadMappingForIndex
-  (...)
-@@
-@@
 - SDL_GameControllerName
 + SDL_GetGamepadName
-  (...)
-@@
-@@
-- SDL_GameControllerNumMappings
-+ SDL_GetNumGamepadMappings
   (...)
 @@
 @@
@@ -2745,3 +2735,13 @@ expression e, n, v;
 @@
 - SDL_SetWindowData(e, n, v)
 + SDL_SetProperty(SDL_GetWindowProperties(e), n, v, NULL, NULL)
+@@
+expression w, i, s;
+@@
+- SDL_Vulkan_CreateSurface(w, i, s)
++ SDL_Vulkan_CreateSurface(w, i, NULL, s)
+@@
+@@
+- SDL_RenderFlush
++ SDL_FlushRenderer
+  (...)

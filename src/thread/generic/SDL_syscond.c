@@ -64,8 +64,6 @@ SDL_Condition *SDL_CreateCondition_generic(void)
             SDL_DestroyCondition_generic((SDL_Condition *)cond);
             cond = NULL;
         }
-    } else {
-        SDL_OutOfMemory();
     }
     return (SDL_Condition *)cond;
 }
@@ -92,7 +90,7 @@ void SDL_DestroyCondition_generic(SDL_Condition *_cond)
 int SDL_SignalCondition_generic(SDL_Condition *_cond)
 {
     SDL_cond_generic *cond = (SDL_cond_generic *)_cond;
-    if (cond == NULL) {
+    if (!cond) {
         return SDL_InvalidParamError("cond");
     }
 
@@ -116,7 +114,7 @@ int SDL_SignalCondition_generic(SDL_Condition *_cond)
 int SDL_BroadcastCondition_generic(SDL_Condition *_cond)
 {
     SDL_cond_generic *cond = (SDL_cond_generic *)_cond;
-    if (cond == NULL) {
+    if (!cond) {
         return SDL_InvalidParamError("cond");
     }
 
@@ -172,7 +170,7 @@ int SDL_WaitConditionTimeoutNS_generic(SDL_Condition *_cond, SDL_Mutex *mutex, S
     SDL_cond_generic *cond = (SDL_cond_generic *)_cond;
     int retval;
 
-    if (cond == NULL) {
+    if (!cond) {
         return SDL_InvalidParamError("cond");
     }
 

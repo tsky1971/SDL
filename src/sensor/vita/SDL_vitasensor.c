@@ -51,8 +51,8 @@ static int SDL_VITA_SensorInit(void)
     SDL_sensors_count = 2;
 
     SDL_sensors = (SDL_VitaSensor *)SDL_calloc(SDL_sensors_count, sizeof(*SDL_sensors));
-    if (SDL_sensors == NULL) {
-        return SDL_OutOfMemory();
+    if (!SDL_sensors) {
+        return -1;
     }
 
     SDL_sensors[0].type = SDL_SENSOR_ACCEL;
@@ -118,8 +118,8 @@ static int SDL_VITA_SensorOpen(SDL_Sensor *sensor, int device_index)
     struct sensor_hwdata *hwdata;
 
     hwdata = (struct sensor_hwdata *)SDL_calloc(1, sizeof(*hwdata));
-    if (hwdata == NULL) {
-        return SDL_OutOfMemory();
+    if (!hwdata) {
+        return -1;
     }
     sensor->hwdata = hwdata;
 

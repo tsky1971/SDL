@@ -23,13 +23,10 @@
 #ifdef SDL_VIDEO_DRIVER_WINDOWS
 
 #include "SDL_windowsvideo.h"
-#include "SDL_windowsshape.h"
-#include "SDL_vkeys.h"
 #include "../../events/SDL_events_c.h"
 #include "../../events/SDL_touch_c.h"
 #include "../../events/scancodes_windows.h"
-
-#include <SDL3/SDL_syswm.h>
+#include "../../main/SDL_main_callbacks.h"
 
 /* Dropfile support */
 #include <shellapi.h>
@@ -98,14 +95,20 @@
 #define TOUCHEVENTF_PEN 0x0040
 #endif
 
+#ifndef MAPVK_VK_TO_VSC_EX
+#define MAPVK_VK_TO_VSC_EX 4
+#endif
+
+#ifndef WC_ERR_INVALID_CHARS
+#define WC_ERR_INVALID_CHARS 0x00000080
+#endif
+
 #ifndef IS_HIGH_SURROGATE
 #define IS_HIGH_SURROGATE(x) (((x) >= 0xd800) && ((x) <= 0xdbff))
 #endif
-#ifndef IS_LOW_SURROGATE
-#define IS_LOW_SURROGATE(x) (((x) >= 0xdc00) && ((x) <= 0xdfff))
-#endif
-#ifndef IS_SURROGATE_PAIR
-#define IS_SURROGATE_PAIR(h, l) (IS_HIGH_SURROGATE(h) && IS_LOW_SURROGATE(l))
+
+#ifndef USER_TIMER_MINIMUM
+#define USER_TIMER_MINIMUM 0x0000000A
 #endif
 
 /* Used to compare Windows message timestamps */
@@ -150,202 +153,38 @@ static Uint64 WIN_GetEventTimestamp()
     return timestamp;
 }
 
-static SDL_Scancode VKeytoScancodeFallback(WPARAM vkey)
-{
-    switch (vkey) {
-    case VK_LEFT:
-        return SDL_SCANCODE_LEFT;
-    case VK_UP:
-        return SDL_SCANCODE_UP;
-    case VK_RIGHT:
-        return SDL_SCANCODE_RIGHT;
-    case VK_DOWN:
-        return SDL_SCANCODE_DOWN;
-
-    default:
-        return SDL_SCANCODE_UNKNOWN;
-    }
-}
-
-static SDL_Scancode VKeytoScancode(WPARAM vkey)
-{
-    switch (vkey) {
-    case VK_MODECHANGE:
-        return SDL_SCANCODE_MODE;
-    case VK_SELECT:
-        return SDL_SCANCODE_SELECT;
-    case VK_EXECUTE:
-        return SDL_SCANCODE_EXECUTE;
-    case VK_HELP:
-        return SDL_SCANCODE_HELP;
-    case VK_PAUSE:
-        return SDL_SCANCODE_PAUSE;
-    case VK_NUMLOCK:
-        return SDL_SCANCODE_NUMLOCKCLEAR;
-
-    case VK_F13:
-        return SDL_SCANCODE_F13;
-    case VK_F14:
-        return SDL_SCANCODE_F14;
-    case VK_F15:
-        return SDL_SCANCODE_F15;
-    case VK_F16:
-        return SDL_SCANCODE_F16;
-    case VK_F17:
-        return SDL_SCANCODE_F17;
-    case VK_F18:
-        return SDL_SCANCODE_F18;
-    case VK_F19:
-        return SDL_SCANCODE_F19;
-    case VK_F20:
-        return SDL_SCANCODE_F20;
-    case VK_F21:
-        return SDL_SCANCODE_F21;
-    case VK_F22:
-        return SDL_SCANCODE_F22;
-    case VK_F23:
-        return SDL_SCANCODE_F23;
-    case VK_F24:
-        return SDL_SCANCODE_F24;
-
-    case VK_OEM_NEC_EQUAL:
-        return SDL_SCANCODE_KP_EQUALS;
-    case VK_BROWSER_BACK:
-        return SDL_SCANCODE_AC_BACK;
-    case VK_BROWSER_FORWARD:
-        return SDL_SCANCODE_AC_FORWARD;
-    case VK_BROWSER_REFRESH:
-        return SDL_SCANCODE_AC_REFRESH;
-    case VK_BROWSER_STOP:
-        return SDL_SCANCODE_AC_STOP;
-    case VK_BROWSER_SEARCH:
-        return SDL_SCANCODE_AC_SEARCH;
-    case VK_BROWSER_FAVORITES:
-        return SDL_SCANCODE_AC_BOOKMARKS;
-    case VK_BROWSER_HOME:
-        return SDL_SCANCODE_AC_HOME;
-    case VK_VOLUME_MUTE:
-        return SDL_SCANCODE_AUDIOMUTE;
-    case VK_VOLUME_DOWN:
-        return SDL_SCANCODE_VOLUMEDOWN;
-    case VK_VOLUME_UP:
-        return SDL_SCANCODE_VOLUMEUP;
-
-    case VK_MEDIA_NEXT_TRACK:
-        return SDL_SCANCODE_AUDIONEXT;
-    case VK_MEDIA_PREV_TRACK:
-        return SDL_SCANCODE_AUDIOPREV;
-    case VK_MEDIA_STOP:
-        return SDL_SCANCODE_AUDIOSTOP;
-    case VK_MEDIA_PLAY_PAUSE:
-        return SDL_SCANCODE_AUDIOPLAY;
-    case VK_LAUNCH_MAIL:
-        return SDL_SCANCODE_MAIL;
-    case VK_LAUNCH_MEDIA_SELECT:
-        return SDL_SCANCODE_MEDIASELECT;
-
-    case VK_OEM_102:
-        return SDL_SCANCODE_NONUSBACKSLASH;
-
-    case VK_ATTN:
-        return SDL_SCANCODE_SYSREQ;
-    case VK_CRSEL:
-        return SDL_SCANCODE_CRSEL;
-    case VK_EXSEL:
-        return SDL_SCANCODE_EXSEL;
-    case VK_OEM_CLEAR:
-        return SDL_SCANCODE_CLEAR;
-
-    case VK_LAUNCH_APP1:
-        return SDL_SCANCODE_APP1;
-    case VK_LAUNCH_APP2:
-        return SDL_SCANCODE_APP2;
-
-    default:
-        return SDL_SCANCODE_UNKNOWN;
-    }
-}
-
 static SDL_Scancode WindowsScanCodeToSDLScanCode(LPARAM lParam, WPARAM wParam)
 {
     SDL_Scancode code;
-    int nScanCode = (lParam >> 16) & 0xFF;
-    SDL_bool bIsExtended = (lParam & (1 << 24)) != 0;
+    Uint8 index;
+    Uint16 keyFlags = HIWORD(lParam);
+    Uint16 scanCode = LOBYTE(keyFlags);
 
-    code = VKeytoScancode(wParam);
+    /* On-Screen Keyboard can send wrong scan codes with high-order bit set (key break code).
+     * Strip high-order bit. */
+    scanCode &= ~0x80;
 
-    if (code == SDL_SCANCODE_UNKNOWN && nScanCode <= 127) {
-        code = windows_scancode_table[nScanCode];
+    if (scanCode != 0) {
+        if ((keyFlags & KF_EXTENDED) == KF_EXTENDED) {
+            scanCode = MAKEWORD(scanCode, 0xe0);
+        }
+    } else {
+        Uint16 vkCode = LOWORD(wParam);
 
-        if (bIsExtended) {
-            switch (code) {
-            case SDL_SCANCODE_RETURN:
-                code = SDL_SCANCODE_KP_ENTER;
-                break;
-            case SDL_SCANCODE_LALT:
-                code = SDL_SCANCODE_RALT;
-                break;
-            case SDL_SCANCODE_LCTRL:
-                code = SDL_SCANCODE_RCTRL;
-                break;
-            case SDL_SCANCODE_SLASH:
-                code = SDL_SCANCODE_KP_DIVIDE;
-                break;
-            case SDL_SCANCODE_CAPSLOCK:
-                code = SDL_SCANCODE_KP_PLUS;
-                break;
-            default:
-                break;
-            }
-        } else {
-            switch (code) {
-            case SDL_SCANCODE_HOME:
-                code = SDL_SCANCODE_KP_7;
-                break;
-            case SDL_SCANCODE_UP:
-                code = SDL_SCANCODE_KP_8;
-                break;
-            case SDL_SCANCODE_PAGEUP:
-                code = SDL_SCANCODE_KP_9;
-                break;
-            case SDL_SCANCODE_LEFT:
-                code = SDL_SCANCODE_KP_4;
-                break;
-            case SDL_SCANCODE_RIGHT:
-                code = SDL_SCANCODE_KP_6;
-                break;
-            case SDL_SCANCODE_END:
-                code = SDL_SCANCODE_KP_1;
-                break;
-            case SDL_SCANCODE_DOWN:
-                code = SDL_SCANCODE_KP_2;
-                break;
-            case SDL_SCANCODE_PAGEDOWN:
-                code = SDL_SCANCODE_KP_3;
-                break;
-            case SDL_SCANCODE_INSERT:
-                code = SDL_SCANCODE_KP_0;
-                break;
-            case SDL_SCANCODE_DELETE:
-                code = SDL_SCANCODE_KP_PERIOD;
-                break;
-            case SDL_SCANCODE_PRINTSCREEN:
-                code = SDL_SCANCODE_KP_MULTIPLY;
-                break;
-            default:
-                break;
-            }
+        /* Windows may not report scan codes for some buttons (multimedia buttons etc).
+         * Get scan code from the VK code.*/
+        scanCode = LOWORD(MapVirtualKey(vkCode, MAPVK_VK_TO_VSC_EX));
+
+        /* Pause/Break key have a special scan code with 0xe1 prefix.
+         * Use Pause scan code that is used in Win32. */
+        if (scanCode == 0xe11d) {
+            scanCode = 0xe046;
         }
     }
 
-    /* The on-screen keyboard can generate VK_LEFT and VK_RIGHT events without a scancode
-     * value set, however we cannot simply map these in VKeytoScancode() or we will be
-     * incorrectly handling the arrow keys on the number pad when NumLock is disabled
-     * (which also generate VK_LEFT, VK_RIGHT, etc in that scenario). Instead, we'll only
-     * map them if none of the above special number pad mappings applied. */
-    if (code == SDL_SCANCODE_UNKNOWN) {
-        code = VKeytoScancodeFallback(wParam);
-    }
+    /* Pack scan code into one byte to make the index. */
+    index = LOBYTE(scanCode) | (HIBYTE(scanCode) ? 0x80 : 0x00);
+    code = windows_scancode_table[index];
 
     return code;
 }
@@ -486,8 +325,8 @@ static void WIN_UpdateFocus(SDL_Window *window, SDL_bool expect_focus)
 {
     SDL_WindowData *data = window->driverdata;
     HWND hwnd = data->hwnd;
-    SDL_bool had_focus = (SDL_GetKeyboardFocus() == window) ? SDL_TRUE : SDL_FALSE;
-    SDL_bool has_focus = (GetForegroundWindow() == hwnd) ? SDL_TRUE : SDL_FALSE;
+    SDL_bool had_focus = (SDL_GetKeyboardFocus() == window);
+    SDL_bool has_focus = (GetForegroundWindow() == hwnd);
 
     if (had_focus == has_focus || has_focus != expect_focus) {
         return;
@@ -556,39 +395,6 @@ static void WIN_UpdateFocus(SDL_Window *window, SDL_bool expect_focus)
     }
 }
 #endif /*!defined(__XBOXONE__) && !defined(__XBOXSERIES__)*/
-
-static BOOL WIN_ConvertUTF32toUTF8(UINT32 codepoint, char *text)
-{
-    if (codepoint <= 0x7F) {
-        text[0] = (char)codepoint;
-        text[1] = '\0';
-    } else if (codepoint <= 0x7FF) {
-        text[0] = 0xC0 | (char)((codepoint >> 6) & 0x1F);
-        text[1] = 0x80 | (char)(codepoint & 0x3F);
-        text[2] = '\0';
-    } else if (codepoint <= 0xFFFF) {
-        text[0] = 0xE0 | (char)((codepoint >> 12) & 0x0F);
-        text[1] = 0x80 | (char)((codepoint >> 6) & 0x3F);
-        text[2] = 0x80 | (char)(codepoint & 0x3F);
-        text[3] = '\0';
-    } else if (codepoint <= 0x10FFFF) {
-        text[0] = 0xF0 | (char)((codepoint >> 18) & 0x0F);
-        text[1] = 0x80 | (char)((codepoint >> 12) & 0x3F);
-        text[2] = 0x80 | (char)((codepoint >> 6) & 0x3F);
-        text[3] = 0x80 | (char)(codepoint & 0x3F);
-        text[4] = '\0';
-    } else {
-        return SDL_FALSE;
-    }
-    return SDL_TRUE;
-}
-
-static BOOL WIN_ConvertUTF16toUTF8(UINT32 high_surrogate, UINT32 low_surrogate, char *text)
-{
-    const UINT32 SURROGATE_OFFSET = 0x10000U - (0xD800 << 10) - 0xDC00;
-    const UINT32 codepoint = (high_surrogate << 10) + low_surrogate + SURROGATE_OFFSET;
-    return WIN_ConvertUTF32toUTF8(codepoint, text);
-}
 
 static SDL_bool ShouldGenerateWindowCloseOnAltF4(void)
 {
@@ -715,28 +521,15 @@ WIN_WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     SDL_WindowData *data;
     LRESULT returnCode = -1;
 
-    /* Send a SDL_EVENT_SYSWM if the application wants them */
-    if (SDL_EventEnabled(SDL_EVENT_SYSWM)) {
-        SDL_SysWMmsg wmmsg;
-
-        wmmsg.version = SDL_SYSWM_CURRENT_VERSION;
-        wmmsg.subsystem = SDL_SYSWM_WINDOWS;
-        wmmsg.msg.win.hwnd = hwnd;
-        wmmsg.msg.win.msg = msg;
-        wmmsg.msg.win.wParam = wParam;
-        wmmsg.msg.win.lParam = lParam;
-        SDL_SendSysWMEvent(&wmmsg);
-    }
-
     /* Get the window data for the window */
     data = WIN_GetWindowDataFromHWND(hwnd);
 #if !defined(__XBOXONE__) && !defined(__XBOXSERIES__)
-    if (data == NULL) {
+    if (!data) {
         /* Fallback */
         data = (SDL_WindowData *)GetProp(hwnd, TEXT("SDL_WindowData"));
     }
 #endif
-    if (data == NULL) {
+    if (!data) {
         return CallWindowProc(DefWindowProc, hwnd, msg, wParam, lParam);
     }
 
@@ -883,7 +676,7 @@ WIN_WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         if (inp.header.dwType == RIM_TYPEMOUSE) {
             SDL_MouseID mouseID;
             RAWMOUSE *rawmouse;
-            if (SDL_GetNumTouchDevices() > 0 &&
+            if (SDL_TouchDevicesAvailable() &&
                 (GetMouseMessageSource() == SDL_MOUSE_EVENT_SOURCE_TOUCH || (GetMessageExtraInfo() & 0x82) == 0x82)) {
                 break;
             }
@@ -1061,7 +854,7 @@ WIN_WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             returnCode = 1;
         } else {
             char text[5];
-            if (WIN_ConvertUTF32toUTF8((UINT32)wParam, text)) {
+            if (SDL_UCS4ToUTF8((Uint32)wParam, text) != text) {
                 SDL_SendKeyboardText(text);
             }
             returnCode = 0;
@@ -1069,31 +862,27 @@ WIN_WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         break;
 
     case WM_CHAR:
-        /* When a user enters a Unicode code point defined in the Basic Multilingual Plane, Windows sends a WM_CHAR
-           message with the code point encoded as UTF-16. When a user enters a Unicode code point from a Supplementary
-           Plane, Windows sends the code point in two separate WM_CHAR messages: The first message includes the UTF-16
-           High Surrogate and the second the UTF-16 Low Surrogate. The High and Low Surrogates cannot be individually
-           converted to valid UTF-8, therefore, we must save the High Surrogate from the first WM_CHAR message and
-           concatenate it with the Low Surrogate from the second WM_CHAR message. At that point, we have a valid
-           UTF-16 surrogate pair ready to re-encode as UTF-8. */
+        /* Characters outside Unicode Basic Multilingual Plane (BMP)
+         * are coded as so called "surrogate pair" in two separate UTF-16 character events.
+         * Cache high surrogate until next character event. */
         if (IS_HIGH_SURROGATE(wParam)) {
             data->high_surrogate = (WCHAR)wParam;
-        } else if (IS_SURROGATE_PAIR(data->high_surrogate, wParam)) {
-            /* The code point is in a Supplementary Plane.
-               Here wParam is the Low Surrogate. */
-            char text[5];
-            if (WIN_ConvertUTF16toUTF8((UINT32)data->high_surrogate, (UINT32)wParam, text)) {
-                SDL_SendKeyboardText(text);
-            }
-            data->high_surrogate = 0;
         } else {
-            /* The code point is in the Basic Multilingual Plane.
-               It's numerically equal to UTF-32. */
-            char text[5];
-            if (WIN_ConvertUTF32toUTF8((UINT32)wParam, text)) {
-                SDL_SendKeyboardText(text);
+            WCHAR utf16[] = {
+                data->high_surrogate ? data->high_surrogate : (WCHAR)wParam,
+                data->high_surrogate ? (WCHAR)wParam : L'\0',
+                L'\0'
+            };
+
+            char utf8[5];
+            int result = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, utf16, -1, utf8, sizeof(utf8), NULL, NULL);
+            if (result > 0) {
+                SDL_SendKeyboardText(utf8);
             }
+
+            data->high_surrogate = L'\0';
         }
+
         returnCode = 0;
         break;
 
@@ -1220,11 +1009,38 @@ WIN_WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 #endif /* WM_GETMINMAXINFO */
 
     case WM_WINDOWPOSCHANGING:
+    {
+        WINDOWPOS *windowpos = (WINDOWPOS*)lParam;
 
         if (data->expected_resize) {
             returnCode = 0;
         }
-        break;
+
+        if (IsIconic(hwnd)) {
+            SDL_SendWindowEvent(data->window, SDL_EVENT_WINDOW_MINIMIZED, 0, 0);
+        } else if (IsZoomed(hwnd)) {
+            if (data->window->flags & SDL_WINDOW_MINIMIZED) {
+                /* If going from minimized to maximized, send the restored event first. */
+                SDL_SendWindowEvent(data->window, SDL_EVENT_WINDOW_RESTORED, 0, 0);
+            }
+            SDL_SendWindowEvent(data->window, SDL_EVENT_WINDOW_MAXIMIZED, 0, 0);
+        } else {
+            SDL_bool was_fixed_size = !!(data->window->flags & (SDL_WINDOW_MAXIMIZED | SDL_WINDOW_MINIMIZED));
+            SDL_SendWindowEvent(data->window, SDL_EVENT_WINDOW_RESTORED, 0, 0);
+
+            /* Send the stored floating size if moving from a fixed-size to floating state. */
+            if (was_fixed_size && !(data->window->flags & SDL_WINDOW_FULLSCREEN)) {
+                int fx, fy, fw, fh;
+
+                WIN_AdjustWindowRect(data->window, &fx, &fy, &fw, &fh, SDL_WINDOWRECT_FLOATING);
+                windowpos->x = fx;
+                windowpos->y = fy;
+                windowpos->cx = fw;
+                windowpos->cy = fh;
+                windowpos->flags &= ~(SWP_NOSIZE | SWP_NOMOVE);
+            }
+        }
+    } break;
 
     case WM_WINDOWPOSCHANGED:
     {
@@ -1290,34 +1106,37 @@ WIN_WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         }
 
         /* Update the position of any child windows */
-        for (win = data->window->first_child; win != NULL; win = win->next_sibling) {
+        for (win = data->window->first_child; win; win = win->next_sibling) {
             /* Don't update hidden child windows, their relative position doesn't change */
             if (!(win->flags & SDL_WINDOW_HIDDEN)) {
-                WIN_SetWindowPositionInternal(win, SWP_NOCOPYBITS | SWP_NOACTIVATE);
+                WIN_SetWindowPositionInternal(win, SWP_NOCOPYBITS | SWP_NOACTIVATE, SDL_WINDOWRECT_CURRENT);
             }
         }
     } break;
 
-    case WM_SIZE:
+    case WM_ENTERSIZEMOVE:
+    case WM_ENTERMENULOOP:
     {
-        switch (wParam) {
-        case SIZE_MAXIMIZED:
-            SDL_SendWindowEvent(data->window,
-                                SDL_EVENT_WINDOW_RESTORED, 0, 0);
-            SDL_SendWindowEvent(data->window,
-                                SDL_EVENT_WINDOW_MAXIMIZED, 0, 0);
-            break;
-        case SIZE_MINIMIZED:
-            SDL_SendWindowEvent(data->window,
-                                SDL_EVENT_WINDOW_MINIMIZED, 0, 0);
-            break;
-        case SIZE_RESTORED:
-            SDL_SendWindowEvent(data->window,
-                                SDL_EVENT_WINDOW_RESTORED, 0, 0);
-            break;
-        default:
-            break;
+        SetTimer(hwnd, (UINT_PTR)SDL_IterateMainCallbacks, USER_TIMER_MINIMUM, NULL);
+    } break;
+
+    case WM_TIMER:
+    {
+        if (wParam == (UINT_PTR)SDL_IterateMainCallbacks) {
+            if (SDL_HasMainCallbacks()) {
+                SDL_IterateMainCallbacks(SDL_FALSE);
+            } else {
+                // Send an expose event so the application can redraw
+                SDL_SendWindowEvent(data->window, SDL_EVENT_WINDOW_EXPOSED, 0, 0);
+            }
+            return 0;
         }
+    } break;
+
+    case WM_EXITSIZEMOVE:
+    case WM_EXITMENULOOP:
+    {
+        KillTimer(hwnd, (UINT_PTR)SDL_IterateMainCallbacks);
     } break;
 
     case WM_SETCURSOR:
@@ -1419,6 +1238,8 @@ WIN_WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
                 for (i = 0; i < num_inputs; ++i) {
                     PTOUCHINPUT input = &inputs[i];
+                    const int w = (rect.right - rect.left);
+                    const int h = (rect.right - rect.left);
 
                     const SDL_TouchID touchId = (SDL_TouchID)((size_t)input->hSource);
 
@@ -1430,8 +1251,16 @@ WIN_WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                     }
 
                     /* Get the normalized coordinates for the window */
-                    x = (float)(input->x - rect.left) / (rect.right - rect.left);
-                    y = (float)(input->y - rect.top) / (rect.bottom - rect.top);
+                    if (w <= 1) {
+                        x = 0.5f;
+                    } else {
+                        x = (float)(input->x - rect.left) / (w - 1);
+                    }
+                    if (h <= 1) {
+                        y = 0.5f;
+                    } else {
+                        y = (float)(input->y - rect.top) / (h - 1);
+                    }
 
                     /* FIXME: Should we use the input->dwTime field for the tick source of the timestamp? */
                     if (input->dwFlags & TOUCHEVENTF_DOWN) {
@@ -1472,16 +1301,15 @@ WIN_WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         HDROP drop = (HDROP)wParam;
         UINT count = DragQueryFile(drop, 0xFFFFFFFF, NULL, 0);
         for (i = 0; i < count; ++i) {
-            SDL_bool isstack;
             UINT size = DragQueryFile(drop, i, NULL, 0) + 1;
-            LPTSTR buffer = SDL_small_alloc(TCHAR, size, &isstack);
+            LPTSTR buffer = (LPTSTR)SDL_malloc(sizeof(TCHAR) * size);
             if (buffer) {
                 if (DragQueryFile(drop, i, buffer, size)) {
                     char *file = WIN_StringToUTF8(buffer);
-                    SDL_SendDropFile(data->window, file);
+                    SDL_SendDropFile(data->window, NULL, file);
                     SDL_free(file);
                 }
-                SDL_small_free(buffer, isstack);
+                SDL_free(buffer);
             }
         }
         SDL_SendDropComplete(data->window);
@@ -1758,8 +1586,10 @@ static void WIN_UpdateMouseCapture()
                 SDL_MouseID mouseID = SDL_GetMouse()->mouseID;
 
                 SDL_SendMouseMotion(WIN_GetEventTimestamp(), data->window, mouseID, 0, (float)cursorPos.x, (float)cursorPos.y);
-                SDL_SendMouseButton(WIN_GetEventTimestamp(), data->window, mouseID, GetAsyncKeyState(VK_LBUTTON) & 0x8000 ? SDL_PRESSED : SDL_RELEASED, !swapButtons ? SDL_BUTTON_LEFT : SDL_BUTTON_RIGHT);
-                SDL_SendMouseButton(WIN_GetEventTimestamp(), data->window, mouseID, GetAsyncKeyState(VK_RBUTTON) & 0x8000 ? SDL_PRESSED : SDL_RELEASED, !swapButtons ? SDL_BUTTON_RIGHT : SDL_BUTTON_LEFT);
+                SDL_SendMouseButton(WIN_GetEventTimestamp(), data->window, mouseID, GetAsyncKeyState(VK_LBUTTON) & 0x8000 ? SDL_PRESSED : SDL_RELEASED,
+                                    !swapButtons ? SDL_BUTTON_LEFT : SDL_BUTTON_RIGHT);
+                SDL_SendMouseButton(WIN_GetEventTimestamp(), data->window, mouseID, GetAsyncKeyState(VK_RBUTTON) & 0x8000 ? SDL_PRESSED : SDL_RELEASED,
+                                    !swapButtons ? SDL_BUTTON_RIGHT : SDL_BUTTON_LEFT);
                 SDL_SendMouseButton(WIN_GetEventTimestamp(), data->window, mouseID, GetAsyncKeyState(VK_MBUTTON) & 0x8000 ? SDL_PRESSED : SDL_RELEASED, SDL_BUTTON_MIDDLE);
                 SDL_SendMouseButton(WIN_GetEventTimestamp(), data->window, mouseID, GetAsyncKeyState(VK_XBUTTON1) & 0x8000 ? SDL_PRESSED : SDL_RELEASED, SDL_BUTTON_X1);
                 SDL_SendMouseButton(WIN_GetEventTimestamp(), data->window, mouseID, GetAsyncKeyState(VK_XBUTTON2) & 0x8000 ? SDL_PRESSED : SDL_RELEASED, SDL_BUTTON_X2);
@@ -1795,11 +1625,13 @@ int WIN_WaitEventTimeout(SDL_VideoDevice *_this, Sint64 timeoutNS)
             message_result = GetMessage(&msg, 0, 0, 0);
         }
         if (message_result) {
-            if (msg.message == WM_TIMER && msg.hwnd == NULL && msg.wParam == timer_id) {
+            if (msg.message == WM_TIMER && !msg.hwnd && msg.wParam == timer_id) {
                 return 0;
             }
             if (g_WindowsMessageHook) {
-                g_WindowsMessageHook(g_WindowsMessageHookData, msg.hwnd, msg.message, msg.wParam, msg.lParam);
+                if (!g_WindowsMessageHook(g_WindowsMessageHookData, &msg)) {
+                    return 1;
+                }
             }
             /* Always translate the message in case it's a non-SDL window (e.g. with Qt integration) */
             TranslateMessage(&msg);
@@ -1823,7 +1655,14 @@ void WIN_SendWakeupEvent(SDL_VideoDevice *_this, SDL_Window *window)
 void WIN_PumpEvents(SDL_VideoDevice *_this)
 {
     MSG msg;
+#ifdef _MSC_VER /* We explicitly want to use GetTickCount(), not GetTickCount64() */
+#pragma warning(push)
+#pragma warning(disable : 28159)
+#endif
     DWORD end_ticks = GetTickCount() + 1;
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
     int new_messages = 0;
 #if !defined(__XBOXONE__) && !defined(__XBOXSERIES__)
     const Uint8 *keystate;
@@ -1835,7 +1674,9 @@ void WIN_PumpEvents(SDL_VideoDevice *_this)
 
         while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
             if (g_WindowsMessageHook) {
-                g_WindowsMessageHook(g_WindowsMessageHookData, msg.hwnd, msg.message, msg.wParam, msg.lParam);
+                if (!g_WindowsMessageHook(g_WindowsMessageHookData, &msg)) {
+                    continue;
+                }
             }
 
 #if !defined(__XBOXONE__) && !defined(__XBOXSERIES__)
@@ -1890,7 +1731,7 @@ void WIN_PumpEvents(SDL_VideoDevice *_this)
        not grabbing the keyboard. Note: If we *are* grabbing the keyboard, GetKeyState()
        will return inaccurate results for VK_LWIN and VK_RWIN but we don't need it anyway. */
     focusWindow = SDL_GetKeyboardFocus();
-    if (focusWindow == NULL || !(focusWindow->flags & SDL_WINDOW_KEYBOARD_GRABBED)) {
+    if (!focusWindow || !(focusWindow->flags & SDL_WINDOW_KEYBOARD_GRABBED)) {
         if ((keystate[SDL_SCANCODE_LGUI] == SDL_PRESSED) && !(GetKeyState(VK_LWIN) & 0x8000)) {
             SDL_SendKeyboardKey(0, SDL_RELEASED, SDL_SCANCODE_LGUI);
         }
@@ -1944,8 +1785,8 @@ int SDL_RegisterApp(const char *name, Uint32 style, void *hInst)
         ++app_registered;
         return 0;
     }
-    SDL_assert(SDL_Appname == NULL);
-    if (name == NULL) {
+    SDL_assert(!SDL_Appname);
+    if (!name) {
         name = "SDL_app";
 #if defined(CS_BYTEALIGNCLIENT) || defined(CS_OWNDC)
         style = (CS_BYTEALIGNCLIENT | CS_OWNDC);

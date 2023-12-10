@@ -104,15 +104,13 @@ static SDL_VideoDevice *NGAGE_CreateDevice(void)
 
     /* Initialize all variables that we clean on shutdown */
     device = (SDL_VideoDevice *)SDL_calloc(1, sizeof(SDL_VideoDevice));
-    if (device == NULL) {
-        SDL_OutOfMemory();
+    if (!device) {
         return 0;
     }
 
     /* Initialize internal N-Gage specific data */
     phdata = (SDL_VideoData *)SDL_calloc(1, sizeof(SDL_VideoData));
-    if (phdata == NULL) {
-        SDL_OutOfMemory();
+    if (!phdata) {
         SDL_free(device);
         return 0;
     }

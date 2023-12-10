@@ -62,11 +62,10 @@ static int VITAAUD_OpenDevice(SDL_AudioDevice *device)
     const SDL_AudioFormat *closefmts;
 
     device->hidden = (struct SDL_PrivateAudioData *)
-        SDL_malloc(sizeof(*device->hidden));
-    if (device->hidden == NULL) {
-        return SDL_OutOfMemory();
+        SDL_calloc(1, sizeof(*device->hidden));
+    if (!device->hidden) {
+        return -1;
     }
-    SDL_memset(device->hidden, 0, sizeof(*device->hidden));
 
     closefmts = SDL_ClosestAudioFormats(device->spec.format);
     while ((test_format = *(closefmts++)) != 0) {
@@ -95,7 +94,7 @@ static int VITAAUD_OpenDevice(SDL_AudioDevice *device)
        64, so spec->size should be a multiple of 64 as well. */
     mixlen = device->buffer_size * NUM_BUFFERS;
     device->hidden->rawbuf = (Uint8 *)SDL_aligned_alloc(64, mixlen);
-    if (device->hidden->rawbuf == NULL) {
+    if (!device->hidden->rawbuf) {
         return SDL_SetError("Couldn't allocate mixing buffer");
     }
 
@@ -163,7 +162,7 @@ static void VITAAUD_CloseDevice(SDL_AudioDevice *device)
             device->hidden->port = -1;
         }
 
-        if (!device->iscapture && device->hidden->rawbuf != NULL) {
+        if (!device->iscapture && device->hidden->rawbuf) {
             SDL_aligned_free(device->hidden->rawbuf); // this uses SDL_aligned_alloc(), not SDL_malloc()
             device->hidden->rawbuf = NULL;
         }

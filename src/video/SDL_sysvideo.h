@@ -27,36 +27,12 @@
 
 /* The SDL video driver */
 
-typedef struct SDL_WindowShaper SDL_WindowShaper;
-typedef struct SDL_ShapeDriver SDL_ShapeDriver;
 typedef struct SDL_VideoDisplay SDL_VideoDisplay;
 typedef struct SDL_VideoDevice SDL_VideoDevice;
 typedef struct SDL_VideoData SDL_VideoData;
 typedef struct SDL_DisplayData SDL_DisplayData;
 typedef struct SDL_DisplayModeData SDL_DisplayModeData;
 typedef struct SDL_WindowData SDL_WindowData;
-
-/* Define the SDL window-shaper structure */
-struct SDL_WindowShaper
-{
-    /* The window associated with the shaper */
-    SDL_Window *window;
-
-    /* The parameters for shape calculation. */
-    SDL_WindowShapeMode mode;
-
-    /* Has this window been assigned a shape? */
-    SDL_bool hasshape;
-
-    void *driverdata;
-};
-
-/* Define the SDL shape driver structure */
-struct SDL_ShapeDriver
-{
-    SDL_WindowShaper *(*CreateShaper)(SDL_Window *window);
-    int (*SetWindowShape)(SDL_WindowShaper *shaper, SDL_Surface *shape, SDL_WindowShapeMode *shape_mode);
-};
 
 /* Define the SDL window structure, corresponding to toplevel windows */
 struct SDL_Window
@@ -77,8 +53,26 @@ struct SDL_Window
     SDL_DisplayID last_fullscreen_exclusive_display;  /* The last fullscreen_exclusive display */
     SDL_DisplayID last_displayID;
 
-    /* Stored position and size for windowed mode */
+    /* Stored position and size for the window in the non-fullscreen state,
+     * including when the window is maximized or tiled.
+     *
+     * This is the size and position to which the window should return when
+     * leaving the fullscreen state.
+     */
     SDL_Rect windowed;
+
+    /* Stored position and size for the window in the base 'floating' state;
+     * when not fullscreen, nor in a state such as maximized or tiled.
+     *
+     * This is the size and position to which the window should return when
+     * it's maximized and SDL_RestoreWindow() is called.
+     */
+    SDL_Rect floating;
+
+    /* Toggle for drivers to indicate that the current window state is
+     * not floating, but may not have any fixed-size flags (e.g. tiled)
+     */
+    SDL_bool state_not_floating;
 
     /* Whether or not the initial position was defined */
     SDL_bool undefined_x;
@@ -98,8 +92,6 @@ struct SDL_Window
     SDL_bool is_dropping; /* drag/drop in progress, expecting SDL_SendDropComplete(). */
 
     SDL_Rect mouse_rect;
-
-    SDL_WindowShaper *shaper;
 
     SDL_HitTest hit_test;
     void *hit_test_data;
@@ -121,10 +113,9 @@ struct SDL_Window
      (((W)->flags & SDL_WINDOW_HIDDEN) == 0) && \
      (((W)->flags & SDL_WINDOW_MINIMIZED) == 0))
 
-#define SDL_WINDOW_IS_POPUP(W)                   \
-    ((((W)->flags & SDL_WINDOW_TOOLTIP) != 0) || \
-    (((W)->flags & SDL_WINDOW_POPUP_MENU) != 0)) \
-                                                 \
+#define SDL_WINDOW_IS_POPUP(W) \
+    (((W)->flags & (SDL_WINDOW_TOOLTIP | SDL_WINDOW_POPUP_MENU)) != 0)
+
 /*
  * Define the SDL display structure.
  * This corresponds to physical monitors attached to the system.
@@ -146,19 +137,18 @@ struct SDL_VideoDisplay
 
     SDL_VideoDevice *device;
 
+    SDL_PropertiesID props;
+
     SDL_DisplayData *driverdata;
 };
-
-/* Forward declaration */
-struct SDL_SysWMinfo;
 
 /* Video device flags */
 typedef enum
 {
-    VIDEO_DEVICE_QUIRK_MODE_SWITCHING_EMULATED = 0x01,
-    VIDEO_DEVICE_QUIRK_DISABLE_UNSET_FULLSCREEN_ON_MINIMIZE = 0x02,
-    VIDEO_DEVICE_QUIRK_HAS_POPUP_WINDOW_SUPPORT = 0x04,
-} DeviceQuirkFlags;
+    VIDEO_DEVICE_CAPS_MODE_SWITCHING_EMULATED = 0x01,
+    VIDEO_DEVICE_CAPS_HAS_POPUP_WINDOW_SUPPORT = 0x02,
+    VIDEO_DEVICE_CAPS_SENDS_FULLSCREEN_DIMENSIONS = 0x04
+} DeviceCaps;
 
 struct SDL_VideoDevice
 {
@@ -223,8 +213,7 @@ struct SDL_VideoDevice
     /*
      * Window functions
      */
-    int (*CreateSDLWindow)(SDL_VideoDevice *_this, SDL_Window *window);
-    int (*CreateSDLWindowFrom)(SDL_VideoDevice *_this, SDL_Window *window, const void *data);
+    int (*CreateSDLWindow)(SDL_VideoDevice *_this, SDL_Window *window, SDL_PropertiesID create_props);
     void (*SetWindowTitle)(SDL_VideoDevice *_this, SDL_Window *window);
     int (*SetWindowIcon)(SDL_VideoDevice *_this, SDL_Window *window, SDL_Surface *icon);
     int (*SetWindowPosition)(SDL_VideoDevice *_this, SDL_Window *window);
@@ -245,7 +234,7 @@ struct SDL_VideoDevice
     void (*SetWindowBordered)(SDL_VideoDevice *_this, SDL_Window *window, SDL_bool bordered);
     void (*SetWindowResizable)(SDL_VideoDevice *_this, SDL_Window *window, SDL_bool resizable);
     void (*SetWindowAlwaysOnTop)(SDL_VideoDevice *_this, SDL_Window *window, SDL_bool on_top);
-    void (*SetWindowFullscreen)(SDL_VideoDevice *_this, SDL_Window *window, SDL_VideoDisplay *display, SDL_bool fullscreen);
+    int (*SetWindowFullscreen)(SDL_VideoDevice *_this, SDL_Window *window, SDL_VideoDisplay *display, SDL_bool fullscreen);
     void *(*GetWindowICCProfile)(SDL_VideoDevice *_this, SDL_Window *window, size_t *size);
     SDL_DisplayID (*GetDisplayForWindow)(SDL_VideoDevice *_this, SDL_Window *window);
     void (*SetWindowMouseRect)(SDL_VideoDevice *_this, SDL_Window *window);
@@ -258,15 +247,7 @@ struct SDL_VideoDevice
     void (*OnWindowEnter)(SDL_VideoDevice *_this, SDL_Window *window);
     int (*FlashWindow)(SDL_VideoDevice *_this, SDL_Window *window, SDL_FlashOperation operation);
     int (*SetWindowFocusable)(SDL_VideoDevice *_this, SDL_Window *window, SDL_bool focusable);
-
-    /* * * */
-    /*
-     * Shaped-window functions
-     */
-    SDL_ShapeDriver shape_driver;
-
-    /* Get some platform dependent window information */
-    int (*GetWindowWMInfo)(SDL_VideoDevice *_this, SDL_Window *window, struct SDL_SysWMinfo *info);
+    int (*SyncWindow)(SDL_VideoDevice *_this, SDL_Window *window);
 
     /* * * */
     /*
@@ -290,8 +271,8 @@ struct SDL_VideoDevice
      */
     int (*Vulkan_LoadLibrary)(SDL_VideoDevice *_this, const char *path);
     void (*Vulkan_UnloadLibrary)(SDL_VideoDevice *_this);
-    SDL_bool (*Vulkan_GetInstanceExtensions)(SDL_VideoDevice *_this, unsigned *count, const char **names);
-    SDL_bool (*Vulkan_CreateSurface)(SDL_VideoDevice *_this, SDL_Window *window, VkInstance instance, VkSurfaceKHR *surface);
+    char const* const* (*Vulkan_GetInstanceExtensions)(SDL_VideoDevice *_this, Uint32 *count);
+    SDL_bool (*Vulkan_CreateSurface)(SDL_VideoDevice *_this, SDL_Window *window, VkInstance instance, const struct VkAllocationCallbacks *allocator, VkSurfaceKHR *surface);
 
     /* * * */
     /*
@@ -372,7 +353,7 @@ struct SDL_VideoDevice
     size_t num_clipboard_mime_types;
     char *primary_selection_text;
     SDL_bool setting_display_mode;
-    Uint32 quirk_flags;
+    Uint32 device_caps;
     SDL_SystemTheme system_theme;
 
     /* * * */
@@ -506,8 +487,10 @@ extern void SDL_ResetFullscreenDisplayModes(SDL_VideoDisplay *display);
 extern void SDL_SetDesktopDisplayMode(SDL_VideoDisplay *display, const SDL_DisplayMode *mode);
 extern void SDL_SetCurrentDisplayMode(SDL_VideoDisplay *display, const SDL_DisplayMode *mode);
 extern void SDL_SetDisplayContentScale(SDL_VideoDisplay *display, float scale);
+extern int SDL_SetDisplayModeForDisplay(SDL_VideoDisplay *display, SDL_DisplayMode *mode);
 extern SDL_VideoDisplay *SDL_GetVideoDisplay(SDL_DisplayID display);
 extern SDL_VideoDisplay *SDL_GetVideoDisplayForWindow(SDL_Window *window);
+extern SDL_VideoDisplay *SDL_GetVideoDisplayForFullscreenWindow(SDL_Window *window);
 extern int SDL_GetDisplayIndex(SDL_DisplayID displayID);
 extern SDL_DisplayData *SDL_GetDisplayDriverData(SDL_DisplayID display);
 extern SDL_DisplayData *SDL_GetDisplayDriverDataForWindow(SDL_Window *window);
@@ -536,6 +519,7 @@ extern void SDL_OnWindowFocusGained(SDL_Window *window);
 extern void SDL_OnWindowFocusLost(SDL_Window *window);
 extern void SDL_OnWindowDisplayChanged(SDL_Window *window);
 extern void SDL_UpdateWindowGrab(SDL_Window *window);
+extern int SDL_UpdateFullscreenMode(SDL_Window *window, SDL_bool fullscreen, SDL_bool commit);
 extern SDL_Window *SDL_GetToplevelForKeyboardFocus(void);
 
 extern SDL_bool SDL_ShouldAllowTopmost(void);
