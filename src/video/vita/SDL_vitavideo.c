@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -35,6 +35,7 @@
 #include "SDL_vitakeyboard.h"
 #include "SDL_vitamouse_c.h"
 #include "SDL_vitaframebuffer.h"
+#include "SDL_vitamessagebox.h"
 
 #ifdef SDL_VIDEO_VITA_PIB
 #include "SDL_vitagles_c.h"
@@ -156,9 +157,10 @@ static SDL_VideoDevice *VITA_Create()
 }
 
 VideoBootStrap VITA_bootstrap = {
-    "VITA",
+    "vita",
     "VITA Video Driver",
-    VITA_Create
+    VITA_Create,
+    VITA_ShowMessageBox
 };
 
 /*****************************************************************************/

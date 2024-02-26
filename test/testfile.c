@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -29,7 +29,7 @@
 
 /* WARNING ! those 2 files will be destroyed by this test program */
 
-#ifdef __IOS__
+#ifdef SDL_PLATFORM_IOS
 #define FBASENAME1 "../Documents/sdldata1" /* this file will be created during tests */
 #define FBASENAME2 "../Documents/sdldata2" /* this file should not exist before starting test */
 #else

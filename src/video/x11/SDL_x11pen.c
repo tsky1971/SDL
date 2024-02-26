@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -24,7 +24,6 @@
 
 #include "../../events/SDL_pen_c.h"
 #include "../SDL_sysvideo.h"
-#include "SDL_pen.h"
 #include "SDL_x11pen.h"
 #include "SDL_x11video.h"
 #include "SDL_x11xinput2.h"
@@ -276,7 +275,7 @@ static SDL_bool xinput2_pen_is_eraser(SDL_VideoDevice *_this, int deviceid, char
     SDL_strlcpy(dev_name, devicename, PEN_ERASER_ID_MAXLEN);
     /* lowercase device name string so we can use strstr() */
     for (k = 0; dev_name[k]; ++k) {
-        dev_name[k] = tolower(dev_name[k]);
+        dev_name[k] = SDL_tolower(dev_name[k]);
     }
 
     return (SDL_strstr(dev_name, PEN_ERASER_NAME_TAG)) ? SDL_TRUE : SDL_FALSE;
@@ -495,9 +494,9 @@ void X11_InitPen(SDL_VideoDevice *_this)
 
                 if (axis == -1 && valuator_nr == 5) {
                     /* Wacom model-specific axis support */
-		    /* The meaning of the various axes is highly underspecitied in Xinput2.
-		     * As of 2023-08-26, Wacom seems to be the only vendor to support these axes, so the code below
-		     * captures the de-facto standard. */
+                    /* The meaning of the various axes is highly underspecitied in Xinput2.
+                     * As of 2023-08-26, Wacom seems to be the only vendor to support these axes, so the code below
+                     * captures the de-facto standard. */
                     axis = valuator_5_axis;
 
                     switch (axis) {

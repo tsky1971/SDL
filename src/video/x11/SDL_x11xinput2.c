@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -390,23 +390,23 @@ int X11_HandleXinput2Event(SDL_VideoDevice *_this, XGenericEventCookie *cookie)
 
             /* Only report button event; if there was also pen movement / pressure changes, we expect
                an XI_Motion event first anyway */
-	    if (button == 1) {
-		/* button 1 is the pen tip */
-		if (pressed && SDL_PenPerformHitTest()) {
-		    /* Check whether we should handle window resize / move events */
-		    SDL_WindowData *windowdata = X11_FindWindow(_this, xev->event);
-		    if (windowdata && X11_TriggerHitTestAction(_this, windowdata, pen->last.x, pen->last.y)) {
-                SDL_SendWindowEvent(windowdata->window, SDL_EVENT_WINDOW_HIT_TEST, 0, 0);
-                return 1; /* Don't pass on this event */
-		    }
-		}
-		SDL_SendPenTipEvent(0, pen->header.id,
-				    pressed ? SDL_PRESSED : SDL_RELEASED);
-	    } else {
-		SDL_SendPenButton(0, pen->header.id,
-				  pressed ? SDL_PRESSED : SDL_RELEASED,
-				  button - 1);
-	    }
+            if (button == 1) {
+                /* button 1 is the pen tip */
+                if (pressed && SDL_PenPerformHitTest()) {
+                    /* Check whether we should handle window resize / move events */
+                    SDL_WindowData *windowdata = X11_FindWindow(_this, xev->event);
+                    if (windowdata && X11_TriggerHitTestAction(_this, windowdata, pen->last.x, pen->last.y)) {
+                        SDL_SendWindowEvent(windowdata->window, SDL_EVENT_WINDOW_HIT_TEST, 0, 0);
+                        return 1; /* Don't pass on this event */
+                    }
+                }
+                SDL_SendPenTipEvent(0, pen->header.id,
+                                    pressed ? SDL_PRESSED : SDL_RELEASED);
+            } else {
+                SDL_SendPenButton(0, pen->header.id,
+                                  pressed ? SDL_PRESSED : SDL_RELEASED,
+                                  button - 1);
+            }
             return 1;
         } else {
             /* Otherwise assume a regular mouse */
@@ -435,6 +435,8 @@ int X11_HandleXinput2Event(SDL_VideoDevice *_this, XGenericEventCookie *cookie)
 #if SDL_VIDEO_DRIVER_X11_XINPUT2_SUPPORTS_MULTITOUCH
         int pointer_emulated = (xev->flags & XIPointerEmulated);
 #endif /* SDL_VIDEO_DRIVER_X11_XINPUT2_SUPPORTS_MULTITOUCH */
+
+        videodata->global_mouse_changed = SDL_TRUE;
 
         if (xev->deviceid != xev->sourceid) {
             /* Discard events from "Master" devices to avoid duplicates. */

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 #  Simple DirectMedia Layer
-#  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+#  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 #
 #  This software is provided 'as-is', without any express or implied
 #  warranty.  In no event will the authors be held liable for any damages
@@ -25,7 +25,7 @@
 #  It keeps the dynamic API jump table operating correctly.
 #
 #  OS-specific API:
-#   After running the script, you have to manually add #ifdef __WIN32__
+#   After running the script, you have to manually add #ifdef SDL_PLATFORM_WIN32
 #   or similar around the function in 'SDL_dynapi_procs.h'
 #
 

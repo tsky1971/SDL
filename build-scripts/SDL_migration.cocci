@@ -1205,21 +1205,6 @@ typedef SDL_GameControllerButton, SDL_GamepadButton;
   (...)
 @@
 @@
-- SDL_GameControllerHasLED
-+ SDL_GamepadHasLED
-  (...)
-@@
-@@
-- SDL_GameControllerHasRumble
-+ SDL_GamepadHasRumble
-  (...)
-@@
-@@
-- SDL_GameControllerHasRumbleTriggers
-+ SDL_GamepadHasRumbleTriggers
-  (...)
-@@
-@@
 - SDL_GameControllerHasSensor
 + SDL_GamepadHasSensor
   (...)
@@ -1924,10 +1909,10 @@ expression e2;
 + SDL_BlitSurfaceUnchecked
   (...)
 @@
+expression e1, e2, e3, e4;
 @@
-- SDL_LowerBlitScaled
-+ SDL_BlitSurfaceUncheckedScaled
-  (...)
+- SDL_LowerBlitScaled(e1, e2, e3, e4)
++ SDL_BlitSurfaceUncheckedScaled(e1, e2, e3, e4, SDL_SCALEMODE_NEAREST)
 @@
 @@
 - SDL_SetClipRect
@@ -1944,10 +1929,10 @@ expression e2;
 + SDL_BlitSurface
   (...)
 @@
+expression e1, e2, e3, e4;
 @@
-- SDL_UpperBlitScaled
-+ SDL_BlitSurfaceScaled
-  (...)
+- SDL_UpperBlitScaled(e1, e2, e3, e4)
++ SDL_BlitSurfaceScaled(e1, e2, e3, e4, SDL_SCALEMODE_NEAREST)
 @@
 @@
 - SDL_RenderGetD3D11Device
@@ -2428,20 +2413,40 @@ SDL_Event e1;
 - e1.caxis
 + e1.gaxis
 @@
+SDL_Event *e1;
+@@
+- e1->caxis
++ e1->gaxis
+@@
 SDL_Event e1;
 @@
 - e1.cbutton
 + e1.gbutton
+@@
+SDL_Event *e1;
+@@
+- e1->cbutton
++ e1->gbutton
 @@
 SDL_Event e1;
 @@
 - e1.cdevice
 + e1.gdevice
 @@
+SDL_Event *e1;
+@@
+- e1->cdevice
++ e1->gdevice
+@@
 SDL_Event e1;
 @@
 - e1.ctouchpad
 + e1.gtouchpad
+@@
+SDL_Event *e1;
+@@
+- e1->ctouchpad
++ e1->gtouchpad
 @@
 SDL_Event e1;
 @@
@@ -2450,28 +2455,48 @@ SDL_Event e1;
 @@
 SDL_Event *e1;
 @@
-- e1->caxis
-+ e1->gaxis
-@@
-SDL_Event *e1;
-@@
-- e1->cbutton
-+ e1->gbutton
-@@
-SDL_Event *e1;
-@@
-- e1->cdevice
-+ e1->gdevice
-@@
-SDL_Event *e1;
-@@
-- e1->ctouchpad
-+ e1->gtouchpad
-@@
-SDL_Event *e1;
-@@
 - e1->csensor
 + e1->gsensor
+@@
+SDL_Event e1;
+@@
+- e1.wheel.mouseX
++ e1.wheel.mouse_x
+@@
+SDL_Event *e1;
+@@
+- e1->wheel.mouseX
++ e1->wheel.mouse_x
+@@
+SDL_Event e1;
+@@
+- e1.wheel.mouseY
++ e1.wheel.mouse_y
+@@
+SDL_Event *e1;
+@@
+- e1->wheel.mouseY
++ e1->wheel.mouse_y
+@@
+SDL_Event e1;
+@@
+- e1.tfinger.touchId
++ e1.tfinger.touchID
+@@
+SDL_Event *e1;
+@@
+- e1->tfinger.touchId
++ e1->tfinger.touchID
+@@
+SDL_Event e1;
+@@
+- e1.tfinger.fingerId
++ e1.tfinger.fingerID
+@@
+SDL_Event *e1;
+@@
+- e1->tfinger.fingerId
++ e1->tfinger.fingerID
 @@
 expression e1, e2, e3, e4;
 @@
@@ -2745,3 +2770,277 @@ expression w, i, s;
 - SDL_RenderFlush
 + SDL_FlushRenderer
   (...)
+@@
+@@
+- SDL_CONTROLLERSTEAMHANDLEUPDATED
++ SDL_EVENT_GAMEPAD_STEAM_HANDLE_UPDATED
+@@
+@@
+- SDL_GameControllerGetSteamHandle
++ SDL_GetGamepadSteamHandle
+  (...)
+@@
+expression e1, e2, e3, e4;
+@@
+- SDL_SoftStretch(e1, e2, e3, e4)
++ SDL_SoftStretch(e1, e2, e3, e4, SDL_SCALEMODE_NEAREST)
+@@
+expression e1, e2, e3, e4;
+@@
+- SDL_SoftStretchLinear(e1, e2, e3, e4)
++ SDL_SoftStretch(e1, e2, e3, e4, SDL_SCALEMODE_LINEAR)
+@@
+@@
+- SDL_HapticClose
++ SDL_CloseHaptic
+  (...)
+@@
+@@
+- SDL_HapticOpen
++ SDL_OpenHaptic
+  (...)
+@@
+@@
+- SDL_HapticOpenFromMouse
++ SDL_OpenHapticFromMouse
+  (...)
+@@
+@@
+- SDL_HapticOpenFromJoystick
++ SDL_OpenHapticFromJoystick
+  (...)
+@@
+@@
+- SDL_MouseIsHaptic
++ SDL_IsMouseHaptic
+  (...)
+@@
+@@
+- SDL_JoystickIsHaptic
++ SDL_IsJoystickHaptic
+  (...)
+@@
+@@
+- SDL_HapticNumEffects
++ SDL_GetMaxHapticEffects
+  (...)
+@@
+@@
+- SDL_HapticNumEffectsPlaying
++ SDL_GetMaxHapticEffectsPlaying
+  (...)
+@@
+@@
+- SDL_HapticQuery
++ SDL_GetHapticFeatures
+  (...)
+@@
+@@
+- SDL_HapticNumAxes
++ SDL_GetNumHapticAxes
+  (...)
+@@
+@@
+- SDL_HapticNewEffect
++ SDL_CreateHapticEffect
+  (...)
+@@
+@@
+- SDL_HapticUpdateEffect
++ SDL_UpdateHapticEffect
+  (...)
+@@
+@@
+- SDL_HapticRunEffect
++ SDL_RunHapticEffect
+  (...)
+@@
+@@
+- SDL_HapticStopEffect
++ SDL_StopHapticEffect
+  (...)
+@@
+@@
+- SDL_HapticDestroyEffect
++ SDL_DestroyHapticEffect
+  (...)
+@@
+@@
+- SDL_HapticGetEffectStatus
++ SDL_GetHapticEffectStatus
+  (...)
+@@
+@@
+- SDL_HapticSetGain
++ SDL_SetHapticGain
+  (...)
+@@
+@@
+- SDL_HapticSetAutocenter
++ SDL_SetHapticAutocenter
+  (...)
+@@
+@@
+- SDL_HapticPause
++ SDL_PauseHaptic
+  (...)
+@@
+@@
+- SDL_HapticUnpause
++ SDL_ResumeHaptic
+  (...)
+@@
+@@
+- SDL_HapticStopAll
++ SDL_StopHapticEffects
+  (...)
+@@
+@@
+- SDL_HapticRumbleInit
++ SDL_InitHapticRumble
+  (...)
+@@
+@@
+- SDL_HapticRumblePlay
++ SDL_PlayHapticRumble
+  (...)
+@@
+@@
+- SDL_HapticRumbleStop
++ SDL_StopHapticRumble
+  (...)
+@@
+@@
+- SDL_AtomicTryLock
++ SDL_TryLockSpinlock
+  (...)
+@@
+@@
+- SDL_AtomicLock
++ SDL_LockSpinlock
+  (...)
+@@
+@@
+- SDL_AtomicUnlock
++ SDL_UnlockSpinlock
+  (...)
+@@
+@@
+- SDL_AtomicCAS
++ SDL_AtomicCompareAndSwap
+  (...)
+@@
+@@
+- SDL_AtomicCASPtr
++ SDL_AtomicCompareAndSwapPointer
+  (...)
+@@
+@@
+- SDL_ThreadID
++ SDL_GetCurrentThreadID
+  (...)
+@@
+@@
+- SDL_threadID
++ SDL_ThreadID
+  (...)
+@@
+@@
+- SDL_HasWindowSurface
++ SDL_WindowHasSurface
+  (...)
+@@
+SDL_PixelFormat e1;
+@@
+- e1.BitsPerPixel
++ e1.bits_per_pixel
+@@
+SDL_PixelFormat *e1;
+@@
+- e1->BitsPerPixel
++ e1->bits_per_pixel
+@@
+SDL_PixelFormat e1;
+@@
+- e1.BytesPerPixel
++ e1.bytes_per_pixel
+@@
+SDL_PixelFormat *e1;
+@@
+- e1->BytesPerPixel
++ e1->bytes_per_pixel
+@@
+SDL_MessageBoxButtonData e1;
+@@
+- e1.buttonid
++ e1.buttonID
+@@
+SDL_MessageBoxButtonData *e1;
+@@
+- e1->buttonid
++ e1->buttonID
+@@
+SDL_GamepadBinding e1;
+@@
+- e1.inputType
++ e1.input_type
+@@
+SDL_GamepadBinding *e1;
+@@
+- e1->inputType
++ e1->input_type
+@@
+SDL_GamepadBinding e1;
+@@
+- e1.outputType
++ e1.output_type
+@@
+SDL_GamepadBinding *e1;
+@@
+- e1->outputType
++ e1->output_type
+@@
+@@
+- SDL_version
++ SDL_Version
+@@
+typedef SDL_version, SDL_Version;
+@@
+- SDL_version
++ SDL_Version
+@@
+@@
+- SDL_HINT_ALLOW_TOPMOST
++ SDL_HINT_WINDOW_ALLOW_TOPMOST
+@@
+@@
+- SDL_HINT_DIRECTINPUT_ENABLED
++ SDL_HINT_JOYSTICK_DIRECTINPUT
+@@
+@@
+- SDL_HINT_GDK_TEXTINPUT_DEFAULT
++ SDL_HINT_GDK_TEXTINPUT_DEFAULT_TEXT
+@@
+@@
+- SDL_HINT_JOYSTICK_GAMECUBE_RUMBLE_BRAKE
++ SDL_HINT_JOYSTICK_HIDAPI_GAMECUBE_RUMBLE_BRAKE
+@@
+@@
+- SDL_HINT_LINUX_DIGITAL_HATS
++ SDL_HINT_JOYSTICK_LINUX_DIGITAL_HATS
+@@
+@@
+- SDL_HINT_LINUX_HAT_DEADZONES
++ SDL_HINT_JOYSTICK_LINUX_HAT_DEADZONES
+@@
+@@
+- SDL_HINT_LINUX_JOYSTICK_CLASSIC
++ SDL_HINT_JOYSTICK_LINUX_CLASSIC
+@@
+@@
+- SDL_HINT_LINUX_JOYSTICK_DEADZONES
++ SDL_HINT_JOYSTICK_LINUX_DEADZONES
+@@
+@@
+- SDL_HINT_PS2_DYNAMIC_VSYNC
++ SDL_HINT_RENDER_PS2_DYNAMIC_VSYNC

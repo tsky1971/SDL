@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -113,12 +113,17 @@ typedef enum
     SDL_GAMEPAD_BUTTON_DPAD_DOWN,
     SDL_GAMEPAD_BUTTON_DPAD_LEFT,
     SDL_GAMEPAD_BUTTON_DPAD_RIGHT,
-    SDL_GAMEPAD_BUTTON_MISC1,           /* Additional button (e.g. Xbox Series X share button, PS5 microphone button, Nintendo Switch Pro capture button, Amazon Luna microphone button) */
+    SDL_GAMEPAD_BUTTON_MISC1,           /* Additional button (e.g. Xbox Series X share button, PS5 microphone button, Nintendo Switch Pro capture button, Amazon Luna microphone button, Google Stadia capture button) */
     SDL_GAMEPAD_BUTTON_RIGHT_PADDLE1,   /* Upper or primary paddle, under your right hand (e.g. Xbox Elite paddle P1) */
     SDL_GAMEPAD_BUTTON_LEFT_PADDLE1,    /* Upper or primary paddle, under your left hand (e.g. Xbox Elite paddle P3) */
     SDL_GAMEPAD_BUTTON_RIGHT_PADDLE2,   /* Lower or secondary paddle, under your right hand (e.g. Xbox Elite paddle P2) */
     SDL_GAMEPAD_BUTTON_LEFT_PADDLE2,    /* Lower or secondary paddle, under your left hand (e.g. Xbox Elite paddle P4) */
     SDL_GAMEPAD_BUTTON_TOUCHPAD,        /* PS4/PS5 touchpad button */
+    SDL_GAMEPAD_BUTTON_MISC2,           /* Additional button */
+    SDL_GAMEPAD_BUTTON_MISC3,           /* Additional button */
+    SDL_GAMEPAD_BUTTON_MISC4,           /* Additional button */
+    SDL_GAMEPAD_BUTTON_MISC5,           /* Additional button */
+    SDL_GAMEPAD_BUTTON_MISC6,           /* Additional button */
     SDL_GAMEPAD_BUTTON_MAX
 } SDL_GamepadButton;
 
@@ -149,7 +154,9 @@ typedef enum
  *  and are centered within ~8000 of zero, though advanced UI will allow users to set
  *  or autodetect the dead zone, which varies between gamepads.
  *
- *  Trigger axis values range from 0 to SDL_JOYSTICK_AXIS_MAX.
+ *  Trigger axis values range from 0 (released) to SDL_JOYSTICK_AXIS_MAX
+ *  (fully pressed) when reported by SDL_GetGamepadAxis(). Note that this is not the
+ *  same range that will be reported by the lower-level SDL_GetJoystickAxis().
  */
 typedef enum
 {
@@ -171,9 +178,9 @@ typedef enum
     SDL_GAMEPAD_BINDTYPE_HAT
 } SDL_GamepadBindingType;
 
-typedef struct
+typedef struct SDL_GamepadBinding
 {
-    SDL_GamepadBindingType inputType;
+    SDL_GamepadBindingType input_type;
     union
     {
         int button;
@@ -193,7 +200,7 @@ typedef struct
 
     } input;
 
-    SDL_GamepadBindingType outputType;
+    SDL_GamepadBindingType output_type;
     union
     {
         SDL_GamepadButton button;
@@ -592,6 +599,19 @@ extern DECLSPEC SDL_Gamepad *SDLCALL SDL_GetGamepadFromPlayerIndex(int player_in
  *
  * These properties are shared with the underlying joystick object.
  *
+ * The following read-only properties are provided by SDL:
+ *
+ * - `SDL_PROP_GAMEPAD_CAP_MONO_LED_BOOLEAN`: true if this gamepad has an LED
+ *   that has adjustable brightness
+ * - `SDL_PROP_GAMEPAD_CAP_RGB_LED_BOOLEAN`: true if this gamepad has an LED
+ *   that has adjustable color
+ * - `SDL_PROP_GAMEPAD_CAP_PLAYER_LED_BOOLEAN`: true if this gamepad has a
+ *   player LED
+ * - `SDL_PROP_GAMEPAD_CAP_RUMBLE_BOOLEAN`: true if this gamepad has
+ *   left/right rumble
+ * - `SDL_PROP_GAMEPAD_CAP_TRIGGER_RUMBLE_BOOLEAN`: true if this gamepad has
+ *   simple trigger rumble
+ *
  * \param gamepad a gamepad identifier previously returned by
  *                SDL_OpenGamepad()
  * \returns a valid property ID on success or 0 on failure; call
@@ -603,6 +623,12 @@ extern DECLSPEC SDL_Gamepad *SDLCALL SDL_GetGamepadFromPlayerIndex(int player_in
  * \sa SDL_SetProperty
  */
 extern DECLSPEC SDL_PropertiesID SDLCALL SDL_GetGamepadProperties(SDL_Gamepad *gamepad);
+
+#define SDL_PROP_GAMEPAD_CAP_MONO_LED_BOOLEAN       SDL_PROP_JOYSTICK_CAP_MONO_LED_BOOLEAN
+#define SDL_PROP_GAMEPAD_CAP_RGB_LED_BOOLEAN        SDL_PROP_JOYSTICK_CAP_RGB_LED_BOOLEAN
+#define SDL_PROP_GAMEPAD_CAP_PLAYER_LED_BOOLEAN     SDL_PROP_JOYSTICK_CAP_PLAYER_LED_BOOLEAN
+#define SDL_PROP_GAMEPAD_CAP_RUMBLE_BOOLEAN         SDL_PROP_JOYSTICK_CAP_RUMBLE_BOOLEAN
+#define SDL_PROP_GAMEPAD_CAP_TRIGGER_RUMBLE_BOOLEAN SDL_PROP_JOYSTICK_CAP_TRIGGER_RUMBLE_BOOLEAN
 
 /**
  * Get the instance ID of an opened gamepad.
@@ -757,6 +783,19 @@ extern DECLSPEC Uint16 SDLCALL SDL_GetGamepadFirmwareVersion(SDL_Gamepad *gamepa
  * \since This function is available since SDL 3.0.0.
  */
 extern DECLSPEC const char * SDLCALL SDL_GetGamepadSerial(SDL_Gamepad *gamepad);
+
+/**
+ * Get the Steam Input handle of an opened gamepad, if available.
+ *
+ * Returns an InputHandle_t for the gamepad that can be used with Steam Input
+ * API: https://partner.steamgames.com/doc/api/ISteamInput
+ *
+ * \param gamepad the gamepad object to query.
+ * \returns the gamepad handle, or 0 if unavailable.
+ *
+ * \since This function is available since SDL 3.0.0.
+ */
+extern DECLSPEC Uint64 SDLCALL SDL_GetGamepadSteamHandle(SDL_Gamepad *gamepad);
 
 /**
  * Get the battery level of a gamepad, if available.
@@ -948,8 +987,12 @@ extern DECLSPEC SDL_bool SDLCALL SDL_GamepadHasAxis(SDL_Gamepad *gamepad, SDL_Ga
  *
  * The axis indices start at index 0.
  *
- * The state is a value ranging from -32768 to 32767. Triggers, however, range
- * from 0 to 32767 (they never return a negative value).
+ * For thumbsticks, the state is a value ranging from -32768 (up/left) to
+ * 32767 (down/right).
+ *
+ * Triggers range from 0 when released to 32767 when fully pressed, and never
+ * return a negative value. Note that this differs from the value reported by
+ * the lower-level SDL_GetJoystickAxis(), which normally uses the full range.
  *
  * \param gamepad a gamepad
  * \param axis an axis index (one of the SDL_GamepadAxis values)
@@ -1156,6 +1199,9 @@ extern DECLSPEC int SDLCALL SDL_GetGamepadSensorData(SDL_Gamepad *gamepad, SDL_S
  * Each call to this function cancels any previous rumble effect, and calling
  * it with 0 intensity stops any rumbling.
  *
+ * This function requires you to process SDL events or call
+ * SDL_UpdateJoysticks() to update rumble state.
+ *
  * \param gamepad The gamepad to vibrate
  * \param low_frequency_rumble The intensity of the low frequency (left)
  *                             rumble motor, from 0 to 0xFFFF
@@ -1165,8 +1211,6 @@ extern DECLSPEC int SDLCALL SDL_GetGamepadSensorData(SDL_Gamepad *gamepad, SDL_S
  * \returns 0, or -1 if rumble isn't supported on this gamepad
  *
  * \since This function is available since SDL 3.0.0.
- *
- * \sa SDL_GamepadHasRumble
  */
 extern DECLSPEC int SDLCALL SDL_RumbleGamepad(SDL_Gamepad *gamepad, Uint16 low_frequency_rumble, Uint16 high_frequency_rumble, Uint32 duration_ms);
 
@@ -1180,6 +1224,9 @@ extern DECLSPEC int SDLCALL SDL_RumbleGamepad(SDL_Gamepad *gamepad, Uint16 low_f
  * whole. This is currently only supported on Xbox One gamepads. If you want
  * the (more common) whole-gamepad rumble, use SDL_RumbleGamepad() instead.
  *
+ * This function requires you to process SDL events or call
+ * SDL_UpdateJoysticks() to update rumble state.
+ *
  * \param gamepad The gamepad to vibrate
  * \param left_rumble The intensity of the left trigger rumble motor, from 0
  *                    to 0xFFFF
@@ -1190,50 +1237,17 @@ extern DECLSPEC int SDLCALL SDL_RumbleGamepad(SDL_Gamepad *gamepad, Uint16 low_f
  *          SDL_GetError() for more information.
  *
  * \since This function is available since SDL 3.0.0.
- *
- * \sa SDL_GamepadHasRumbleTriggers
  */
 extern DECLSPEC int SDLCALL SDL_RumbleGamepadTriggers(SDL_Gamepad *gamepad, Uint16 left_rumble, Uint16 right_rumble, Uint32 duration_ms);
 
 /**
- * Query whether a gamepad has an LED.
- *
- * \param gamepad The gamepad to query
- * \returns SDL_TRUE, or SDL_FALSE if this gamepad does not have a modifiable
- *          LED
- *
- * \since This function is available since SDL 3.0.0.
- */
-extern DECLSPEC SDL_bool SDLCALL SDL_GamepadHasLED(SDL_Gamepad *gamepad);
-
-/**
- * Query whether a gamepad has rumble support.
- *
- * \param gamepad The gamepad to query
- * \returns SDL_TRUE, or SDL_FALSE if this gamepad does not have rumble
- *          support
- *
- * \since This function is available since SDL 3.0.0.
- *
- * \sa SDL_RumbleGamepad
- */
-extern DECLSPEC SDL_bool SDLCALL SDL_GamepadHasRumble(SDL_Gamepad *gamepad);
-
-/**
- * Query whether a gamepad has rumble support on triggers.
- *
- * \param gamepad The gamepad to query
- * \returns SDL_TRUE, or SDL_FALSE if this gamepad does not have trigger
- *          rumble support
- *
- * \since This function is available since SDL 3.0.0.
- *
- * \sa SDL_RumbleGamepadTriggers
- */
-extern DECLSPEC SDL_bool SDLCALL SDL_GamepadHasRumbleTriggers(SDL_Gamepad *gamepad);
-
-/**
  * Update a gamepad's LED color.
+ *
+ * An example of a joystick LED is the light on the back of a PlayStation 4's
+ * DualShock 4 controller.
+ *
+ * For gamepads with a single color LED, the maximum of the RGB values will be
+ * used as the LED brightness.
  *
  * \param gamepad The gamepad to update
  * \param red The intensity of the red LED

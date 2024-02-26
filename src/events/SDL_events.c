@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -25,6 +25,7 @@
 #include "SDL_events_c.h"
 #include "../SDL_hints_c.h"
 #include "../audio/SDL_audio_c.h"
+#include "../camera/SDL_camera_c.h"
 #include "../timer/SDL_timer_c.h"
 #ifndef SDL_JOYSTICK_DISABLED
 #include "../joystick/SDL_joystick_c.h"
@@ -35,7 +36,7 @@
 #include "../video/SDL_sysvideo.h"
 
 #undef SDL_PRIs64
-#if (defined(__WIN32__) || defined(__GDK__)) && !defined(__CYGWIN__)
+#if (defined(SDL_PLATFORM_WIN32) || defined(SDL_PLATFORM_GDK)) && !defined(SDL_PLATFORM_CYGWIN)
 #define SDL_PRIs64 "I64d"
 #else
 #define SDL_PRIs64 "lld"
@@ -282,6 +283,7 @@ static void SDL_LogEvent(const SDL_Event *event)
         SDL_DISPLAYEVENT_CASE(SDL_EVENT_DISPLAY_REMOVED);
         SDL_DISPLAYEVENT_CASE(SDL_EVENT_DISPLAY_MOVED);
         SDL_DISPLAYEVENT_CASE(SDL_EVENT_DISPLAY_CONTENT_SCALE_CHANGED);
+        SDL_DISPLAYEVENT_CASE(SDL_EVENT_DISPLAY_HDR_STATE_CHANGED);
 #undef SDL_DISPLAYEVENT_CASE
 
 #define SDL_WINDOWEVENT_CASE(x)                \
@@ -433,6 +435,9 @@ static void SDL_LogEvent(const SDL_Event *event)
         SDL_EVENT_CASE(SDL_EVENT_GAMEPAD_REMAPPED)
         PRINT_GAMEPADDEV_EVENT(event);
         break;
+        SDL_EVENT_CASE(SDL_EVENT_GAMEPAD_STEAM_HANDLE_UPDATED)
+        PRINT_GAMEPADDEV_EVENT(event);
+        break;
 #undef PRINT_GAMEPADDEV_EVENT
 
 #define PRINT_CTOUCHPAD_EVENT(event)                                                                                     \
@@ -458,9 +463,9 @@ static void SDL_LogEvent(const SDL_Event *event)
         break;
 
 #define PRINT_FINGER_EVENT(event)                                                                                                                      \
-    (void)SDL_snprintf(details, sizeof(details), " (timestamp=%u touchid=%" SDL_PRIs64 " fingerid=%" SDL_PRIs64 " x=%f y=%f dx=%f dy=%f pressure=%f)", \
-                       (uint)event->tfinger.timestamp, (long long)event->tfinger.touchId,                                                              \
-                       (long long)event->tfinger.fingerId, event->tfinger.x, event->tfinger.y,                                                         \
+    (void)SDL_snprintf(details, sizeof(details), " (timestamp=%u touchid=%" SDL_PRIu64 " fingerid=%" SDL_PRIu64 " x=%f y=%f dx=%f dy=%f pressure=%f)", \
+                       (uint)event->tfinger.timestamp, event->tfinger.touchID,                                                              \
+                       event->tfinger.fingerID, event->tfinger.x, event->tfinger.y,                                                         \
                        event->tfinger.dx, event->tfinger.dy, event->tfinger.pressure)
         SDL_EVENT_CASE(SDL_EVENT_FINGER_DOWN)
         PRINT_FINGER_EVENT(event);
@@ -549,6 +554,21 @@ static void SDL_LogEvent(const SDL_Event *event)
         PRINT_AUDIODEV_EVENT(event);
         break;
 #undef PRINT_AUDIODEV_EVENT
+
+#define PRINT_CAMERADEV_EVENT(event) (void)SDL_snprintf(details, sizeof(details), " (timestamp=%u which=%u)", (uint)event->cdevice.timestamp, (uint)event->cdevice.which)
+        SDL_EVENT_CASE(SDL_EVENT_CAMERA_DEVICE_ADDED)
+        PRINT_CAMERADEV_EVENT(event);
+        break;
+        SDL_EVENT_CASE(SDL_EVENT_CAMERA_DEVICE_REMOVED)
+        PRINT_CAMERADEV_EVENT(event);
+        break;
+        SDL_EVENT_CASE(SDL_EVENT_CAMERA_DEVICE_APPROVED)
+        PRINT_CAMERADEV_EVENT(event);
+        break;
+        SDL_EVENT_CASE(SDL_EVENT_CAMERA_DEVICE_DENIED)
+        PRINT_CAMERADEV_EVENT(event);
+        break;
+#undef PRINT_CAMERADEV_EVENT
 
         SDL_EVENT_CASE(SDL_EVENT_SENSOR_UPDATE)
         (void)SDL_snprintf(details, sizeof(details), " (timestamp=%u which=%d data[0]=%f data[1]=%f data[2]=%f data[3]=%f data[4]=%f data[5]=%f)",
@@ -936,6 +956,10 @@ static void SDL_PumpEventsInternal(SDL_bool push_sentinel)
 
 #ifndef SDL_AUDIO_DISABLED
     SDL_UpdateAudio();
+#endif
+
+#ifndef SDL_CAMERA_DISABLED
+    SDL_UpdateCamera();
 #endif
 
 #ifndef SDL_SENSOR_DISABLED

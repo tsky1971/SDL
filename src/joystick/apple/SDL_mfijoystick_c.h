@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -25,14 +25,13 @@
 
 #include "../SDL_sysjoystick.h"
 
-#include <CoreFoundation/CoreFoundation.h>
+#import <CoreFoundation/CoreFoundation.h>
+#import <Foundation/Foundation.h>
 
 @class GCController;
 
 typedef struct joystick_hwdata
 {
-    SDL_bool accelerometer;
-
     GCController __unsafe_unretained *controller;
     void *rumble;
     int pause_button_index;
@@ -58,8 +57,8 @@ typedef struct joystick_hwdata
     SDL_bool is_backbone_one;
     int is_siri_remote;
 
-    NSArray *axes;
-    NSArray *buttons;
+    NSArray __unsafe_unretained *axes;
+    NSArray __unsafe_unretained *buttons;
 
     SDL_bool has_dualshock_touchpad;
     SDL_bool has_xbox_paddles;

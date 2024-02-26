@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -163,7 +163,7 @@ void GDK_EnsureHints(void)
             GDK_InternalHintCallback,
             &g_DescriptionText);
         SDL_AddHintCallback(
-            SDL_HINT_GDK_TEXTINPUT_DEFAULT,
+            SDL_HINT_GDK_TEXTINPUT_DEFAULT_TEXT,
             GDK_InternalHintCallback,
             &g_DefaultText);
         SDL_AddHintCallback(

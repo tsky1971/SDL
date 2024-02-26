@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -23,7 +23,7 @@
 /* TODO, WinRT: remove the need to compile this with C++/CX (/ZW) extensions, and if possible, without C++ at all
  */
 
-#ifdef __WINRT__
+#ifdef SDL_PLATFORM_WINRT
 
 extern "C" {
 #include "../../core/windows/SDL_windows.h"
@@ -236,4 +236,4 @@ char *SDL_GetUserFolder(SDL_Folder folder)
     return NULL;
 }
 
-#endif /* __WINRT__ */
+#endif /* SDL_PLATFORM_WINRT */

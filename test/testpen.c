@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -152,13 +152,13 @@ static void DrawScreen(SDL_Renderer *renderer)
                            (color & 0x01) ? 0xff : 0,
                            (color & 0x02) ? 0xff : 0,
                            (color & 0x04) ? 0xff : 0,
-                           (int)(0xff * last_pressure));
+                           (Uint8)(0xff * last_pressure));
     /* Cone base width based on pressure: */
     SDL_RenderLine(renderer, X, Y, endx + (ydelta * last_pressure / 3.0f), endy - (xdelta * last_pressure / 3.0f));
     SDL_RenderLine(renderer, X, Y, endx - (ydelta * last_pressure / 3.0f), endy + (xdelta * last_pressure / 3.0f));
 
     /* If tilt is very small (or zero, for pens that don't have tilt), add some extra lines, rotated by the current rotation value */
-    if (ALWAYS_SHOW_PRESSURE_BOX || (fabs(tilt_vec_x) < 0.2f && fabs(tilt_vec_y) < 0.2f)) {
+    if (ALWAYS_SHOW_PRESSURE_BOX || (SDL_fabs(tilt_vec_x) < 0.2f && SDL_fabs(tilt_vec_y) < 0.2f)) {
         int rot;
         float pressure = last_pressure * 80.0f;
 
@@ -308,6 +308,15 @@ static void update_axes(float *axes)
     last_rotation = axes[SDL_PEN_AXIS_ROTATION];
 }
 
+static void update_axes_from_touch(const float pressure)
+{
+    last_xtilt = 0;
+    last_ytilt = 0;
+    last_pressure = pressure;
+    last_distance = 0;
+    last_rotation = 0;
+}
+
 static void process_event(SDL_Event event)
 {
     SDLTest_CommonEvent(state, &event, &quitting);
@@ -341,7 +350,7 @@ static void process_event(SDL_Event event)
         }
     }
 #endif
-    if (event.motion.which != SDL_PEN_MOUSEID) {
+    if (event.motion.which != SDL_PEN_MOUSEID && event.motion.which != SDL_TOUCH_MOUSEID) {
         SDL_ShowCursor();
     } break;
 
@@ -444,6 +453,31 @@ static void process_event(SDL_Event event)
         break;
 #endif
 
+    case SDL_EVENT_FINGER_DOWN:
+    case SDL_EVENT_FINGER_MOTION:
+    case SDL_EVENT_FINGER_UP:
+    {
+        SDL_TouchFingerEvent *ev = &event.tfinger;
+        int w, h;
+        SDL_HideCursor();
+        SDL_GetWindowSize(SDL_GetWindowFromID(ev->windowID), &w, &h);
+        last_x = ev->x * w;
+        last_y = ev->y * h;
+        update_axes_from_touch(ev->pressure);
+        last_was_eraser = SDL_FALSE;
+        last_button = 0;
+        last_touching = (ev->type != SDL_EVENT_FINGER_UP);
+#if VERBOSE
+        SDL_Log("[%lu] finger %s: %s (touchId: %" SDL_PRIu64 ", fingerId: %" SDL_PRIu64 ") at (%.4f, %.4f); pressure=%.3f\n",
+                (unsigned long) ev->timestamp,
+                ev->type == SDL_EVENT_FINGER_DOWN ? "down" : (ev->type == SDL_EVENT_FINGER_MOTION ? "motion" : "up"),
+                SDL_GetTouchDeviceName(ev->touchId),
+                ev->touchId,
+                ev->fingerId,
+                last_x, last_y, last_pressure);
+#endif
+    } break;
+
     default:
         break;
     }
@@ -474,8 +508,6 @@ int main(int argc, char *argv[])
     if (!state) {
         return 1;
     }
-
-    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "2");
 
     state->window_title = "Pressure-Sensitive Pen Test";
     state->window_w = WIDTH;

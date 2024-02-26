@@ -557,9 +557,20 @@ macro(CheckWayland)
         set(LibDecor_PKG_CONFIG_SPEC libdecor-0)
         pkg_check_modules(PC_LIBDECOR IMPORTED_TARGET ${LibDecor_PKG_CONFIG_SPEC})
         if(PC_LIBDECOR_FOUND)
-          # Version 0.2.0 or higher is needed for suspended window state and statically linked min/max getters.
+
+          # Libdecor doesn't provide internal version defines, so generate them here.
+          if (PC_LIBDECOR_VERSION MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)")
+            set(SDL_LIBDECOR_VERSION_MAJOR ${CMAKE_MATCH_1})
+            set(SDL_LIBDECOR_VERSION_MINOR ${CMAKE_MATCH_2})
+            set(SDL_LIBDECOR_VERSION_PATCH ${CMAKE_MATCH_3})
+          else()
+            message(WARNING "Failed to parse libdecor version; defaulting to lowest supported (0.1.0)")
+            set(SDL_LIBDECOR_VERSION_MAJOR 0)
+            set(SDL_LIBDECOR_VERSION_MINOR 1)
+            set(SDL_LIBDECOR_VERSION_PATCH 0)
+          endif()
+
           if(PC_LIBDECOR_VERSION VERSION_GREATER_EQUAL "0.2.0")
-            set(SDL_HAVE_LIBDECOR_VER_0_2_0 1)
             set(LibDecor_PKG_CONFIG_SPEC "libdecor-0>=0.2.0")
           endif()
           set(HAVE_WAYLAND_LIBDECOR TRUE)
@@ -652,6 +663,7 @@ macro(CheckEGL)
     cmake_push_check_state()
     find_package(OpenGL MODULE)
     list(APPEND CMAKE_REQUIRED_INCLUDES ${OPENGL_EGL_INCLUDE_DIRS})
+    list(APPEND CMAKE_REQUIRED_INCLUDES "${SDL3_SOURCE_DIR}/src/video/khronos")
     check_c_source_compiles("
         #define EGL_API_FB
         #define MESA_EGL_NO_X11_HEADERS
@@ -686,18 +698,21 @@ endmacro()
 # - nada
 macro(CheckOpenGLES)
   if(SDL_OPENGLES)
+    cmake_push_check_state()
+    list(APPEND CMAKE_REQUIRED_INCLUDES "${SDL3_SOURCE_DIR}/src/video/khronos")
     check_c_source_compiles("
         #include <GLES/gl.h>
         #include <GLES/glext.h>
         int main (int argc, char** argv) { return 0; }" HAVE_OPENGLES_V1)
-    if(HAVE_OPENGLES_V1)
-      set(HAVE_OPENGLES TRUE)
-      set(SDL_VIDEO_OPENGL_ES 1)
-    endif()
     check_c_source_compiles("
       #include <GLES2/gl2.h>
       #include <GLES2/gl2ext.h>
       int main (int argc, char** argv) { return 0; }" HAVE_OPENGLES_V2)
+    cmake_pop_check_state()
+    if(HAVE_OPENGLES_V1)
+      set(HAVE_OPENGLES TRUE)
+      set(SDL_VIDEO_OPENGL_ES 1)
+    endif()
     if(HAVE_OPENGLES_V2)
       set(HAVE_OPENGLES TRUE)
       set(SDL_VIDEO_OPENGL_ES2 1)
@@ -710,6 +725,7 @@ macro(CheckVulkan)
   if(SDL_VULKAN)
     set(SDL_VIDEO_VULKAN 1)
     set(HAVE_VULKAN TRUE)
+    set(SDL_VIDEO_RENDER_VULKAN 1)
   endif()
 endmacro()
 
@@ -737,7 +753,7 @@ endmacro()
 # PTHREAD_LIBS
 macro(CheckPTHREAD)
   cmake_push_check_state()
-  if(SDL_THREADS AND SDL_PTHREADS)
+  if(SDL_PTHREADS)
     if(ANDROID)
       # the android libc provides built-in support for pthreads, so no
       # additional linking or compile flags are necessary

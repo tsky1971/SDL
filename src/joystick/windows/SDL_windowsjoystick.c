@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -35,7 +35,7 @@
 #include "../SDL_sysjoystick.h"
 #include "../../thread/SDL_systhread.h"
 #include "../../core/windows/SDL_windows.h"
-#if !defined(__WINRT__) && !defined(__XBOXONE__) && !defined(__XBOXSERIES__)
+#if !defined(SDL_PLATFORM_WINRT) && !defined(SDL_PLATFORM_XBOXONE) && !defined(SDL_PLATFORM_XBOXSERIES)
 #include <dbt.h>
 #endif
 
@@ -46,7 +46,6 @@
 #include "SDL_rawinputjoystick_c.h"
 
 #include "../../haptic/windows/SDL_dinputhaptic_c.h" /* For haptic hot plugging */
-#include "../../haptic/windows/SDL_xinputhaptic_c.h" /* For haptic hot plugging */
 
 #ifndef DEVICE_NOTIFY_WINDOW_HANDLE
 #define DEVICE_NOTIFY_WINDOW_HANDLE 0x00000000
@@ -153,7 +152,7 @@ static GUID GUID_DEVINTERFACE_HID = { 0x4D1E55B2L, 0xF16F, 0x11CF, { 0x88, 0xCB,
 
 JoyStick_DeviceData *SYS_Joystick; /* array to hold joystick ID values */
 
-#if !defined(__WINRT__) && !defined(__XBOXONE__) && !defined(__XBOXSERIES__)
+#if !defined(SDL_PLATFORM_WINRT) && !defined(SDL_PLATFORM_XBOXONE) && !defined(SDL_PLATFORM_XBOXSERIES)
 static HMODULE cfgmgr32_lib_handle;
 static CM_Register_NotificationFunc CM_Register_Notification;
 static CM_Unregister_NotificationFunc CM_Unregister_Notification;
@@ -339,11 +338,11 @@ static SDL_bool SDL_WaitForDeviceNotification(SDL_DeviceNotificationData *data, 
     return (lastret != -1);
 }
 
-#endif /* !defined(__WINRT__) && !defined(__XBOXONE__) && !defined(__XBOXSERIES__) */
+#endif /* !defined(SDL_PLATFORM_WINRT) && !defined(SDL_PLATFORM_XBOXONE) && !defined(SDL_PLATFORM_XBOXSERIES) */
 
-#ifndef __WINRT__
+#ifndef SDL_PLATFORM_WINRT
 
-#if !defined(__XBOXONE__) && !defined(__XBOXSERIES__)
+#if !defined(SDL_PLATFORM_XBOXONE) && !defined(SDL_PLATFORM_XBOXSERIES)
 static SDL_DeviceNotificationData s_notification_data;
 #endif
 
@@ -355,7 +354,7 @@ static int SDLCALL SDL_JoystickThread(void *_data)
     SDL_zeroa(bOpenedXInputDevices);
 #endif
 
-#if !defined(__XBOXONE__) && !defined(__XBOXSERIES__)
+#if !defined(SDL_PLATFORM_XBOXONE) && !defined(SDL_PLATFORM_XBOXSERIES)
     if (SDL_CreateDeviceNotification(&s_notification_data) < 0) {
         return -1;
     }
@@ -363,7 +362,7 @@ static int SDLCALL SDL_JoystickThread(void *_data)
 
     SDL_LockMutex(s_mutexJoyStickEnum);
     while (s_bJoystickThreadQuit == SDL_FALSE) {
-#if !defined(__XBOXONE__) && !defined(__XBOXSERIES__)
+#if !defined(SDL_PLATFORM_XBOXONE) && !defined(SDL_PLATFORM_XBOXSERIES)
         if (SDL_WaitForDeviceNotification(&s_notification_data, s_mutexJoyStickEnum) == SDL_FALSE) {
 #else
         {
@@ -393,7 +392,7 @@ static int SDLCALL SDL_JoystickThread(void *_data)
 
     SDL_UnlockMutex(s_mutexJoyStickEnum);
 
-#if !defined(__XBOXONE__) && !defined(__XBOXSERIES__)
+#if !defined(SDL_PLATFORM_XBOXONE) && !defined(SDL_PLATFORM_XBOXSERIES)
     SDL_CleanupDeviceNotification(&s_notification_data);
 #endif
 
@@ -431,7 +430,7 @@ static void SDL_StopJoystickThread(void)
     s_bJoystickThreadQuit = SDL_TRUE;
     SDL_BroadcastCondition(s_condJoystickThread); /* signal the joystick thread to quit */
     SDL_UnlockMutex(s_mutexJoyStickEnum);
-    PostThreadMessage(SDL_GetThreadID(s_joystickThread), WM_QUIT, 0, 0);
+    PostThreadMessage((DWORD)SDL_GetThreadID(s_joystickThread), WM_QUIT, 0, 0);
 
     /* Unlock joysticks while the joystick thread finishes processing messages */
     SDL_AssertJoysticksLocked();
@@ -448,7 +447,7 @@ static void SDL_StopJoystickThread(void)
     s_joystickThread = NULL;
 }
 
-#endif /* !defined(__WINRT__) */
+#endif /* !defined(SDL_PLATFORM_WINRT) */
 
 void WINDOWS_AddJoystickDevice(JoyStick_DeviceData *device)
 {
@@ -481,7 +480,7 @@ static int WINDOWS_JoystickInit(void)
 
     WINDOWS_JoystickDetect();
 
-#if !defined(__WINRT__) && !defined(__XBOXONE__) && !defined(__XBOXSERIES__)
+#if !defined(SDL_PLATFORM_WINRT) && !defined(SDL_PLATFORM_XBOXONE) && !defined(SDL_PLATFORM_XBOXSERIES)
     SDL_CreateDeviceNotificationFunc();
 
     s_bJoystickThread = SDL_GetHintBoolean(SDL_HINT_JOYSTICK_THREAD, SDL_FALSE);
@@ -496,7 +495,7 @@ static int WINDOWS_JoystickInit(void)
     }
 #endif
 
-#if defined(__XBOXONE__) || defined(__XBOXSERIES__)
+#if defined(SDL_PLATFORM_XBOXONE) || defined(SDL_PLATFORM_XBOXSERIES)
     /* On Xbox, force create the joystick thread for device detection (since other methods don't work */
     s_bJoystickThread = SDL_TRUE;
     if (SDL_StartJoystickThread() < 0) {
@@ -551,11 +550,7 @@ void WINDOWS_JoystickDetect(void)
     while (pCurList) {
         JoyStick_DeviceData *pListNext = NULL;
 
-        if (pCurList->bXInputDevice) {
-#ifdef SDL_HAPTIC_XINPUT
-            SDL_XINPUT_HapticMaybeRemoveDevice(pCurList->XInputUserId);
-#endif
-        } else {
+        if (!pCurList->bXInputDevice) {
 #ifdef SDL_HAPTIC_DINPUT
             SDL_DINPUT_HapticMaybeRemoveDevice(&pCurList->dxdevice);
 #endif
@@ -571,11 +566,7 @@ void WINDOWS_JoystickDetect(void)
 
     for (pCurList = SYS_Joystick; pCurList; pCurList = pCurList->pNext) {
         if (pCurList->send_add_event) {
-            if (pCurList->bXInputDevice) {
-#ifdef SDL_HAPTIC_XINPUT
-                SDL_XINPUT_HapticMaybeAddDevice(pCurList->XInputUserId);
-#endif
-            } else {
+            if (!pCurList->bXInputDevice) {
 #ifdef SDL_HAPTIC_DINPUT
                 SDL_DINPUT_HapticMaybeAddDevice(&pCurList->dxdevice);
 #endif
@@ -586,6 +577,17 @@ void WINDOWS_JoystickDetect(void)
             pCurList->send_add_event = SDL_FALSE;
         }
     }
+}
+
+static SDL_bool WINDOWS_JoystickIsDevicePresent(Uint16 vendor_id, Uint16 product_id, Uint16 version, const char *name)
+{
+    if (SDL_DINPUT_JoystickPresent(vendor_id, product_id, version)) {
+        return SDL_TRUE;
+    }
+    if (SDL_XINPUT_JoystickPresent(vendor_id, product_id, version)) {
+        return SDL_TRUE;
+    }
+    return SDL_FALSE;
 }
 
 static const char *WINDOWS_JoystickGetDeviceName(int device_index)
@@ -610,6 +612,23 @@ static const char *WINDOWS_JoystickGetDevicePath(int device_index)
     }
 
     return device->path;
+}
+
+static int WINDOWS_JoystickGetDeviceSteamVirtualGamepadSlot(int device_index)
+{
+    JoyStick_DeviceData *device = SYS_Joystick;
+    int index;
+
+    for (index = device_index; index > 0; index--) {
+        device = device->pNext;
+    }
+
+    if (device->bXInputDevice) {
+        /* The slot for XInput devices can change as controllers are seated */
+        return SDL_XINPUT_GetSteamVirtualGamepadSlot(device->XInputUserId);
+    } else {
+        return device->steam_virtual_gamepad_slot;
+    }
 }
 
 static int WINDOWS_JoystickGetDevicePlayerIndex(int device_index)
@@ -669,7 +688,6 @@ static int WINDOWS_JoystickOpen(SDL_Joystick *joystick, int device_index)
     }
 
     /* allocate memory for system specific hardware data */
-    joystick->instance_id = device->nInstanceID;
     joystick->hwdata = (struct joystick_hwdata *)SDL_calloc(1, sizeof(struct joystick_hwdata));
     if (!joystick->hwdata) {
         return -1;
@@ -695,15 +713,6 @@ static int WINDOWS_JoystickRumble(SDL_Joystick *joystick, Uint16 low_frequency_r
 static int WINDOWS_JoystickRumbleTriggers(SDL_Joystick *joystick, Uint16 left_rumble, Uint16 right_rumble)
 {
     return SDL_Unsupported();
-}
-
-static Uint32 WINDOWS_JoystickGetCapabilities(SDL_Joystick *joystick)
-{
-    if (joystick->hwdata->bXInputDevice) {
-        return SDL_XINPUT_JoystickGetCapabilities(joystick);
-    } else {
-        return SDL_DINPUT_JoystickGetCapabilities(joystick);
-    }
 }
 
 static int WINDOWS_JoystickSetLED(SDL_Joystick *joystick, Uint8 red, Uint8 green, Uint8 blue)
@@ -759,7 +768,7 @@ void WINDOWS_JoystickQuit(void)
     }
     SYS_Joystick = NULL;
 
-#if !defined(__WINRT__) && !defined(__XBOXONE__) && !defined(__XBOXSERIES__)
+#if !defined(SDL_PLATFORM_WINRT) && !defined(SDL_PLATFORM_XBOXONE) && !defined(SDL_PLATFORM_XBOXSERIES)
     if (s_bJoystickThread) {
         SDL_StopJoystickThread();
     } else {
@@ -769,7 +778,7 @@ void WINDOWS_JoystickQuit(void)
     SDL_CleanupDeviceNotificationFunc();
 #endif
 
-#if defined(__XBOXONE__) || defined(__XBOXSERIES__)
+#if defined(SDL_PLATFORM_XBOXONE) || defined(SDL_PLATFORM_XBOXSERIES)
     if (s_bJoystickThread) {
         SDL_StopJoystickThread();
     }
@@ -790,8 +799,10 @@ SDL_JoystickDriver SDL_WINDOWS_JoystickDriver = {
     WINDOWS_JoystickInit,
     WINDOWS_JoystickGetCount,
     WINDOWS_JoystickDetect,
+    WINDOWS_JoystickIsDevicePresent,
     WINDOWS_JoystickGetDeviceName,
     WINDOWS_JoystickGetDevicePath,
+    WINDOWS_JoystickGetDeviceSteamVirtualGamepadSlot,
     WINDOWS_JoystickGetDevicePlayerIndex,
     WINDOWS_JoystickSetDevicePlayerIndex,
     WINDOWS_JoystickGetDeviceGUID,
@@ -799,7 +810,6 @@ SDL_JoystickDriver SDL_WINDOWS_JoystickDriver = {
     WINDOWS_JoystickOpen,
     WINDOWS_JoystickRumble,
     WINDOWS_JoystickRumbleTriggers,
-    WINDOWS_JoystickGetCapabilities,
     WINDOWS_JoystickSetLED,
     WINDOWS_JoystickSendEffect,
     WINDOWS_JoystickSetSensorsEnabled,

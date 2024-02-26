@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -142,18 +142,26 @@ static void Cocoa_DispatchEvent(NSEvent *theEvent)
     self = [super init];
     if (self) {
         NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
+        SDL_bool registerActivationHandlers = SDL_GetHintBoolean("SDL_MAC_REGISTER_ACTIVATION_HANDLERS", SDL_TRUE);
 
         seenFirstActivate = NO;
 
-        [center addObserver:self
-                   selector:@selector(windowWillClose:)
-                       name:NSWindowWillCloseNotification
-                     object:nil];
+        if (registerActivationHandlers) {
+            [center addObserver:self
+                       selector:@selector(windowWillClose:)
+                           name:NSWindowWillCloseNotification
+                         object:nil];
 
-        [center addObserver:self
-                   selector:@selector(focusSomeWindow:)
-                       name:NSApplicationDidBecomeActiveNotification
-                     object:nil];
+            [center addObserver:self
+                       selector:@selector(focusSomeWindow:)
+                           name:NSApplicationDidBecomeActiveNotification
+                         object:nil];
+
+            [center addObserver:self
+                       selector:@selector(screenParametersChanged:)
+                           name:NSApplicationDidChangeScreenParametersNotification
+                         object:nil];
+        }
 
         [center addObserver:self
                    selector:@selector(localeDidChange:)
@@ -175,6 +183,7 @@ static void Cocoa_DispatchEvent(NSEvent *theEvent)
 
     [center removeObserver:self name:NSWindowWillCloseNotification object:nil];
     [center removeObserver:self name:NSApplicationDidBecomeActiveNotification object:nil];
+    [center removeObserver:self name:NSApplicationDidChangeScreenParametersNotification object:nil];
     [center removeObserver:self name:NSCurrentLocaleDidChangeNotification object:nil];
     [NSApp removeObserver:self forKeyPath:@"effectiveAppearance"];
 
@@ -273,6 +282,14 @@ static void Cocoa_DispatchEvent(NSEvent *theEvent)
     }
 }
 
+- (void)screenParametersChanged:(NSNotification *)aNotification
+{
+    SDL_VideoDevice *device = SDL_GetVideoDevice();
+    if (device) {
+        Cocoa_UpdateDisplays(device);
+    }
+}
+
 - (void)localeDidChange:(NSNotification *)notification
 {
     SDL_SendLocaleChangedEvent();
@@ -293,6 +310,9 @@ static void Cocoa_DispatchEvent(NSEvent *theEvent)
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification
 {
+    if (!SDL_GetHintBoolean("SDL_MAC_REGISTER_ACTIVATION_HANDLERS", SDL_TRUE))
+        return;
+
     /* The menu bar of SDL apps which don't have the typical .app bundle
      * structure fails to work the first time a window is created (until it's
      * de-focused and re-focused), if this call is in Cocoa_RegisterApp instead

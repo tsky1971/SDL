@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -120,22 +120,22 @@ static Uint64 SDLTest_GenerateExecKey(const char *runSeed, const char *suiteName
 
     if (!runSeed || runSeed[0] == '\0') {
         SDLTest_LogError("Invalid runSeed string.");
-        return -1;
+        return 0;
     }
 
     if (!suiteName || suiteName[0] == '\0') {
         SDLTest_LogError("Invalid suiteName string.");
-        return -1;
+        return 0;
     }
 
     if (!testName || testName[0] == '\0') {
         SDLTest_LogError("Invalid testName string.");
-        return -1;
+        return 0;
     }
 
     if (iteration <= 0) {
         SDLTest_LogError("Invalid iteration count.");
-        return -1;
+        return 0;
     }
 
     /* Convert iteration number into a string */
@@ -183,19 +183,19 @@ static SDL_TimerID SDLTest_SetTestTimeout(int timeout, void(SDLCALL *callback)(v
 
     if (!callback) {
         SDLTest_LogError("Timeout callback can't be NULL");
-        return -1;
+        return 0;
     }
 
     if (timeout < 0) {
         SDLTest_LogError("Timeout value must be bigger than zero.");
-        return -1;
+        return 0;
     }
 
     /* Init SDL timer if not initialized before */
     if (SDL_WasInit(SDL_INIT_TIMER) == 0) {
         if (SDL_InitSubSystem(SDL_INIT_TIMER)) {
             SDLTest_LogError("Failed to init timer subsystem: %s", SDL_GetError());
-            return -1;
+            return 0;
         }
     }
 
@@ -204,7 +204,7 @@ static SDL_TimerID SDLTest_SetTestTimeout(int timeout, void(SDLCALL *callback)(v
     timerID = SDL_AddTimer(timeoutInMilliseconds, (SDL_TimerCallback)callback, 0x0);
     if (timerID == 0) {
         SDLTest_LogError("Creation of SDL timer failed: %s", SDL_GetError());
-        return -1;
+        return 0;
     }
 
     return timerID;
@@ -504,7 +504,7 @@ int SDLTest_RunSuites(SDLTest_TestSuiteReference *testSuites[], const char *user
                 /* Within each suite, loop over all test cases to check if we have a filter match */
                 for (testCounter = 0; testSuite->testCases[testCounter]; ++testCounter) {
                     testCase = testSuite->testCases[testCounter];
-                    SDLTest_Log("      test: %s", testCase->name);
+                    SDLTest_Log("      test: %s%s", testCase->name, testCase->enabled ? "" : " (disabled)");
                 }
             }
             SDLTest_Log("Exit code: 2");

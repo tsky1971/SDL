@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -23,7 +23,7 @@
 #include "../SDL_main_callbacks.h"
 #include "../../video/SDL_sysvideo.h"
 
-#ifndef __IOS__
+#ifndef SDL_PLATFORM_IOS
 
 static int callback_rate_increment = 0;
 
@@ -80,4 +80,4 @@ int SDL_EnterAppMainCallbacks(int argc, char* argv[], SDL_AppInit_func appinit, 
     return (rc < 0) ? 1 : 0;
 }
 
-#endif // !__IOS__
+#endif // !SDL_PLATFORM_IOS

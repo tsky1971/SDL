@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -34,6 +34,8 @@
 #include "SDL_x11video.h"
 #include "SDL_x11xfixes.h"
 #include "SDL_x11xinput2.h"
+#include "SDL_x11messagebox.h"
+#include "SDL_x11shape.h"
 
 #ifdef SDL_VIDEO_OPENGL_EGL
 #include "SDL_x11opengles.h"
@@ -206,6 +208,7 @@ static SDL_VideoDevice *X11_CreateDevice(void)
     device->DestroyWindowFramebuffer = X11_DestroyWindowFramebuffer;
     device->SetWindowHitTest = X11_SetWindowHitTest;
     device->AcceptDragAndDrop = X11_AcceptDragAndDrop;
+    device->UpdateWindowShape = X11_UpdateWindowShape;
     device->FlashWindow = X11_FlashWindow;
     device->ShowWindowSystemMenu = X11_ShowWindowSystemMenu;
     device->SetWindowFocusable = X11_SetWindowFocusable;
@@ -283,7 +286,8 @@ static SDL_VideoDevice *X11_CreateDevice(void)
 
 VideoBootStrap X11_bootstrap = {
     "x11", "SDL X11 video driver",
-    X11_CreateDevice
+    X11_CreateDevice,
+    X11_ShowMessageBox
 };
 
 static int (*handler)(Display *, XErrorEvent *) = NULL;

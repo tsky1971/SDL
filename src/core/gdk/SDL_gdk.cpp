@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -190,7 +190,7 @@ SDL_RunApp(int, char**, SDL_main_func mainFunction, void *reserved)
 
         XGameRuntimeUninitialize();
     } else {
-#ifdef __WINGDK__
+#ifdef SDL_PLATFORM_WINGDK
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Fatal Error", "[GDK] Could not initialize - aborting", NULL);
 #else
         SDL_assert_always(0 && "[GDK] Could not initialize - aborting");

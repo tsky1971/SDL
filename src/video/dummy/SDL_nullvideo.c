@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -120,7 +120,8 @@ static SDL_VideoDevice *DUMMY_CreateDevice(void)
 
 VideoBootStrap DUMMY_bootstrap = {
     DUMMYVID_DRIVER_NAME, "SDL dummy video driver",
-    DUMMY_CreateDevice
+    DUMMY_CreateDevice,
+    NULL /* no ShowMessageBox implementation */
 };
 
 #ifdef SDL_INPUT_LINUXEV
@@ -142,7 +143,8 @@ static SDL_VideoDevice *DUMMY_EVDEV_CreateDevice(void)
 
 VideoBootStrap DUMMY_evdev_bootstrap = {
     DUMMYVID_DRIVER_EVDEV_NAME, "SDL dummy video driver with evdev",
-    DUMMY_EVDEV_CreateDevice
+    DUMMY_EVDEV_CreateDevice,
+    NULL /* no ShowMessageBox implementation */
 };
 
 #endif /* SDL_INPUT_LINUXEV */

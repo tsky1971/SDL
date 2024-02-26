@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -55,7 +55,7 @@ extern "C" void SDL_LockMutex(SDL_Mutex *mutex) SDL_NO_THREAD_SAFETY_ANALYSIS  /
     if (mutex != NULL) {
         try {
             mutex->cpp_mutex.lock();
-        } catch (std::system_error &ex) {
+        } catch (std::system_error &/*ex*/) {
             SDL_assert(!"Error trying to lock mutex");  // assume we're in a lot of trouble if this assert fails.
             //return SDL_SetError("unable to lock a C++ mutex: code=%d; %s", ex.code(), ex.what());
         }

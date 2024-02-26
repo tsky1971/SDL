@@ -13,10 +13,19 @@
     <Filter Include="main\generic">
       <UniqueIdentifier>{0000318d975e0a2867ab1d5727bf0000}</UniqueIdentifier>
     </Filter>
+    <Filter Include="camera">
+      <UniqueIdentifier>{00009e5236c2ac679fe0bc30beb90000}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="camera\dummy">
+      <UniqueIdentifier>{000031d805439b865ff4550d2f620000}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\SDL3\SDL_begin_code.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\include\SDL3\SDL_camera.h">
+      <Filter>API Headers</Filter>
     </ClInclude>
     <ClInclude Include="..\include\SDL3\SDL_close_code.h">
       <Filter>Header Files</Filter>
@@ -165,8 +174,11 @@
     <ClInclude Include="..\include\SDL3\SDL_video.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\SDL3\SDL_video_capture.h">
-      <Filter>Header Files</Filter>
+    <ClInclude Include="..\src\camera\SDL_camera_c.h">
+      <Filter>camera</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\camera\SDL_syscamera.h">
+      <Filter>camera</Filter>
     </ClInclude>
     <ClInclude Include="..\src\joystick\SDL_gamepad_c.h">
       <Filter>Header Files</Filter>
@@ -259,6 +271,9 @@
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="..\src\joystick\SDL_joystick_c.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\joystick\SDL_steam_virtual_gamepad.h">
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="..\src\joystick\SDL_sysjoystick.h">
@@ -432,9 +447,6 @@
     <ClInclude Include="..\src\SDL_list.h">
       <Filter>Source Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\haptic\windows\SDL_xinputhaptic_c.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\src\haptic\windows\SDL_dinputhaptic_c.h">
       <Filter>Source Files</Filter>
     </ClInclude>
@@ -506,6 +518,12 @@
     </ClCompile>
     <ClCompile Include="..\src\audio\wasapi\SDL_wasapi_winrt.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\camera\dummy\SDL_camera_dummy.c">
+      <Filter>camera\dummy</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\camera\SDL_camera.c">
+      <Filter>camera</Filter>
     </ClCompile>
     <ClCompile Include="..\src\core\SDL_core_unsupported.c">
       <Filter>Source Files</Filter>
@@ -583,6 +601,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\src\joystick\SDL_joystick.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\joystick\SDL_steam_virtual_gamepad.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\src\joystick\virtual\SDL_virtualjoystick.c">
@@ -711,6 +732,15 @@
     <ClCompile Include="..\src\stdlib\SDL_malloc.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\stdlib\SDL_memcpy.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\stdlib\SDL_memmove.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\stdlib\SDL_memset.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\stdlib\SDL_qsort.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -810,9 +840,6 @@
     <ClCompile Include="..\src\video\SDL_video.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\video\SDL_video_capture.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\video\SDL_video_unsupported.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -847,9 +874,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\src\haptic\windows\SDL_windowshaptic.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\haptic\windows\SDL_xinputhaptic.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\src\video\SDL_yuv.c">
@@ -893,7 +917,7 @@
     <ClCompile Include="..\src\stdlib\SDL_mslibc.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <MASM Include="..\src\stdlib\SDL_mslibc_x64.asm">
+    <MASM Include="..\src\stdlib\SDL_mslibc_x64.masm">
       <Filter>stdlib</Filter>
     </MASM>
     <ClCompile Include="..\src\core\windows\pch.c">

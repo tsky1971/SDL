@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -74,6 +74,7 @@ typedef enum
 - (BOOL)isMovingOrFocusClickPending;
 - (void)setFocusClickPending:(NSInteger)button;
 - (void)clearFocusClickPending:(NSInteger)button;
+- (void)updateIgnoreMouseState:(NSEvent *)theEvent;
 - (void)setPendingMoveX:(float)x Y:(float)y;
 - (void)windowDidFinishMoving;
 - (void)onMovingOrFocusClickPendingStateCleared;
@@ -97,6 +98,7 @@ typedef enum
 - (NSApplicationPresentationOptions)window:(NSWindow *)window willUseFullScreenPresentationOptions:(NSApplicationPresentationOptions)proposedOptions;
 
 /* See if event is in a drag area, toggle on window dragging. */
+- (void)updateHitTest;
 - (BOOL)processHitTest:(NSEvent *)theEvent;
 
 /* Window event handling */
@@ -140,6 +142,7 @@ typedef enum
 @property(nonatomic) SDL_CocoaVideoData *videodata;
 @property(nonatomic) SDL_bool send_floating_size;
 @property(nonatomic) SDL_bool send_floating_position;
+@property(nonatomic) SDL_bool border_toggled;
 @property(nonatomic) BOOL checking_zoom;
 #ifdef SDL_VIDEO_OPENGL_EGL
 @property(nonatomic) EGLSurface egl_surface;

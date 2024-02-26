@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -257,7 +257,7 @@ void DirectDraw(SDL_VideoDevice *_this, int numrects, SDL_Rect *rects, TUint16 *
 
         TInt targetStartOffset = fixedOffset.iX + rect2.x + (fixedOffset.iY + rect2.y) * targetScanlineLength;
 
-        switch (screen->format->BitsPerPixel) {
+        switch (screen->format->bits_per_pixel) {
         case 12:
         {
             TUint16 *bitmapLine = (TUint16 *)screen->pixels + sourceStartOffset;

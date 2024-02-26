@@ -15,7 +15,7 @@ static SDL_Window *createVideoSuiteTestWindow(const char *title)
     SDL_Window *window;
     SDL_Event event;
     int w, h;
-    SDL_WindowFlags flags;
+    Uint32 flags;
     SDL_bool needs_renderer = SDL_FALSE;
     SDL_bool needs_events_pumped = SDL_FALSE;
 
@@ -25,7 +25,7 @@ static SDL_Window *createVideoSuiteTestWindow(const char *title)
     flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_BORDERLESS;
 
     window = SDL_CreateWindow(title, w, h, flags);
-    SDLTest_AssertPass("Call to SDL_CreateWindow('Title',%d,%d,%d)", w, h, flags);
+    SDLTest_AssertPass("Call to SDL_CreateWindow('Title',%d,%d,%" SDL_PRIu32 ")", w, h, flags);
     SDLTest_AssertCheck(window != NULL, "Validate that returned window struct is not NULL");
 
     /* Wayland and XWayland windows require that a frame be presented before they are fully mapped and visible onscreen.
@@ -197,7 +197,7 @@ static int video_createWindowVariousFlags(void *arg)
     const char *title = "video_createWindowVariousFlags Test Window";
     int w, h;
     int fVariation;
-    SDL_WindowFlags flags;
+    Uint32 flags;
 
     /* Standard window */
     w = SDLTest_RandomIntegerInRange(320, 1024);
@@ -252,7 +252,7 @@ static int video_createWindowVariousFlags(void *arg)
         }
 
         window = SDL_CreateWindow(title, w, h, flags);
-        SDLTest_AssertPass("Call to SDL_CreateWindow('Title',%d,%d,%d)", w, h, flags);
+        SDLTest_AssertPass("Call to SDL_CreateWindow('Title',%d,%d,%" SDL_PRIu32 ")", w, h, flags);
         SDLTest_AssertCheck(window != NULL, "Validate that returned window struct is not NULL");
 
         /* Clean up */
@@ -269,7 +269,7 @@ static int video_getWindowFlags(void *arg)
 {
     SDL_Window *window;
     const char *title = "video_getWindowFlags Test Window";
-    SDL_WindowFlags flags;
+    Uint32 flags;
     Uint32 actualFlags;
 
     /* Reliable flag set always set in test window */
@@ -280,7 +280,7 @@ static int video_getWindowFlags(void *arg)
     if (window != NULL) {
         actualFlags = SDL_GetWindowFlags(window);
         SDLTest_AssertPass("Call to SDL_GetWindowFlags()");
-        SDLTest_AssertCheck((flags & actualFlags) == flags, "Verify returned value has flags %d set, got: %" SDL_PRIu32, flags, actualFlags);
+        SDLTest_AssertCheck((flags & actualFlags) == flags, "Verify returned value has flags %" SDL_PRIu32 " set, got: %" SDL_PRIu32, flags, actualFlags);
     }
 
     /* Clean up */
@@ -336,7 +336,7 @@ static int video_getClosestDisplayModeCurrentResolution(void *arg)
 
         /* Make calls for each display */
         for (i = 0; displays[i]; ++i) {
-            SDLTest_Log("Testing against display: %" SDL_PRIu32 "", displays[i]);
+            SDLTest_Log("Testing against display: %" SDL_PRIu32, displays[i]);
 
             /* Get first display mode to get a sane resolution; this should always work */
             modes = SDL_GetFullscreenDisplayModes(displays[i], &num_modes);
@@ -385,7 +385,7 @@ static int video_getClosestDisplayModeRandomResolution(void *arg)
 
         /* Make calls for each display */
         for (i = 0; displays[i]; ++i) {
-            SDLTest_Log("Testing against display: %" SDL_PRIu32 "", displays[i]);
+            SDLTest_Log("Testing against display: %" SDL_PRIu32, displays[i]);
 
             for (variation = 0; variation < 16; variation++) {
 
@@ -1682,13 +1682,11 @@ static int video_getSetWindowData(void *arg)
     result = (char *)SDL_GetProperty(SDL_GetWindowProperties(window), NULL, NULL);
     SDLTest_AssertPass("Call to SDL_GetWindowData(name=NULL)");
     SDLTest_AssertCheck(result == NULL, "Validate that result is NULL");
-    checkInvalidParameterError();
 
     /* Get data with empty name */
     result = (char *)SDL_GetProperty(SDL_GetWindowProperties(window), "", NULL);
     SDLTest_AssertPass("Call to SDL_GetWindowData(name='')");
     SDLTest_AssertCheck(result == NULL, "Validate that result is NULL");
-    checkInvalidParameterError();
 
     /* Clean up */
     destroyVideoSuiteTestWindow(window);
@@ -1750,7 +1748,7 @@ static int video_setWindowCenteredOnDisplay(void *arg)
                 int expectedX = 0, expectedY = 0;
                 int currentDisplay;
                 int expectedDisplay;
-                SDL_Rect expectedDisplayRect;
+                SDL_Rect expectedDisplayRect, expectedFullscreenRect;
                 SDL_PropertiesID props;
 
                 /* xVariation is the display we start on */
@@ -1764,12 +1762,12 @@ static int video_setWindowCenteredOnDisplay(void *arg)
                 expectedY = (expectedDisplayRect.y + ((expectedDisplayRect.h - h) / 2));
 
                 props = SDL_CreateProperties();
-                SDL_SetStringProperty(props, "title", title);
-                SDL_SetNumberProperty(props, "x", x);
-                SDL_SetNumberProperty(props, "w", y);
-                SDL_SetNumberProperty(props, "width", w);
-                SDL_SetNumberProperty(props, "height", h);
-                SDL_SetBooleanProperty(props, "borderless", SDL_TRUE);
+                SDL_SetStringProperty(props, SDL_PROP_WINDOW_CREATE_TITLE_STRING, title);
+                SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_X_NUMBER, x);
+                SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_Y_NUMBER, y);
+                SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, w);
+                SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, h);
+                SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_BORDERLESS_BOOLEAN, SDL_TRUE);
                 window = SDL_CreateWindowWithProperties(props);
                 SDL_DestroyProperties(props);
                 SDLTest_AssertPass("Call to SDL_CreateWindow('Title',%d,%d,%d,%d,SHOWN)", x, y, w, h);
@@ -1826,16 +1824,24 @@ static int video_setWindowCenteredOnDisplay(void *arg)
                 SDL_GetWindowSize(window, &currentW, &currentH);
                 SDL_GetWindowPosition(window, &currentX, &currentY);
 
+                /* Get the expected fullscreen rect.
+                 * This needs to be queried after window creation and positioning as some drivers can alter the
+                 * usable bounds based on the window scaling mode.
+                 */
+                result = SDL_GetDisplayBounds(expectedDisplay, &expectedFullscreenRect);
+                SDLTest_AssertPass("SDL_GetDisplayBounds()");
+                SDLTest_AssertCheck(result == 0, "Verify return value; expected: 0, got: %d", result);
+
                 if (!video_driver_is_wayland) {
                     SDLTest_AssertCheck(currentDisplay == expectedDisplay, "Validate display ID (current: %d, expected: %d)", currentDisplay, expectedDisplay);
                 } else {
                     SDLTest_Log("Skipping display ID validation: Wayland driver does not support window positioning");
                 }
-                SDLTest_AssertCheck(currentW == expectedDisplayRect.w, "Validate width (current: %d, expected: %d)", currentW, expectedDisplayRect.w);
-                SDLTest_AssertCheck(currentH == expectedDisplayRect.h, "Validate height (current: %d, expected: %d)", currentH, expectedDisplayRect.h);
+                SDLTest_AssertCheck(currentW == expectedFullscreenRect.w, "Validate width (current: %d, expected: %d)", currentW, expectedFullscreenRect.w);
+                SDLTest_AssertCheck(currentH == expectedFullscreenRect.h, "Validate height (current: %d, expected: %d)", currentH, expectedFullscreenRect.h);
                 if (!video_driver_is_wayland) {
-                    SDLTest_AssertCheck(currentX == expectedDisplayRect.x, "Validate x (current: %d, expected: %d)", currentX, expectedDisplayRect.x);
-                    SDLTest_AssertCheck(currentY == expectedDisplayRect.y, "Validate y (current: %d, expected: %d)", currentY, expectedDisplayRect.y);
+                    SDLTest_AssertCheck(currentX == expectedFullscreenRect.x, "Validate x (current: %d, expected: %d)", currentX, expectedFullscreenRect.x);
+                    SDLTest_AssertCheck(currentY == expectedFullscreenRect.y, "Validate y (current: %d, expected: %d)", currentY, expectedFullscreenRect.y);
                 } else {
                     SDLTest_Log("Skipping window position validation: Wayland driver does not support window positioning");
                 }
@@ -1961,7 +1967,7 @@ static int video_getSetWindowState(void *arg)
 
     SDL_GetWindowSize(window, &windowedW, &windowedH);
     SDLTest_AssertPass("SDL_GetWindowSize()");
-    
+
     SDL_GetWindowPosition(window, &windowedX, &windowedY);
     SDLTest_AssertPass("SDL_GetWindowPosition()");
 

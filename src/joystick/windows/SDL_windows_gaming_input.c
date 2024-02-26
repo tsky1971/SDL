@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -58,9 +58,10 @@ typedef struct WindowsGamingInputControllerState
     char *name;
     SDL_JoystickGUID guid;
     SDL_JoystickType type;
+    int steam_virtual_gamepad_slot;
 } WindowsGamingInputControllerState;
 
-typedef HRESULT(WINAPI *CoIncrementMTAUsage_t)(PVOID *pCookie);
+typedef HRESULT(WINAPI *CoIncrementMTAUsage_t)(CO_MTA_USAGE_COOKIE *pCookie);
 typedef HRESULT(WINAPI *RoGetActivationFactory_t)(HSTRING activatableClassId, REFIID iid, void **factory);
 typedef HRESULT(WINAPI *WindowsCreateStringReference_t)(PCWSTR sourceString, UINT32 length, HSTRING_HEADER *hstringHeader, HSTRING *string);
 typedef HRESULT(WINAPI *WindowsDeleteString_t)(HSTRING string);
@@ -105,7 +106,6 @@ DEFINE_GUID(IID___x_ABI_CWindows_CGaming_CInput_CIRawGameController2, 0x43c0c035
 DEFINE_GUID(IID___x_ABI_CWindows_CGaming_CInput_CIRawGameControllerStatics, 0xeb8d0792, 0xe95a, 0x4b19, 0xaf, 0xc7, 0x0a, 0x59, 0xf8, 0xbf, 0x75, 0x9e);
 
 extern SDL_bool SDL_XINPUT_Enabled(void);
-extern SDL_bool SDL_DINPUT_JoystickPresent(Uint16 vendor, Uint16 product, Uint16 version);
 
 
 static SDL_bool SDL_IsXInputDevice(Uint16 vendor, Uint16 product)
@@ -356,6 +356,34 @@ static ULONG STDMETHODCALLTYPE IEventHandler_CRawGameControllerVtbl_Release(__FI
     return rc;
 }
 
+static int GetSteamVirtualGamepadSlot(__x_ABI_CWindows_CGaming_CInput_CIRawGameController *controller, Uint16 vendor_id, Uint16 product_id)
+{
+    int slot = -1;
+
+    if (vendor_id == USB_VENDOR_VALVE &&
+        product_id == USB_PRODUCT_STEAM_VIRTUAL_GAMEPAD) {
+        __x_ABI_CWindows_CGaming_CInput_CIRawGameController2 *controller2 = NULL;
+        HRESULT hr = __x_ABI_CWindows_CGaming_CInput_CIRawGameController_QueryInterface(controller, &IID___x_ABI_CWindows_CGaming_CInput_CIRawGameController2, (void **)&controller2);
+        if (SUCCEEDED(hr)) {
+            HSTRING hString;
+            hr = __x_ABI_CWindows_CGaming_CInput_CIRawGameController2_get_NonRoamableId(controller2, &hString);
+            if (SUCCEEDED(hr)) {
+                PCWSTR string = wgi.WindowsGetStringRawBuffer(hString, NULL);
+                if (string) {
+                    char *id = WIN_StringToUTF8W(string);
+                    if (id) {
+                        (void)SDL_sscanf(id, "{wgi/nrid/:steam-%*X&%*X&%*X#%d#%*u}", &slot);
+                        SDL_free(id);
+                    }
+                }
+                wgi.WindowsDeleteString(hString);
+            }
+            __x_ABI_CWindows_CGaming_CInput_CIRawGameController2_Release(controller2);
+        }
+    }
+    return slot;
+}
+
 static HRESULT STDMETHODCALLTYPE IEventHandler_CRawGameControllerVtbl_InvokeAdded(__FIEventHandler_1_Windows__CGaming__CInput__CRawGameController *This, IInspectable *sender, __x_ABI_CWindows_CGaming_CInput_CIRawGameController *e)
 {
     HRESULT hr;
@@ -385,6 +413,23 @@ static HRESULT STDMETHODCALLTYPE IEventHandler_CRawGameControllerVtbl_InvokeAdde
         __x_ABI_CWindows_CGaming_CInput_CIRawGameController_get_HardwareVendorId(controller, &vendor);
         __x_ABI_CWindows_CGaming_CInput_CIRawGameController_get_HardwareProductId(controller, &product);
 
+        hr = __x_ABI_CWindows_CGaming_CInput_CIRawGameController_QueryInterface(controller, &IID___x_ABI_CWindows_CGaming_CInput_CIGameController, (void **)&game_controller);
+        if (SUCCEEDED(hr)) {
+            boolean wireless = 0;
+            hr = __x_ABI_CWindows_CGaming_CInput_CIGameController_get_IsWireless(game_controller, &wireless);
+            if (SUCCEEDED(hr) && wireless) {
+                bus = SDL_HARDWARE_BUS_BLUETOOTH;
+
+                /* Fixup for Wireless Xbox 360 Controller */
+                if (product == 0) {
+                    vendor = USB_VENDOR_MICROSOFT;
+                    product = USB_PRODUCT_XBOX360_XUSB_CONTROLLER;
+                }
+            }
+
+            __x_ABI_CWindows_CGaming_CInput_CIGameController_Release(game_controller);
+        }
+
         hr = __x_ABI_CWindows_CGaming_CInput_CIRawGameController_QueryInterface(controller, &IID___x_ABI_CWindows_CGaming_CInput_CIRawGameController2, (void **)&controller2);
         if (SUCCEEDED(hr)) {
             HSTRING hString;
@@ -402,42 +447,21 @@ static HRESULT STDMETHODCALLTYPE IEventHandler_CRawGameControllerVtbl_InvokeAdde
             name = SDL_strdup("");
         }
 
-#ifdef SDL_JOYSTICK_HIDAPI
-        if (!ignore_joystick && HIDAPI_IsDevicePresent(vendor, product, version, name)) {
-            ignore_joystick = SDL_TRUE;
-        }
-#endif
-
-#ifdef SDL_JOYSTICK_RAWINPUT
-        if (!ignore_joystick && RAWINPUT_IsDevicePresent(vendor, product, version, name)) {
-            ignore_joystick = SDL_TRUE;
-        }
-#endif
-
-        if (!ignore_joystick && SDL_DINPUT_JoystickPresent(vendor, product, version)) {
+        if (!ignore_joystick && SDL_JoystickHandledByAnotherDriver(&SDL_WGI_JoystickDriver, vendor, product, version, name)) {
             ignore_joystick = SDL_TRUE;
         }
 
         if (!ignore_joystick && SDL_IsXInputDevice(vendor, product)) {
+            /* This hasn't been detected by the RAWINPUT driver yet, but it will be picked up later. */
             ignore_joystick = SDL_TRUE;
         }
 
         if (!ignore_joystick) {
-            hr = __x_ABI_CWindows_CGaming_CInput_CIRawGameController_QueryInterface(controller, &IID___x_ABI_CWindows_CGaming_CInput_CIGameController, (void **)&game_controller);
-            if (SUCCEEDED(hr)) {
-                boolean wireless;
-
+            if (game_controller) {
                 type = GetGameControllerType(game_controller);
-
-                hr = __x_ABI_CWindows_CGaming_CInput_CIGameController_get_IsWireless(game_controller, &wireless);
-                if (SUCCEEDED(hr) && wireless) {
-                    bus = SDL_HARDWARE_BUS_BLUETOOTH;
-                }
-
-                __x_ABI_CWindows_CGaming_CInput_CIGameController_Release(game_controller);
             }
 
-            guid = SDL_CreateJoystickGUID(bus, vendor, product, version, name, 'w', (Uint8)type);
+            guid = SDL_CreateJoystickGUID(bus, vendor, product, version, NULL, name, 'w', (Uint8)type);
 
             if (SDL_ShouldIgnoreJoystick(name, guid)) {
                 ignore_joystick = SDL_TRUE;
@@ -457,6 +481,7 @@ static HRESULT STDMETHODCALLTYPE IEventHandler_CRawGameControllerVtbl_InvokeAdde
                 state->name = name;
                 state->guid = guid;
                 state->type = type;
+                state->steam_virtual_gamepad_slot = GetSteamVirtualGamepadSlot(controller, vendor, product);
 
                 __x_ABI_CWindows_CGaming_CInput_CIRawGameController_AddRef(controller);
 
@@ -566,7 +591,7 @@ static int WGI_JoystickInit(void)
         return SDL_SetError("RoInitialize() failed");
     }
 
-#ifdef __WINRT__
+#ifdef SDL_PLATFORM_WINRT
     wgi.CoIncrementMTAUsage = CoIncrementMTAUsage;
     wgi.RoGetActivationFactory = RoGetActivationFactory;
     wgi.WindowsCreateStringReference = WindowsCreateStringReference;
@@ -580,16 +605,16 @@ static int WGI_JoystickInit(void)
     RESOLVE(WindowsDeleteString);
     RESOLVE(WindowsGetStringRawBuffer);
 #undef RESOLVE
-#endif /* __WINRT__ */
+#endif /* SDL_PLATFORM_WINRT */
 
-#ifndef __WINRT__
+#ifndef SDL_PLATFORM_WINRT
     {
         /* There seems to be a bug in Windows where a dependency of WGI can be unloaded from memory prior to WGI itself.
          * This results in Windows_Gaming_Input!GameController::~GameController() invoking an unloaded DLL and crashing.
          * As a workaround, we will keep a reference to the MTA to prevent COM from unloading DLLs later.
          * See https://github.com/libsdl-org/SDL/issues/5552 for more details.
          */
-        static PVOID cookie = NULL;
+        static CO_MTA_USAGE_COOKIE cookie = NULL;
         if (!cookie) {
             hr = wgi.CoIncrementMTAUsage(&cookie);
             if (FAILED(hr)) {
@@ -625,7 +650,7 @@ static int WGI_JoystickInit(void)
 
                     hr = __FIVectorView_1_Windows__CGaming__CInput__CRawGameController_GetAt(controllers, i, &controller);
                     if (SUCCEEDED(hr) && controller) {
-                        __FIEventHandler_1_Windows__CGaming__CInput__CRawGameController_Invoke(&controller_added.iface, NULL, controller);
+                        IEventHandler_CRawGameControllerVtbl_InvokeAdded(&controller_added.iface, NULL, controller);
                         __x_ABI_CWindows_CGaming_CInput_CIRawGameController_Release(controller);
                     }
                 }
@@ -647,6 +672,12 @@ static void WGI_JoystickDetect(void)
 {
 }
 
+static SDL_bool WGI_JoystickIsDevicePresent(Uint16 vendor_id, Uint16 product_id, Uint16 version, const char *name)
+{
+    /* We don't override any other drivers */
+    return SDL_FALSE;
+}
+
 static const char *WGI_JoystickGetDeviceName(int device_index)
 {
     return wgi.controllers[device_index].name;
@@ -655,6 +686,11 @@ static const char *WGI_JoystickGetDeviceName(int device_index)
 static const char *WGI_JoystickGetDevicePath(int device_index)
 {
     return NULL;
+}
+
+static int WGI_JoystickGetDeviceSteamVirtualGamepadSlot(int device_index)
+{
+    return wgi.controllers[device_index].steam_virtual_gamepad_slot;
 }
 
 static int WGI_JoystickGetDevicePlayerIndex(int device_index)
@@ -707,6 +743,11 @@ static int WGI_JoystickOpen(SDL_Joystick *joystick, int device_index)
     __x_ABI_CWindows_CGaming_CInput_CIRawGameController_get_AxisCount(hwdata->controller, &joystick->naxes);
     __x_ABI_CWindows_CGaming_CInput_CIRawGameController_get_SwitchCount(hwdata->controller, &joystick->nhats);
 
+    if (hwdata->gamepad) {
+        /* FIXME: Can WGI even tell us if trigger rumble is supported? */
+        SDL_SetBooleanProperty(SDL_GetJoystickProperties(joystick), SDL_PROP_JOYSTICK_CAP_RUMBLE_BOOLEAN, SDL_TRUE);
+        SDL_SetBooleanProperty(SDL_GetJoystickProperties(joystick), SDL_PROP_JOYSTICK_CAP_TRIGGER_RUMBLE_BOOLEAN, SDL_TRUE);
+    }
     return 0;
 }
 
@@ -749,18 +790,6 @@ static int WGI_JoystickRumbleTriggers(SDL_Joystick *joystick, Uint16 left_rumble
         }
     } else {
         return SDL_Unsupported();
-    }
-}
-
-static Uint32 WGI_JoystickGetCapabilities(SDL_Joystick *joystick)
-{
-    struct joystick_hwdata *hwdata = joystick->hwdata;
-
-    if (hwdata->gamepad) {
-        /* FIXME: Can WGI even tell us if trigger rumble is supported? */
-        return SDL_JOYCAP_RUMBLE | SDL_JOYCAP_RUMBLE_TRIGGERS;
-    } else {
-        return 0;
     }
 }
 
@@ -927,7 +956,7 @@ static void WGI_JoystickQuit(void)
 {
     if (wgi.controller_statics) {
         while (wgi.controller_count > 0) {
-            __FIEventHandler_1_Windows__CGaming__CInput__CRawGameController_Invoke(&controller_removed.iface, NULL, wgi.controllers[wgi.controller_count - 1].controller);
+            IEventHandler_CRawGameControllerVtbl_InvokeRemoved(&controller_removed.iface, NULL, wgi.controllers[wgi.controller_count - 1].controller);
         }
         if (wgi.controllers) {
             SDL_free(wgi.controllers);
@@ -974,8 +1003,10 @@ SDL_JoystickDriver SDL_WGI_JoystickDriver = {
     WGI_JoystickInit,
     WGI_JoystickGetCount,
     WGI_JoystickDetect,
+    WGI_JoystickIsDevicePresent,
     WGI_JoystickGetDeviceName,
     WGI_JoystickGetDevicePath,
+    WGI_JoystickGetDeviceSteamVirtualGamepadSlot,
     WGI_JoystickGetDevicePlayerIndex,
     WGI_JoystickSetDevicePlayerIndex,
     WGI_JoystickGetDeviceGUID,
@@ -983,7 +1014,6 @@ SDL_JoystickDriver SDL_WGI_JoystickDriver = {
     WGI_JoystickOpen,
     WGI_JoystickRumble,
     WGI_JoystickRumbleTriggers,
-    WGI_JoystickGetCapabilities,
     WGI_JoystickSetLED,
     WGI_JoystickSendEffect,
     WGI_JoystickSetSensorsEnabled,

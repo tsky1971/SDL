@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -52,6 +52,8 @@ int main(int argc, char *argv[])
     SDLTest_RandomContext rndctx;
     SDLTest_CommonState *state;
     int seed_seen = 0;
+
+    SDL_zero(rndctx);
 
     /* Initialize test framework */
     state = SDLTest_CommonCreateState(argv, 0);

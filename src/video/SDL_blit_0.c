@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -625,7 +625,7 @@ SDL_FORCE_INLINE void BlitBtoNAlpha(SDL_BlitInfo *info, const Uint32 srcbpp)
     const unsigned A = info->a;
 
     /* Set up some basic variables */
-    dstbpp = dstfmt->BytesPerPixel;
+    dstbpp = dstfmt->bytes_per_pixel;
     if (srcbpp == 4)
         srcskip += width - (width + 1) / 2;
     else if (srcbpp == 2)
@@ -703,7 +703,7 @@ SDL_FORCE_INLINE void BlitBtoNAlphaKey(SDL_BlitInfo *info, const Uint32 srcbpp)
     Uint32 ckey = info->colorkey;
 
     /* Set up some basic variables */
-    dstbpp = dstfmt->BytesPerPixel;
+    dstbpp = dstfmt->bytes_per_pixel;
     if (srcbpp == 4)
         srcskip += width - (width + 1) / 2;
     else if (srcbpp == 2)
@@ -920,10 +920,10 @@ SDL_BlitFunc SDL_CalculateBlit0(SDL_Surface *surface)
 {
     int which;
 
-    if (surface->map->dst->format->BitsPerPixel < 8) {
+    if (surface->map->dst->format->bits_per_pixel < 8) {
         which = 0;
     } else {
-        which = surface->map->dst->format->BytesPerPixel;
+        which = surface->map->dst->format->bytes_per_pixel;
     }
 
     if (SDL_PIXELTYPE(surface->format->format) == SDL_PIXELTYPE_INDEX1) {

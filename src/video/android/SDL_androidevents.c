@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -96,11 +96,9 @@ void Android_PumpEvents_Blocking(SDL_VideoDevice *_this)
     SDL_VideoData *videodata = _this->driverdata;
 
     if (videodata->isPaused) {
-        SDL_bool isContextExternal = SDL_IsVideoContextExternal();
-
 #ifdef SDL_VIDEO_OPENGL_EGL
         /* Make sure this is the last thing we do before pausing */
-        if (!isContextExternal) {
+        if (!Android_Window->external_graphics_context) {
             SDL_LockMutex(Android_ActivityMutex);
             android_egl_context_backup(Android_Window);
             SDL_UnlockMutex(Android_ActivityMutex);
@@ -124,7 +122,7 @@ void Android_PumpEvents_Blocking(SDL_VideoDevice *_this)
 
             /* Restore the GL Context from here, as this operation is thread dependent */
 #ifdef SDL_VIDEO_OPENGL_EGL
-            if (!isContextExternal && !SDL_HasEvent(SDL_EVENT_QUIT)) {
+            if (!Android_Window->external_graphics_context && !SDL_HasEvent(SDL_EVENT_QUIT)) {
                 SDL_LockMutex(Android_ActivityMutex);
                 android_egl_context_restore(Android_Window);
                 SDL_UnlockMutex(Android_ActivityMutex);
@@ -132,8 +130,9 @@ void Android_PumpEvents_Blocking(SDL_VideoDevice *_this)
 #endif
 
             /* Make sure SW Keyboard is restored when an app becomes foreground */
-            if (SDL_TextInputActive()) {
-                Android_StartTextInput(_this); /* Only showTextInput */
+            if (SDL_TextInputActive() &&
+                SDL_GetHintBoolean(SDL_HINT_ENABLE_SCREEN_KEYBOARD, SDL_TRUE)) {
+                Android_ShowScreenKeyboard(_this, Android_Window); /* Only showTextInput */
             }
 
             SDL_SendAppEvent(SDL_EVENT_DID_ENTER_FOREGROUND);
@@ -169,11 +168,10 @@ void Android_PumpEvents_NonBlocking(SDL_VideoDevice *_this)
 
     if (videodata->isPaused) {
 
-        SDL_bool isContextExternal = SDL_IsVideoContextExternal();
         if (backup_context) {
 
 #ifdef SDL_VIDEO_OPENGL_EGL
-            if (!isContextExternal) {
+            if (!Android_Window->external_graphics_context) {
                 SDL_LockMutex(Android_ActivityMutex);
                 android_egl_context_backup(Android_Window);
                 SDL_UnlockMutex(Android_ActivityMutex);
@@ -204,7 +202,7 @@ void Android_PumpEvents_NonBlocking(SDL_VideoDevice *_this)
 
 #ifdef SDL_VIDEO_OPENGL_EGL
             /* Restore the GL Context from here, as this operation is thread dependent */
-            if (!isContextExternal && !SDL_HasEvent(SDL_EVENT_QUIT)) {
+            if (!Android_Window->external_graphics_context && !SDL_HasEvent(SDL_EVENT_QUIT)) {
                 SDL_LockMutex(Android_ActivityMutex);
                 android_egl_context_restore(Android_Window);
                 SDL_UnlockMutex(Android_ActivityMutex);
@@ -212,8 +210,9 @@ void Android_PumpEvents_NonBlocking(SDL_VideoDevice *_this)
 #endif
 
             /* Make sure SW Keyboard is restored when an app becomes foreground */
-            if (SDL_TextInputActive()) {
-                Android_StartTextInput(_this); /* Only showTextInput */
+            if (SDL_TextInputActive() &&
+                SDL_GetHintBoolean(SDL_HINT_ENABLE_SCREEN_KEYBOARD, SDL_TRUE)) {
+                Android_ShowScreenKeyboard(_this, Android_Window); /* Only showTextInput */
             }
 
             SDL_SendAppEvent(SDL_EVENT_DID_ENTER_FOREGROUND);

@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -454,7 +454,7 @@ static void CheckMotionPlusConnection(SDL_DriverWii_Context *ctx)
 
 static void ActivateMotionPlusWithMode(SDL_DriverWii_Context *ctx, Uint8 mode)
 {
-#ifdef __LINUX__
+#ifdef SDL_PLATFORM_LINUX
     /* Linux drivers maintain a lot of state around the Motion Plus
      * extension, so don't mess with it here.
      */
@@ -551,7 +551,7 @@ static EWiiInputReportIDs GetButtonPacketType(SDL_DriverWii_Context *ctx)
 static SDL_bool RequestButtonPacketType(SDL_DriverWii_Context *ctx, EWiiInputReportIDs type)
 {
     Uint8 data[3];
-    Uint8 tt = ctx->m_bRumbleActive;
+    Uint8 tt = (Uint8)ctx->m_bRumbleActive;
 
     /* Continuous reporting off, tt & 4 == 0 */
     if (ENABLE_CONTINUOUS_REPORTING) {
@@ -615,7 +615,7 @@ static void UpdateSlotLED(SDL_DriverWii_Context *ctx)
     Uint8 data[2];
 
     /* The lowest bit needs to have the rumble status */
-    leds = ctx->m_bRumbleActive;
+    leds = (Uint8)ctx->m_bRumbleActive;
 
     if (ctx->m_bPlayerLights) {
         /* Use the same LED codes as Smash 8-player for 5-7 */
@@ -809,7 +809,7 @@ static int HIDAPI_DriverWii_RumbleJoystick(SDL_HIDAPI_Device *device, SDL_Joysti
         Uint8 data[2];
 
         data[0] = k_eWiiOutputReportIDs_Rumble;
-        data[1] = active;
+        data[1] = (Uint8)active;
         WriteOutput(ctx, data, sizeof(data), SDL_FALSE);
 
         ctx->m_bRumbleActive = active;
@@ -824,7 +824,7 @@ static int HIDAPI_DriverWii_RumbleJoystickTriggers(SDL_HIDAPI_Device *device, SD
 
 static Uint32 HIDAPI_DriverWii_GetJoystickCapabilities(SDL_HIDAPI_Device *device, SDL_Joystick *joystick)
 {
-    return SDL_JOYCAP_RUMBLE;
+    return SDL_JOYSTICK_CAP_RUMBLE;
 }
 
 static int HIDAPI_DriverWii_SetJoystickLED(SDL_HIDAPI_Device *device, SDL_Joystick *joystick, Uint8 red, Uint8 green, Uint8 blue)
@@ -1541,7 +1541,7 @@ static SDL_bool HIDAPI_DriverWii_UpdateDevice(SDL_HIDAPI_Device *device)
                 Uint8 data[2];
 
                 data[0] = k_eWiiOutputReportIDs_StatusRequest;
-                data[1] = ctx->m_bRumbleActive;
+                data[1] = (Uint8)ctx->m_bRumbleActive;
                 WriteOutput(ctx, data, sizeof(data), SDL_FALSE);
 
                 ctx->m_ulLastStatus = now;

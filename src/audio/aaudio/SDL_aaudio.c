@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -381,6 +381,12 @@ static int BuildAAudioStream(SDL_AudioDevice *device)
     return 0;
 }
 
+// !!! FIXME: make this non-blocking!
+static void SDLCALL AndroidRequestPermissionBlockingCallback(void *userdata, const char *permission, SDL_bool granted)
+{
+    SDL_AtomicSet((SDL_AtomicInt *) userdata, granted ? 1 : -1);
+}
+
 static int AAUDIO_OpenDevice(SDL_AudioDevice *device)
 {
 #if ALLOW_MULTIPLE_ANDROID_AUDIO_DEVICES
@@ -390,7 +396,18 @@ static int AAUDIO_OpenDevice(SDL_AudioDevice *device)
     LOGI(__func__);
 
     if (device->iscapture) {
-        if (!Android_JNI_RequestPermission("android.permission.RECORD_AUDIO")) {
+        // !!! FIXME: make this non-blocking!
+        SDL_AtomicInt permission_response;
+        SDL_AtomicSet(&permission_response, 0);
+        if (SDL_AndroidRequestPermission("android.permission.RECORD_AUDIO", AndroidRequestPermissionBlockingCallback, &permission_response) == -1) {
+            return -1;
+        }
+
+        while (SDL_AtomicGet(&permission_response) == 0) {
+            SDL_Delay(10);
+        }
+
+        if (SDL_AtomicGet(&permission_response) < 0) {
             LOGI("This app doesn't have RECORD_AUDIO permission");
             return SDL_SetError("This app doesn't have RECORD_AUDIO permission");
         }

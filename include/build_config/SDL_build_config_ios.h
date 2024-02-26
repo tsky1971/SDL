@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -44,6 +44,7 @@
 #define HAVE_WCHAR_H 1
 
 /* C library functions */
+#define HAVE_LIBC   1
 #define HAVE_DLOPEN 1
 #define HAVE_MALLOC 1
 #define HAVE_CALLOC 1
@@ -148,7 +149,7 @@
 #define SDL_JOYSTICK_MFI 1
 #define SDL_JOYSTICK_VIRTUAL    1
 
-#ifdef __TVOS__
+#ifdef SDL_PLATFORM_TVOS
 #define SDL_SENSOR_DUMMY    1
 #else
 /* Enable the CoreMotion sensor driver */
@@ -170,7 +171,7 @@
 #define SDL_VIDEO_DRIVER_DUMMY  1
 
 /* Enable OpenGL ES */
-#if !TARGET_OS_MACCATALYST
+#if !TARGET_OS_MACCATALYST && !TARGET_OS_VISION
 #define SDL_VIDEO_OPENGL_ES2 1
 #define SDL_VIDEO_OPENGL_ES 1
 #define SDL_VIDEO_RENDER_OGL_ES2    1
@@ -197,8 +198,6 @@
 #define SDL_VIDEO_METAL 1
 #endif
 
-#define HAVE_COREMEDIA  1
-
 /* Enable system power support */
 #define SDL_POWER_UIKIT 1
 
@@ -210,5 +209,12 @@
 
 /* enable filesystem support */
 #define SDL_FILESYSTEM_COCOA   1
+
+/* enable camera support */
+#ifndef SDL_PLATFORM_TVOS
+#define SDL_CAMERA_DRIVER_COREMEDIA 1
+#endif
+
+#define SDL_CAMERA_DRIVER_DUMMY 1
 
 #endif /* SDL_build_config_ios_h_ */

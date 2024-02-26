@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -57,7 +57,7 @@ static BOOL UIKit_EventPumpEnabled = YES;
         [notificationCenter addObserver:self selector:@selector(applicationWillEnterForeground) name:UIApplicationWillEnterForegroundNotification object:nil];
         [notificationCenter addObserver:self selector:@selector(applicationWillTerminate) name:UIApplicationWillTerminateNotification object:nil];
         [notificationCenter addObserver:self selector:@selector(applicationDidReceiveMemoryWarning) name:UIApplicationDidReceiveMemoryWarningNotification object:nil];
-#if !TARGET_OS_TV && !TARGET_OS_XR
+#if !defined(SDL_PLATFORM_TVOS) && !defined(SDL_PLATFORM_VISIONOS)
         [notificationCenter addObserver:self
                                selector:@selector(applicationDidChangeStatusBarOrientation)
                                    name:UIApplicationDidChangeStatusBarOrientationNotification
@@ -99,7 +99,7 @@ static BOOL UIKit_EventPumpEnabled = YES;
     SDL_OnApplicationDidReceiveMemoryWarning();
 }
 
-#if !TARGET_OS_TV && !TARGET_OS_XR
+#if !defined(SDL_PLATFORM_TVOS) && !defined(SDL_PLATFORM_VISIONOS)
 - (void)applicationDidChangeStatusBarOrientation
 {
     SDL_OnApplicationDidChangeStatusBarOrientation();

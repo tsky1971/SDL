@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -81,7 +81,7 @@ int X11_XfixesIsInitialized(void)
 
 int X11_GetXFixesSelectionNotifyEvent()
 {
-	return xfixes_selection_notify_event;
+    return xfixes_selection_notify_event;
 }
 
 void X11_SetWindowMouseRect(SDL_VideoDevice *_this, SDL_Window *window)

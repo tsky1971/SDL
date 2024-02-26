@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -76,7 +76,7 @@
 #cmakedefine HAVE_CALLOC 1
 #cmakedefine HAVE_REALLOC 1
 #cmakedefine HAVE_FREE 1
-#ifndef __WIN32__ /* Don't use C runtime versions of these on Windows */
+#ifndef SDL_PLATFORM_WIN32 /* Don't use C runtime versions of these on Windows */
 #cmakedefine HAVE_GETENV 1
 #cmakedefine HAVE_SETENV 1
 #cmakedefine HAVE_PUTENV 1
@@ -246,34 +246,22 @@
 
 #cmakedefine USE_POSIX_SPAWN @USE_POSIX_SPAWN@
 
-#cmakedefine HAVE_COREMEDIA
-
 /* SDL internal assertion support */
 #if @SDL_DEFAULT_ASSERT_LEVEL_CONFIGURED@
 #cmakedefine SDL_DEFAULT_ASSERT_LEVEL @SDL_DEFAULT_ASSERT_LEVEL@
 #endif
 
-#cmakedefine SDL_VIDEO_CAPTURE
-
-/* Allow disabling of core subsystems */
-#cmakedefine SDL_ATOMIC_DISABLED @SDL_ATOMIC_DISABLED@
+/* Allow disabling of major subsystems */
 #cmakedefine SDL_AUDIO_DISABLED @SDL_AUDIO_DISABLED@
-#cmakedefine SDL_CPUINFO_DISABLED @SDL_CPUINFO_DISABLED@
-#cmakedefine SDL_EVENTS_DISABLED @SDL_EVENTS_DISABLED@
-#cmakedefine SDL_FILE_DISABLED @SDL_FILE_DISABLED@
 #cmakedefine SDL_JOYSTICK_DISABLED @SDL_JOYSTICK_DISABLED@
 #cmakedefine SDL_HAPTIC_DISABLED @SDL_HAPTIC_DISABLED@
 #cmakedefine SDL_HIDAPI_DISABLED @SDL_HIDAPI_DISABLED@
 #cmakedefine SDL_SENSOR_DISABLED @SDL_SENSOR_DISABLED@
-#cmakedefine SDL_LOADSO_DISABLED @SDL_LOADSO_DISABLED@
 #cmakedefine SDL_RENDER_DISABLED @SDL_RENDER_DISABLED@
 #cmakedefine SDL_THREADS_DISABLED @SDL_THREADS_DISABLED@
-#cmakedefine SDL_TIMERS_DISABLED @SDL_TIMERS_DISABLED@
 #cmakedefine SDL_VIDEO_DISABLED @SDL_VIDEO_DISABLED@
 #cmakedefine SDL_POWER_DISABLED @SDL_POWER_DISABLED@
-#cmakedefine SDL_FILESYSTEM_DISABLED @SDL_FILESYSTEM_DISABLED@
-#cmakedefine SDL_LOCALE_DISABLED @SDL_LOCALE_DISABLED@
-#cmakedefine SDL_MISC_DISABLED @SDL_MISC_DISABLED@
+#cmakedefine SDL_CAMERA_DISABLED @SDL_CAMERA_DISABLED@
 
 /* Enable various audio drivers */
 #cmakedefine SDL_AUDIO_DRIVER_ALSA @SDL_AUDIO_DRIVER_ALSA@
@@ -332,7 +320,6 @@
 #cmakedefine SDL_HAPTIC_LINUX @SDL_HAPTIC_LINUX@
 #cmakedefine SDL_HAPTIC_IOKIT @SDL_HAPTIC_IOKIT@
 #cmakedefine SDL_HAPTIC_DINPUT @SDL_HAPTIC_DINPUT@
-#cmakedefine SDL_HAPTIC_XINPUT @SDL_HAPTIC_XINPUT@
 #cmakedefine SDL_HAPTIC_ANDROID @SDL_HAPTIC_ANDROID@
 #cmakedefine SDL_LIBUSB_DYNAMIC @SDL_LIBUSB_DYNAMIC@
 #cmakedefine SDL_UDEV_DYNAMIC @SDL_UDEV_DYNAMIC@
@@ -425,6 +412,7 @@
 #cmakedefine SDL_VIDEO_RENDER_D3D11 @SDL_VIDEO_RENDER_D3D11@
 #cmakedefine SDL_VIDEO_RENDER_D3D12 @SDL_VIDEO_RENDER_D3D12@
 #cmakedefine SDL_VIDEO_RENDER_METAL @SDL_VIDEO_RENDER_METAL@
+#cmakedefine SDL_VIDEO_RENDER_VULKAN @SDL_VIDEO_RENDER_VULKAN@
 #cmakedefine SDL_VIDEO_RENDER_OGL @SDL_VIDEO_RENDER_OGL@
 #cmakedefine SDL_VIDEO_RENDER_OGL_ES2 @SDL_VIDEO_RENDER_OGL_ES2@
 #cmakedefine SDL_VIDEO_RENDER_PS2 @SDL_VIDEO_RENDER_PS2@
@@ -477,6 +465,15 @@
 #cmakedefine SDL_FILESYSTEM_PS2 @SDL_FILESYSTEM_PS2@
 #cmakedefine SDL_FILESYSTEM_N3DS @SDL_FILESYSTEM_N3DS@
 
+/* Enable camera subsystem */
+#cmakedefine SDL_CAMERA_DRIVER_DUMMY @SDL_CAMERA_DRIVER_DUMMY@
+/* !!! FIXME: for later cmakedefine SDL_CAMERA_DRIVER_DISK @SDL_CAMERA_DRIVER_DISK@ */
+#cmakedefine SDL_CAMERA_DRIVER_V4L2 @SDL_CAMERA_DRIVER_V4L2@
+#cmakedefine SDL_CAMERA_DRIVER_COREMEDIA @SDL_CAMERA_DRIVER_COREMEDIA@
+#cmakedefine SDL_CAMERA_DRIVER_ANDROID @SDL_CAMERA_DRIVER_ANDROID@
+#cmakedefine SDL_CAMERA_DRIVER_EMSCRIPTEN @SDL_CAMERA_DRIVER_EMSCRIPTEN@
+#cmakedefine SDL_CAMERA_DRIVER_MEDIAFOUNDATION @SDL_CAMERA_DRIVER_MEDIAFOUNDATION@
+
 /* Enable misc subsystem */
 #cmakedefine SDL_MISC_DUMMY @SDL_MISC_DUMMY@
 
@@ -502,7 +499,10 @@
 #cmakedefine SDL_VIDEO_VITA_PVR @SDL_VIDEO_VITA_PVR@
 #cmakedefine SDL_VIDEO_VITA_PVR_OGL @SDL_VIDEO_VITA_PVR_OGL@
 
-#cmakedefine SDL_HAVE_LIBDECOR_VER_0_2_0 @SDL_HAVE_LIBDECOR_VER_0_2_0@
+/* Libdecor version info */
+#define SDL_LIBDECOR_VERSION_MAJOR @SDL_LIBDECOR_VERSION_MAJOR@
+#define SDL_LIBDECOR_VERSION_MINOR @SDL_LIBDECOR_VERSION_MINOR@
+#define SDL_LIBDECOR_VERSION_PATCH @SDL_LIBDECOR_VERSION_PATCH@
 
 #if !defined(HAVE_STDINT_H) && !defined(_STDINT_H_)
 /* Most everything except Visual Studio 2008 and earlier has stdint.h now */

@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -20,12 +20,13 @@
 */
 #include "SDL_internal.h"
 
-#if defined(__WIN32__) || defined(__GDK__) || defined(__WINRT__)
+#if defined(SDL_PLATFORM_WIN32) || defined(SDL_PLATFORM_GDK) || defined(SDL_PLATFORM_WINRT)
 #include "../core/windows/SDL_windows.h"
 #endif
 
 #ifdef HAVE_STDIO_H
 #include <stdio.h>
+#include <sys/stat.h>
 #endif
 #ifdef HAVE_LIMITS_H
 #include <limits.h>
@@ -35,19 +36,19 @@
    data sources.  It can easily be extended to files, memory, etc.
 */
 
-#ifdef __APPLE__
+#ifdef SDL_PLATFORM_APPLE
 #include "cocoa/SDL_rwopsbundlesupport.h"
-#endif /* __APPLE__ */
+#endif /* SDL_PLATFORM_APPLE */
 
-#ifdef __3DS__
+#ifdef SDL_PLATFORM_3DS
 #include "n3ds/SDL_rwopsromfs.h"
-#endif /* __3DS__ */
+#endif /* SDL_PLATFORM_3DS */
 
-#ifdef __ANDROID__
+#ifdef SDL_PLATFORM_ANDROID
 #include "../core/android/SDL_android.h"
 #endif
 
-#if defined(__WIN32__) || defined(__GDK__) || defined(__WINRT__)
+#if defined(SDL_PLATFORM_WIN32) || defined(SDL_PLATFORM_GDK) || defined(SDL_PLATFORM_WINRT)
 
 /* Functions to read/write Win32 API file pointers */
 #ifndef INVALID_SET_FILE_POINTER
@@ -58,7 +59,7 @@
 
 static int SDLCALL windows_file_open(SDL_RWops *context, const char *filename, const char *mode)
 {
-#if !defined(__XBOXONE__) && !defined(__XBOXSERIES__) && !defined(__WINRT__)
+#if !defined(SDL_PLATFORM_XBOXONE) && !defined(SDL_PLATFORM_XBOXSERIES) && !defined(SDL_PLATFORM_WINRT)
     UINT old_error_mode;
 #endif
     HANDLE h;
@@ -94,7 +95,7 @@ static int SDLCALL windows_file_open(SDL_RWops *context, const char *filename, c
     if (!context->hidden.windowsio.buffer.data) {
         return -1;
     }
-#if !defined(__XBOXONE__) && !defined(__XBOXSERIES__) && !defined(__WINRT__)
+#if !defined(SDL_PLATFORM_XBOXONE) && !defined(SDL_PLATFORM_XBOXSERIES) && !defined(SDL_PLATFORM_WINRT)
     /* Do not open a dialog box if failure */
     old_error_mode =
         SetErrorMode(SEM_NOOPENFILEERRORBOX | SEM_FAILCRITICALERRORS);
@@ -102,7 +103,7 @@ static int SDLCALL windows_file_open(SDL_RWops *context, const char *filename, c
 
     {
         LPTSTR tstr = WIN_UTF8ToString(filename);
-#if defined(__WINRT__)
+#if defined(SDL_PLATFORM_WINRT)
         CREATEFILE2_EXTENDED_PARAMETERS extparams;
         SDL_zero(extparams);
         extparams.dwSize = sizeof(extparams);
@@ -124,7 +125,7 @@ static int SDLCALL windows_file_open(SDL_RWops *context, const char *filename, c
         SDL_free(tstr);
     }
 
-#if !defined(__XBOXONE__) && !defined(__XBOXSERIES__) && !defined(__WINRT__)
+#if !defined(SDL_PLATFORM_XBOXONE) && !defined(SDL_PLATFORM_XBOXSERIES) && !defined(SDL_PLATFORM_WINRT)
     /* restore old behavior */
     SetErrorMode(old_error_mode);
 #endif
@@ -274,9 +275,9 @@ static int SDLCALL windows_file_close(SDL_RWops *context)
     SDL_DestroyRW(context);
     return 0;
 }
-#endif /* defined(__WIN32__) || defined(__GDK__) */
+#endif /* defined(SDL_PLATFORM_WIN32) || defined(SDL_PLATFORM_GDK) */
 
-#if defined(HAVE_STDIO_H) && !(defined(__WIN32__) || defined(__GDK__))
+#if defined(HAVE_STDIO_H) && !(defined(SDL_PLATFORM_WIN32) || defined(SDL_PLATFORM_GDK))
 
 /* Functions to read/write stdio file pointers. Not used for windows. */
 
@@ -400,7 +401,7 @@ static SDL_RWops *SDL_RWFromFP(void *fp, SDL_bool autoclose)
     }
     return rwops;
 }
-#endif /* !HAVE_STDIO_H && !(__WIN32__ || __GDK__) */
+#endif /* !HAVE_STDIO_H && !(SDL_PLATFORM_WIN32 || SDL_PLATFORM_GDK) */
 
 /* Functions to read/write memory pointers */
 
@@ -459,6 +460,24 @@ static size_t SDLCALL mem_write(SDL_RWops *context, const void *ptr, size_t size
 
 /* Functions to create SDL_RWops structures from various data sources */
 
+#if defined(HAVE_STDIO_H) && !defined(SDL_PLATFORM_WINDOWS)
+static SDL_bool SDL_IsRegularFile(FILE *f)
+{
+    #ifdef SDL_PLATFORM_WINRT
+    struct __stat64 st;
+    if (_fstat64(_fileno(f), &st) < 0 || (st.st_mode & _S_IFMT) != _S_IFREG) {
+        return SDL_FALSE;
+    }
+    #else
+    struct stat st;
+    if (fstat(fileno(f), &st) < 0 || !S_ISREG(st.st_mode)) {
+        return SDL_FALSE;
+    }
+    #endif
+    return SDL_TRUE;
+}
+#endif
+
 SDL_RWops *SDL_RWFromFile(const char *file, const char *mode)
 {
     SDL_RWops *rwops = NULL;
@@ -466,12 +485,17 @@ SDL_RWops *SDL_RWFromFile(const char *file, const char *mode)
         SDL_SetError("SDL_RWFromFile(): No file or no mode specified");
         return NULL;
     }
-#ifdef __ANDROID__
+#ifdef SDL_PLATFORM_ANDROID
 #ifdef HAVE_STDIO_H
     /* Try to open the file on the filesystem first */
     if (*file == '/') {
         FILE *fp = fopen(file, mode);
         if (fp) {
+            if (!SDL_IsRegularFile(fp)) {
+                fclose(fp);
+                SDL_SetError("%s is not a regular file", file);
+                return NULL;
+            }
             return SDL_RWFromFP(fp, 1);
         }
     } else {
@@ -487,6 +511,11 @@ SDL_RWops *SDL_RWFromFile(const char *file, const char *mode)
             fp = fopen(path, mode);
             SDL_stack_free(path);
             if (fp) {
+                if (!SDL_IsRegularFile(fp)) {
+                    fclose(fp);
+                    SDL_SetError("%s is not a regular file", path);
+                    return NULL;
+                }
                 return SDL_RWFromFP(fp, 1);
             }
         }
@@ -510,7 +539,7 @@ SDL_RWops *SDL_RWFromFile(const char *file, const char *mode)
     rwops->close = Android_JNI_FileClose;
     rwops->type = SDL_RWOPS_JNIFILE;
 
-#elif defined(__WIN32__) || defined(__GDK__) || defined(__WINRT__)
+#elif defined(SDL_PLATFORM_WIN32) || defined(SDL_PLATFORM_GDK) || defined(SDL_PLATFORM_WINRT)
     rwops = SDL_CreateRW();
     if (!rwops) {
         return NULL; /* SDL_SetError already setup by SDL_CreateRW() */
@@ -528,18 +557,22 @@ SDL_RWops *SDL_RWFromFile(const char *file, const char *mode)
     rwops->type = SDL_RWOPS_WINFILE;
 #elif defined(HAVE_STDIO_H)
     {
-#if defined(__APPLE__) && !defined(SDL_FILE_DISABLED) // TODO: add dummy?
+#if defined(SDL_PLATFORM_APPLE)
         FILE *fp = SDL_OpenFPFromBundleOrFallback(file, mode);
-#elif defined(__WINRT__)
+#elif defined(SDL_PLATFORM_WINRT)
         FILE *fp = NULL;
         fopen_s(&fp, file, mode);
-#elif defined(__3DS__)
+#elif defined(SDL_PLATFORM_3DS)
         FILE *fp = N3DS_FileOpen(file, mode);
 #else
         FILE *fp = fopen(file, mode);
 #endif
         if (!fp) {
             SDL_SetError("Couldn't open %s", file);
+        } else if (!SDL_IsRegularFile(fp)) {
+            fclose(fp);
+            fp = NULL;
+            SDL_SetError("%s is not a regular file", file);
         } else {
             rwops = SDL_RWFromFP(fp, SDL_TRUE);
         }
@@ -625,14 +658,14 @@ void SDL_DestroyRW(SDL_RWops *context)
 void *SDL_LoadFile_RW(SDL_RWops *src, size_t *datasize, SDL_bool freesrc)
 {
     const int FILE_CHUNK_SIZE = 1024;
-    Sint64 size, size_total;
+    Sint64 size, size_total = 0;
     size_t size_read;
     char *data = NULL, *newdata;
     SDL_bool loading_chunks = SDL_FALSE;
 
     if (!src) {
         SDL_InvalidParamError("src");
-        return NULL;
+        goto done;
     }
 
     size = SDL_RWsize(src);
@@ -677,12 +710,12 @@ void *SDL_LoadFile_RW(SDL_RWops *src, size_t *datasize, SDL_bool freesrc)
         break;
     }
 
-    if (datasize) {
-        *datasize = (size_t)size_total;
-    }
     data[size_total] = '\0';
 
 done:
+    if (datasize) {
+        *datasize = (size_t)size_total;
+    }
     if (freesrc && src) {
         SDL_RWclose(src);
     }

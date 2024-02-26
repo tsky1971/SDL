@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -98,7 +98,7 @@ typedef struct
     SDL_bool touch_mouse_events;
     SDL_bool mouse_touch_events;
     SDL_bool was_touch_mouse_events; /* Was a touch-mouse event pending? */
-#ifdef __vita__
+#ifdef SDL_PLATFORM_VITA
     Uint8 vita_touch_mouse_device;
 #endif
     SDL_bool auto_capture;

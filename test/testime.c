@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -27,9 +27,9 @@
 #endif
 
 #ifdef HAVE_SDL_TTF
-#ifdef __MACOS__
+#ifdef SDL_PLATFORM_MACOS
 #define DEFAULT_FONT "/System/Library/Fonts/华文细黑.ttf"
-#elif defined(__WIN32__)
+#elif defined(SDL_PLATFORM_WIN32)
 /* Some japanese font present on at least Windows 8.1. */
 #define DEFAULT_FONT "C:\\Windows\\Fonts\\yugothic.ttf"
 #else
@@ -468,7 +468,9 @@ static void _Redraw(int rendererID)
     SDL_Renderer *renderer = state->renderers[rendererID];
     SDL_FRect drawnTextRect, cursorRect, underlineRect;
     drawnTextRect.x = textRect.x;
+    drawnTextRect.y = 0;
     drawnTextRect.w = 0;
+    drawnTextRect.h = 0;
 
     SDL_SetRenderDrawColor(renderer, backColor.r, backColor.g, backColor.b, backColor.a);
     SDL_RenderFillRect(renderer, &textRect);
@@ -501,7 +503,7 @@ static void _Redraw(int rendererID)
         drawnTextRect.y = dstrect.y;
         drawnTextRect.h = dstrect.h;
 
-        while ((codepoint = utf8_decode(utext, len = utf8_length(*utext)))) {
+        while ((codepoint = utf8_decode(utext, len = utf8_length(*utext))) != 0) {
             Sint32 advance = unifont_draw_glyph(codepoint, rendererID, &dstrect) * UNIFONT_DRAW_SCALE;
             dstrect.x += advance;
             drawnTextRect.w += advance;
@@ -573,7 +575,7 @@ static void _Redraw(int rendererID)
         drawnTextRect.y = dstrect.y;
         drawnTextRect.h = dstrect.h;
 
-        while ((codepoint = utf8_decode(utext, len = utf8_length(*utext)))) {
+        while ((codepoint = utf8_decode(utext, len = utf8_length(*utext))) != 0) {
             Sint32 advance = unifont_draw_glyph(codepoint, rendererID, &dstrect) * UNIFONT_DRAW_SCALE;
             dstrect.x += advance;
             drawnTextRect.w += advance;

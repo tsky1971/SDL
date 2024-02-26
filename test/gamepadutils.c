@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -649,6 +649,11 @@ static const char *gamepad_button_names[] = {
     "Right Paddle 2",
     "Left Paddle 2",
     "Touchpad",
+    "Misc2",
+    "Misc3",
+    "Misc4",
+    "Misc5",
+    "Misc6",
 };
 SDL_COMPILE_TIME_ASSERT(gamepad_button_names, SDL_arraysize(gamepad_button_names) == SDL_GAMEPAD_BUTTON_MAX);
 

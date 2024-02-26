@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2023 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -103,13 +103,13 @@ typedef struct SDL_RWops
     SDL_PropertiesID props;
     union
     {
-#ifdef __ANDROID__
+#ifdef SDL_PLATFORM_ANDROID
         struct
         {
             void *asset;
         } androidio;
 
-#elif defined(__WIN32__) || defined(__GDK__) || defined(__WINRT__)
+#elif defined(SDL_PLATFORM_WIN32) || defined(SDL_PLATFORM_GDK) || defined(SDL_PLATFORM_WINRT)
         struct
         {
             SDL_bool append;
