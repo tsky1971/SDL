@@ -33,7 +33,7 @@
 #include <SDL3/SDL_pixels.h>
 #include <SDL3/SDL_properties.h>
 #include <SDL3/SDL_rect.h>
-#include <SDL3/SDL_rwops.h>
+#include <SDL3/SDL_iostream.h>
 
 #include <SDL3/SDL_begin_code.h>
 /* Set up for C function definitions, even when using C++ */
@@ -103,7 +103,6 @@ typedef enum
  *
  * \note  This structure should be treated as read-only, except for \c pixels,
  *        which, if not NULL, contains the raw pixel data for the surface.
- * \sa SDL_CreateSurfaceFrom
  */
 typedef struct SDL_Surface
 {
@@ -152,8 +151,7 @@ typedef int (SDLCALL *SDL_blit) (struct SDL_Surface *src, const SDL_Rect *srcrec
  * \sa SDL_CreateSurfaceFrom
  * \sa SDL_DestroySurface
  */
-extern DECLSPEC SDL_Surface *SDLCALL SDL_CreateSurface
-    (int width, int height, Uint32 format);
+extern DECLSPEC SDL_Surface *SDLCALL SDL_CreateSurface(int width, int height, SDL_PixelFormatEnum format);
 
 /**
  * Allocate a new RGB surface with a specific pixel format and existing pixel
@@ -171,7 +169,7 @@ extern DECLSPEC SDL_Surface *SDLCALL SDL_CreateSurface
  * \param pixels a pointer to existing pixel data
  * \param width the width of the surface
  * \param height the height of the surface
- * \param pitch the pitch of the surface in bytes
+ * \param pitch the number of bytes between each row, including padding
  * \param format the SDL_PixelFormatEnum for the new surface's pixel format.
  * \returns the new SDL_Surface structure that is created or NULL if it fails;
  *          call SDL_GetError() for more information.
@@ -181,8 +179,7 @@ extern DECLSPEC SDL_Surface *SDLCALL SDL_CreateSurface
  * \sa SDL_CreateSurface
  * \sa SDL_DestroySurface
  */
-extern DECLSPEC SDL_Surface *SDLCALL SDL_CreateSurfaceFrom
-    (void *pixels, int width, int height, int pitch, Uint32 format);
+extern DECLSPEC SDL_Surface *SDLCALL SDL_CreateSurfaceFrom(void *pixels, int width, int height, int pitch, SDL_PixelFormatEnum format);
 
 /**
  * Free an RGB surface.
@@ -195,8 +192,6 @@ extern DECLSPEC SDL_Surface *SDLCALL SDL_CreateSurfaceFrom
  *
  * \sa SDL_CreateSurface
  * \sa SDL_CreateSurfaceFrom
- * \sa SDL_LoadBMP
- * \sa SDL_LoadBMP_RW
  */
 extern DECLSPEC void SDLCALL SDL_DestroySurface(SDL_Surface *surface);
 
@@ -210,27 +205,14 @@ extern DECLSPEC void SDLCALL SDL_DestroySurface(SDL_Surface *surface);
  *   floating point formats, SDL_COLORSPACE_HDR10 for 10-bit formats,
  *   SDL_COLORSPACE_SRGB for other RGB surfaces and SDL_COLORSPACE_BT709_FULL
  *   for YUV surfaces.
- * - `SDL_PROP_SURFACE_MAXCLL_NUMBER`: MaxCLL (Maximum Content Light Level)
- *   indicates the maximum light level of any single pixel (in cd/m2 or nits)
- *   of the content. MaxCLL is usually measured off the final delivered
- *   content after mastering. If one uses the full light level of the HDR
- *   mastering display and adds a hard clip at its maximum value, MaxCLL would
- *   be equal to the peak luminance of the mastering monitor. This defaults to
- *   400 for HDR10 surfaces.
- * - `SDL_PROP_SURFACE_MAXFALL_NUMBER`: MaxFALL (Maximum Frame Average Light
- *   Level) indicates the maximum value of the frame average light level (in
- *   cd/m2 or nits) of the content. MaxFALL is calculated by averaging the
- *   decoded luminance values of all the pixels within a frame. MaxFALL is
- *   usually much lower than MaxCLL.
  * - `SDL_PROP_SURFACE_SDR_WHITE_POINT_FLOAT`: for HDR10 and floating point
  *   surfaces, this defines the value of 100% diffuse white, with higher
  *   values being displayed in the High Dynamic Range headroom. This defaults
- *   to 100 for HDR10 surfaces and 1.0 for other surfaces.
+ *   to 203 for HDR10 surfaces and 1.0 for floating point surfaces.
  * - `SDL_PROP_SURFACE_HDR_HEADROOM_FLOAT`: for HDR10 and floating point
  *   surfaces, this defines the maximum dynamic range used by the content, in
- *   terms of the SDR white point. This defaults to
- *   SDL_PROP_SURFACE_MAXCLL_NUMBER / SDL_PROP_SURFACE_SDR_WHITE_POINT_FLOAT,
- *   or 4.0, for HDR10 surfaces.
+ *   terms of the SDR white point. This defaults to 0.0, which disables tone
+ *   mapping.
  * - `SDL_PROP_SURFACE_TONEMAP_OPERATOR_STRING`: the tone mapping operator
  *   used when compressing from a surface with high dynamic range to another
  *   with lower dynamic range. Currently this supports "chrome", which uses
@@ -250,8 +232,6 @@ extern DECLSPEC void SDLCALL SDL_DestroySurface(SDL_Surface *surface);
 extern DECLSPEC SDL_PropertiesID SDLCALL SDL_GetSurfaceProperties(SDL_Surface *surface);
 
 #define SDL_PROP_SURFACE_COLORSPACE_NUMBER                  "SDL.surface.colorspace"
-#define SDL_PROP_SURFACE_MAXCLL_NUMBER                      "SDL.surface.maxCLL"
-#define SDL_PROP_SURFACE_MAXFALL_NUMBER                     "SDL.surface.maxFALL"
 #define SDL_PROP_SURFACE_SDR_WHITE_POINT_FLOAT              "SDL.surface.SDR_white_point"
 #define SDL_PROP_SURFACE_HDR_HEADROOM_FLOAT                 "SDL.surface.HDR_headroom"
 #define SDL_PROP_SURFACE_TONEMAP_OPERATOR_STRING            "SDL.surface.tonemap"
@@ -343,7 +323,7 @@ extern DECLSPEC void SDLCALL SDL_UnlockSurface(SDL_Surface *surface);
  * will result in a memory leak.
  *
  * \param src the data stream for the surface
- * \param freesrc if SDL_TRUE, calls SDL_RWclose() on `src` before returning,
+ * \param closeio if SDL_TRUE, calls SDL_CloseIO() on `src` before returning,
  *                even in the case of an error
  * \returns a pointer to a new SDL_Surface structure or NULL if there was an
  *          error; call SDL_GetError() for more information.
@@ -352,9 +332,9 @@ extern DECLSPEC void SDLCALL SDL_UnlockSurface(SDL_Surface *surface);
  *
  * \sa SDL_DestroySurface
  * \sa SDL_LoadBMP
- * \sa SDL_SaveBMP_RW
+ * \sa SDL_SaveBMP_IO
  */
-extern DECLSPEC SDL_Surface *SDLCALL SDL_LoadBMP_RW(SDL_RWops *src, SDL_bool freesrc);
+extern DECLSPEC SDL_Surface *SDLCALL SDL_LoadBMP_IO(SDL_IOStream *src, SDL_bool closeio);
 
 /**
  * Load a BMP image from a file.
@@ -369,7 +349,7 @@ extern DECLSPEC SDL_Surface *SDLCALL SDL_LoadBMP_RW(SDL_RWops *src, SDL_bool fre
  * \since This function is available since SDL 3.0.0.
  *
  * \sa SDL_DestroySurface
- * \sa SDL_LoadBMP_RW
+ * \sa SDL_LoadBMP_IO
  * \sa SDL_SaveBMP
  */
 extern DECLSPEC SDL_Surface *SDLCALL SDL_LoadBMP(const char *file);
@@ -385,17 +365,17 @@ extern DECLSPEC SDL_Surface *SDLCALL SDL_LoadBMP(const char *file);
  *
  * \param surface the SDL_Surface structure containing the image to be saved
  * \param dst a data stream to save to
- * \param freedst if SDL_TRUE, calls SDL_RWclose() on `dst` before returning,
+ * \param closeio if SDL_TRUE, calls SDL_CloseIO() on `dst` before returning,
  *                even in the case of an error
  * \returns 0 on success or a negative error code on failure; call
  *          SDL_GetError() for more information.
  *
  * \since This function is available since SDL 3.0.0.
  *
- * \sa SDL_LoadBMP_RW
+ * \sa SDL_LoadBMP_IO
  * \sa SDL_SaveBMP
  */
-extern DECLSPEC int SDLCALL SDL_SaveBMP_RW(SDL_Surface *surface, SDL_RWops *dst, SDL_bool freedst);
+extern DECLSPEC int SDLCALL SDL_SaveBMP_IO(SDL_Surface *surface, SDL_IOStream *dst, SDL_bool closeio);
 
 /**
  * Save a surface to a file.
@@ -414,7 +394,7 @@ extern DECLSPEC int SDLCALL SDL_SaveBMP_RW(SDL_Surface *surface, SDL_RWops *dst,
  * \since This function is available since SDL 3.0.0.
  *
  * \sa SDL_LoadBMP
- * \sa SDL_SaveBMP_RW
+ * \sa SDL_SaveBMP_IO
  */
 extern DECLSPEC int SDLCALL SDL_SaveBMP(SDL_Surface *surface, const char *file);
 
@@ -472,8 +452,8 @@ extern DECLSPEC SDL_bool SDLCALL SDL_SurfaceHasRLE(SDL_Surface *surface);
  *
  * \since This function is available since SDL 3.0.0.
  *
- * \sa SDL_BlitSurface
  * \sa SDL_GetSurfaceColorKey
+ * \sa SDL_SurfaceHasColorKey
  */
 extern DECLSPEC int SDLCALL SDL_SetSurfaceColorKey(SDL_Surface *surface, int flag, Uint32 key);
 
@@ -507,8 +487,8 @@ extern DECLSPEC SDL_bool SDLCALL SDL_SurfaceHasColorKey(SDL_Surface *surface);
  *
  * \since This function is available since SDL 3.0.0.
  *
- * \sa SDL_BlitSurface
  * \sa SDL_SetSurfaceColorKey
+ * \sa SDL_SurfaceHasColorKey
  */
 extern DECLSPEC int SDLCALL SDL_GetSurfaceColorKey(SDL_Surface *surface, Uint32 *key);
 
@@ -637,7 +617,6 @@ extern DECLSPEC int SDLCALL SDL_GetSurfaceBlendMode(SDL_Surface *surface, SDL_Bl
  *
  * \since This function is available since SDL 3.0.0.
  *
- * \sa SDL_BlitSurface
  * \sa SDL_GetSurfaceClipRect
  */
 extern DECLSPEC SDL_bool SDLCALL SDL_SetSurfaceClipRect(SDL_Surface *surface, const SDL_Rect *rect);
@@ -657,7 +636,6 @@ extern DECLSPEC SDL_bool SDLCALL SDL_SetSurfaceClipRect(SDL_Surface *surface, co
  *
  * \since This function is available since SDL 3.0.0.
  *
- * \sa SDL_BlitSurface
  * \sa SDL_SetSurfaceClipRect
  */
 extern DECLSPEC int SDLCALL SDL_GetSurfaceClipRect(SDL_Surface *surface, SDL_Rect *rect);
@@ -684,6 +662,8 @@ extern DECLSPEC int SDLCALL SDL_FlipSurface(SDL_Surface *surface, SDL_FlipMode f
  *          more information.
  *
  * \since This function is available since SDL 3.0.0.
+ *
+ * \sa SDL_DestroySurface
  */
 extern DECLSPEC SDL_Surface *SDLCALL SDL_DuplicateSurface(SDL_Surface *surface);
 
@@ -703,9 +683,10 @@ extern DECLSPEC SDL_Surface *SDLCALL SDL_DuplicateSurface(SDL_Surface *surface);
  *
  * \since This function is available since SDL 3.0.0.
  *
- * \sa SDL_CreatePixelFormat
  * \sa SDL_ConvertSurfaceFormat
- * \sa SDL_CreateSurface
+ * \sa SDL_ConvertSurfaceFormatAndColorspace
+ * \sa SDL_CreatePixelFormat
+ * \sa SDL_DestroySurface
  */
 extern DECLSPEC SDL_Surface *SDLCALL SDL_ConvertSurface(SDL_Surface *surface, const SDL_PixelFormat *format);
 
@@ -724,11 +705,11 @@ extern DECLSPEC SDL_Surface *SDLCALL SDL_ConvertSurface(SDL_Surface *surface, co
  *
  * \since This function is available since SDL 3.0.0.
  *
- * \sa SDL_CreatePixelFormat
  * \sa SDL_ConvertSurface
- * \sa SDL_CreateSurface
+ * \sa SDL_ConvertSurfaceFormatAndColorspace
+ * \sa SDL_DestroySurface
  */
-extern DECLSPEC SDL_Surface *SDLCALL SDL_ConvertSurfaceFormat(SDL_Surface *surface, Uint32 pixel_format);
+extern DECLSPEC SDL_Surface *SDLCALL SDL_ConvertSurfaceFormat(SDL_Surface *surface, SDL_PixelFormatEnum pixel_format);
 
 /**
  * Copy an existing surface to a new surface of the specified format and
@@ -741,16 +722,17 @@ extern DECLSPEC SDL_Surface *SDLCALL SDL_ConvertSurfaceFormat(SDL_Surface *surfa
  * \param surface the existing SDL_Surface structure to convert
  * \param pixel_format the new pixel format
  * \param colorspace the new colorspace
+ * \param props an SDL_PropertiesID with additional color properties, or 0
  * \returns the new SDL_Surface structure that is created or NULL if it fails;
  *          call SDL_GetError() for more information.
  *
  * \since This function is available since SDL 3.0.0.
  *
- * \sa SDL_CreatePixelFormat
  * \sa SDL_ConvertSurface
- * \sa SDL_CreateSurface
+ * \sa SDL_ConvertSurfaceFormat
+ * \sa SDL_DestroySurface
  */
-extern DECLSPEC SDL_Surface *SDLCALL SDL_ConvertSurfaceFormatAndColorspace(SDL_Surface *surface, Uint32 pixel_format, SDL_Colorspace colorspace, SDL_PropertiesID props);
+extern DECLSPEC SDL_Surface *SDLCALL SDL_ConvertSurfaceFormatAndColorspace(SDL_Surface *surface, SDL_PixelFormatEnum pixel_format, SDL_Colorspace colorspace, SDL_PropertiesID props);
 
 /**
  * Copy a block of pixels of one format to another format.
@@ -767,8 +749,10 @@ extern DECLSPEC SDL_Surface *SDLCALL SDL_ConvertSurfaceFormatAndColorspace(SDL_S
  *          SDL_GetError() for more information.
  *
  * \since This function is available since SDL 3.0.0.
+ *
+ * \sa SDL_ConvertPixelsAndColorspace
  */
-extern DECLSPEC int SDLCALL SDL_ConvertPixels(int width, int height, Uint32 src_format, const void *src, int src_pitch, Uint32 dst_format, void *dst, int dst_pitch);
+extern DECLSPEC int SDLCALL SDL_ConvertPixels(int width, int height, SDL_PixelFormatEnum src_format, const void *src, int src_pitch, SDL_PixelFormatEnum dst_format, void *dst, int dst_pitch);
 
 /**
  * Copy a block of pixels of one format and colorspace to another format and
@@ -779,19 +763,25 @@ extern DECLSPEC int SDLCALL SDL_ConvertPixels(int width, int height, Uint32 src_
  * \param src_format an SDL_PixelFormatEnum value of the `src` pixels format
  * \param src_colorspace an SDL_ColorSpace value describing the colorspace of
  *                       the `src` pixels
+ * \param src_properties an SDL_PropertiesID with additional source color
+ *                       properties, or 0
  * \param src a pointer to the source pixels
  * \param src_pitch the pitch of the source pixels, in bytes
  * \param dst_format an SDL_PixelFormatEnum value of the `dst` pixels format
  * \param dst_colorspace an SDL_ColorSpace value describing the colorspace of
  *                       the `dst` pixels
+ * \param dst_properties an SDL_PropertiesID with additional destination color
+ *                       properties, or 0
  * \param dst a pointer to be filled in with new pixel data
  * \param dst_pitch the pitch of the destination pixels, in bytes
  * \returns 0 on success or a negative error code on failure; call
  *          SDL_GetError() for more information.
  *
  * \since This function is available since SDL 3.0.0.
+ *
+ * \sa SDL_ConvertPixels
  */
-extern DECLSPEC int SDLCALL SDL_ConvertPixelsAndColorspace(int width, int height, Uint32 src_format, SDL_Colorspace src_colorspace, SDL_PropertiesID src_properties, const void *src, int src_pitch, Uint32 dst_format, SDL_Colorspace dst_colorspace, SDL_PropertiesID dst_properties, void *dst, int dst_pitch);
+extern DECLSPEC int SDLCALL SDL_ConvertPixelsAndColorspace(int width, int height, SDL_PixelFormatEnum src_format, SDL_Colorspace src_colorspace, SDL_PropertiesID src_properties, const void *src, int src_pitch, SDL_PixelFormatEnum dst_format, SDL_Colorspace dst_colorspace, SDL_PropertiesID dst_properties, void *dst, int dst_pitch);
 
 /**
  * Premultiply the alpha on a block of pixels.
@@ -813,7 +803,7 @@ extern DECLSPEC int SDLCALL SDL_ConvertPixelsAndColorspace(int width, int height
  *
  * \since This function is available since SDL 3.0.0.
  */
-extern DECLSPEC int SDLCALL SDL_PremultiplyAlpha(int width, int height, Uint32 src_format, const void *src, int src_pitch, Uint32 dst_format, void *dst, int dst_pitch);
+extern DECLSPEC int SDLCALL SDL_PremultiplyAlpha(int width, int height, SDL_PixelFormatEnum src_format, const void *src, int src_pitch, SDL_PixelFormatEnum dst_format, void *dst, int dst_pitch);
 
 /**
  * Perform a fast fill of a rectangle with a specific color.
@@ -979,7 +969,8 @@ extern DECLSPEC int SDLCALL SDL_BlitSurfaceUnchecked(SDL_Surface *src, const SDL
 extern DECLSPEC int SDLCALL SDL_SoftStretch(SDL_Surface *src, const SDL_Rect *srcrect, SDL_Surface *dst, const SDL_Rect *dstrect, SDL_ScaleMode scaleMode);
 
 /**
- * Perform a scaled surface copy to a destination surface.
+ * Perform a scaled blit to a destination surface, which may be of a different
+ * format.
  *
  * \param src the SDL_Surface structure to be copied from
  * \param srcrect the SDL_Rect structure representing the rectangle to be

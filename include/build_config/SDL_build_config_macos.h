@@ -32,7 +32,6 @@
 
 /* Useful headers */
 #define HAVE_ALLOCA_H 1
-#define HAVE_CTYPE_H 1
 #define HAVE_FLOAT_H 1
 #define HAVE_INTTYPES_H 1
 #define HAVE_LIBUNWIND_H 1
@@ -59,8 +58,6 @@
 #define HAVE_SETENV 1
 #define HAVE_PUTENV 1
 #define HAVE_UNSETENV   1
-#define HAVE_QSORT  1
-#define HAVE_BSEARCH 1
 #define HAVE_ABS    1
 #define HAVE_BCOPY  1
 #define HAVE_MEMSET 1
@@ -83,8 +80,6 @@
 #define HAVE_ATOF   1
 #define HAVE_STRCMP 1
 #define HAVE_STRNCMP    1
-#define HAVE_STRCASECMP 1
-#define HAVE_STRNCASECMP 1
 #define HAVE_STRCASESTR 1
 #define HAVE_VSSCANF 1
 #define HAVE_VSNPRINTF  1
@@ -135,6 +130,9 @@
 #define HAVE_SIGACTION  1
 #define HAVE_SETJMP 1
 #define HAVE_NANOSLEEP  1
+#define HAVE_GMTIME_R 1
+#define HAVE_LOCALTIME_R 1
+#define HAVE_NL_LANGINFO 1
 #define HAVE_SYSCONF    1
 #define HAVE_SYSCTLBYNAME 1
 
@@ -175,6 +173,9 @@
 /* Enable various threading systems */
 #define SDL_THREAD_PTHREAD  1
 #define SDL_THREAD_PTHREAD_RECURSIVE_MUTEX  1
+
+/* Enable various RTC system */
+#define SDL_TIME_UNIX  1
 
 /* Enable various timer systems */
 #define SDL_TIMER_UNIX  1
@@ -266,6 +267,7 @@
 
 /* enable filesystem support */
 #define SDL_FILESYSTEM_COCOA   1
+#define SDL_FSOPS_POSIX 1
 
 /* enable camera support */
 #define SDL_CAMERA_DRIVER_COREMEDIA 1

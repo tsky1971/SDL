@@ -42,9 +42,9 @@
 #include "SDL_windowsclipboard.h"
 #include "SDL_windowsevents.h"
 #include "SDL_windowsopengl.h"
-#include "SDL_windowsshape.h"
 
 #if !defined(SDL_PLATFORM_XBOXONE) && !defined(SDL_PLATFORM_XBOXSERIES)
+#include "SDL_windowsshape.h"
 #include "SDL_windowskeyboard.h"
 #include "SDL_windowsmodes.h"
 #include "SDL_windowsmouse.h"
@@ -405,6 +405,17 @@ struct SDL_VideoData
 #endif                /*!defined(SDL_PLATFORM_XBOXONE) && !defined(SDL_PLATFORM_XBOXSERIES)*/
 
     SDL_bool cleared;
+
+    BYTE *rawinput;
+    UINT rawinput_offset;
+    UINT rawinput_size;
+    UINT rawinput_count;
+    Uint64 last_rawinput_poll;
+    SDL_Point last_raw_mouse_position;
+    SDL_bool raw_mouse_enabled;
+    SDL_bool raw_keyboard_enabled;
+    SDL_bool pending_E1_key_sequence;
+    SDL_bool raw_input_enabled;
 
 #ifndef SDL_DISABLE_WINDOWS_IME
     SDL_bool ime_com_initialized;

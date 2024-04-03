@@ -36,7 +36,7 @@ int main(int argc, char *argv[])
     SDL_Renderer *renderer = NULL;
     SDL_Surface *shape = NULL;
     SDL_bool resizable = SDL_FALSE;
-    Uint32 flags;
+    SDL_WindowFlags flags;
     SDL_bool done = SDL_FALSE;
     SDL_Event event;
     int i;
@@ -60,7 +60,7 @@ int main(int argc, char *argv[])
             goto quit;
         }
     } else {
-        shape = SDL_LoadBMP_RW(SDL_RWFromConstMem(glass_bmp, sizeof(glass_bmp)), SDL_TRUE);
+        shape = SDL_LoadBMP_IO(SDL_IOFromConstMem(glass_bmp, sizeof(glass_bmp)), SDL_TRUE);
         if (!shape) {
             SDL_Log("Couldn't load glass.bmp: %s\n", SDL_GetError());
             goto quit;

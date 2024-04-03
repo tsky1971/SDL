@@ -28,7 +28,7 @@
 #ifndef SDL_camera_h_
 #define SDL_camera_h_
 
-#include "SDL3/SDL_video.h"
+#include <SDL3/SDL_video.h>
 
 #include <SDL3/SDL_begin_code.h>
 /* Set up for C function definitions, even when using C++ */
@@ -63,11 +63,11 @@ typedef struct SDL_Camera SDL_Camera;
  */
 typedef struct SDL_CameraSpec
 {
-    Uint32 format;          /**< Frame SDL_PixelFormatEnum format */
-    int width;              /**< Frame width */
-    int height;             /**< Frame height */
-    int interval_numerator;  /**< Frame rate numerator ((dom / num) == fps, (num / dom) == duration) */
-    int interval_denominator;  /**< Frame rate demoninator ((dom / num) == fps, (num / dom) == duration) */
+    SDL_PixelFormatEnum format; /**< Frame format */
+    int width;                  /**< Frame width */
+    int height;                 /**< Frame height */
+    int interval_numerator;     /**< Frame rate numerator ((dom / num) == fps, (num / dom) == duration) */
+    int interval_denominator;   /**< Frame rate demoninator ((dom / num) == fps, (num / dom) == duration) */
 } SDL_CameraSpec;
 
 /**

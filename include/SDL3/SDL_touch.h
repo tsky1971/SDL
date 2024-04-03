@@ -30,6 +30,7 @@
 
 #include <SDL3/SDL_stdinc.h>
 #include <SDL3/SDL_error.h>
+#include <SDL3/SDL_mouse.h>
 #include <SDL3/SDL_video.h>
 
 #include <SDL3/SDL_begin_code.h>
@@ -58,10 +59,10 @@ typedef struct SDL_Finger
 } SDL_Finger;
 
 /* Used as the device ID for mouse events simulated with touch input */
-#define SDL_TOUCH_MOUSEID ((Uint32)-1)
+#define SDL_TOUCH_MOUSEID ((SDL_MouseID)-1)
 
 /* Used as the SDL_TouchID for touch events simulated with mouse input */
-#define SDL_MOUSE_TOUCHID ((Uint64)-1)
+#define SDL_MOUSE_TOUCHID ((SDL_TouchID)-1)
 
 
 /**
@@ -131,6 +132,8 @@ extern DECLSPEC int SDLCALL SDL_GetNumTouchFingers(SDL_TouchID touchID);
  *          given ID and index could be found.
  *
  * \since This function is available since SDL 3.0.0.
+ *
+ * \sa SDL_GetNumTouchFingers
  */
 extern DECLSPEC SDL_Finger * SDLCALL SDL_GetTouchFinger(SDL_TouchID touchID, int index);
 
