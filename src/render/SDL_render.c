@@ -46,14 +46,21 @@ this should probably be removed at some point in the future.  --ryan. */
 #define SDL_PROP_WINDOW_RENDERER_POINTER "SDL.internal.window.renderer"
 #define SDL_PROP_TEXTURE_PARENT_POINTER "SDL.internal.texture.parent"
 
+#define CHECK_RENDERER_MAGIC_BUT_NOT_DESTROYED_FLAG(renderer, retval)   \
+    if (!SDL_ObjectValid(renderer, SDL_OBJECT_TYPE_RENDERER)) {         \
+        SDL_InvalidParamError("renderer");                              \
+        return retval;                                                  \
+    }
+
 #define CHECK_RENDERER_MAGIC(renderer, retval)                  \
-    if (!(renderer) || (renderer)->magic != &SDL_renderer_magic) { \
-        SDL_InvalidParamError("renderer");                      \
+    CHECK_RENDERER_MAGIC_BUT_NOT_DESTROYED_FLAG(renderer, retval); \
+    if ((renderer)->destroyed) { \
+        SDL_SetError("Renderer's window has been destroyed, can't use further"); \
         return retval;                                          \
     }
 
 #define CHECK_TEXTURE_MAGIC(texture, retval)                    \
-    if (!(texture) || (texture)->magic != &SDL_texture_magic) { \
+    if (!SDL_ObjectValid(texture, SDL_OBJECT_TYPE_TEXTURE)) {   \
         SDL_InvalidParamError("texture");                       \
         return retval;                                          \
     }
@@ -126,9 +133,19 @@ static const SDL_RenderDriver *render_drivers[] = {
 };
 #endif /* !SDL_RENDER_DISABLED */
 
-char SDL_renderer_magic;
-char SDL_texture_magic;
 
+int SDL_AddSupportedTextureFormat(SDL_Renderer *renderer, SDL_PixelFormatEnum format)
+{
+    SDL_PixelFormatEnum *texture_formats = (SDL_PixelFormatEnum *)SDL_realloc((void *)renderer->texture_formats, (renderer->num_texture_formats + 2) * sizeof(SDL_PixelFormatEnum));
+    if (!texture_formats) {
+        return -1;
+    }
+    texture_formats[renderer->num_texture_formats++] = format;
+    texture_formats[renderer->num_texture_formats] = SDL_PIXELFORMAT_UNKNOWN;
+    renderer->texture_formats = texture_formats;
+    SDL_SetProperty(SDL_GetRendererProperties(renderer), SDL_PROP_RENDERER_TEXTURE_FORMATS_POINTER, texture_formats);
+    return 0;
+}
 
 void SDL_SetupRendererColorspace(SDL_Renderer *renderer, SDL_PropertiesID props)
 {
@@ -765,6 +782,7 @@ int SDL_GetNumRenderDrivers(void)
 #endif
 }
 
+// this returns string literals, so there's no need to use SDL_FreeLater.
 const char *SDL_GetRenderDriver(int index)
 {
 #ifndef SDL_RENDER_DISABLED
@@ -773,7 +791,7 @@ const char *SDL_GetRenderDriver(int index)
                             SDL_GetNumRenderDrivers() - 1);
         return NULL;
     }
-    return render_drivers[index]->info.name;
+    return render_drivers[index]->name;
 #else
     SDL_SetError("SDL not built with rendering support");
     return NULL;
@@ -819,17 +837,35 @@ static int SDLCALL SDL_RendererEventWatch(void *userdata, SDL_Event *event)
     return 0;
 }
 
-int SDL_CreateWindowAndRenderer(int width, int height, SDL_WindowFlags window_flags, SDL_Window **window, SDL_Renderer **renderer)
+int SDL_CreateWindowAndRenderer(const char *title, int width, int height, SDL_WindowFlags window_flags, SDL_Window **window, SDL_Renderer **renderer)
 {
-    *window = SDL_CreateWindow(NULL, width, height, window_flags);
+    SDL_bool hidden = (window_flags & SDL_WINDOW_HIDDEN) != 0;
+
+    if (!window) {
+        return SDL_InvalidParamError("window");
+    }
+
+    if (!renderer) {
+        return SDL_InvalidParamError("renderer");
+    }
+
+    // Hide the window so if the renderer recreates it, we don't get a visual flash on screen
+    window_flags |= SDL_WINDOW_HIDDEN;
+    *window = SDL_CreateWindow(title, width, height, window_flags);
     if (!*window) {
         *renderer = NULL;
         return -1;
     }
 
-    *renderer = SDL_CreateRenderer(*window, NULL, 0);
+    *renderer = SDL_CreateRenderer(*window, NULL);
     if (!*renderer) {
+        SDL_DestroyWindow(*window);
+        *window = NULL;
         return -1;
+    }
+
+    if (!hidden) {
+        SDL_ShowWindow(*window);
     }
 
     return 0;
@@ -900,11 +936,17 @@ SDL_Renderer *SDL_CreateRendererWithProperties(SDL_PropertiesID props)
     SDL_Window *window = (SDL_Window *)SDL_GetProperty(props, SDL_PROP_RENDERER_CREATE_WINDOW_POINTER, NULL);
     SDL_Surface *surface = (SDL_Surface *)SDL_GetProperty(props, SDL_PROP_RENDERER_CREATE_SURFACE_POINTER, NULL);
     const char *name = SDL_GetStringProperty(props, SDL_PROP_RENDERER_CREATE_NAME_STRING, NULL);
-    SDL_Renderer *renderer = NULL;
     const int n = SDL_GetNumRenderDrivers();
     const char *hint;
     int i, attempted = 0;
     SDL_PropertiesID new_props;
+
+    SDL_Renderer *renderer = (SDL_Renderer *)SDL_calloc(1, sizeof(*renderer));
+    if (!renderer) {
+        return NULL;
+    }
+
+    SDL_SetObjectValid(renderer, SDL_OBJECT_TYPE_RENDERER, SDL_TRUE);
 
 #ifdef SDL_PLATFORM_ANDROID
     Android_ActivityMutex_Lock_Running();
@@ -927,20 +969,20 @@ SDL_Renderer *SDL_CreateRendererWithProperties(SDL_PropertiesID props)
 
     hint = SDL_GetHint(SDL_HINT_RENDER_VSYNC);
     if (hint && *hint) {
-        SDL_SetBooleanProperty(props, SDL_PROP_RENDERER_CREATE_PRESENT_VSYNC_BOOLEAN, SDL_GetHintBoolean(SDL_HINT_RENDER_VSYNC, SDL_TRUE));
+        SDL_SetNumberProperty(props, SDL_PROP_RENDERER_CREATE_PRESENT_VSYNC_NUMBER, SDL_GetHintBoolean(SDL_HINT_RENDER_VSYNC, SDL_TRUE));
     }
 
     if (surface) {
 #if SDL_VIDEO_RENDER_SW
-        renderer = SW_CreateRendererForSurface(surface, props);
+        const int rc = SW_CreateRendererForSurface(renderer, surface, props);
 #else
-        renderer = NULL;
-        SDL_SetError("SDL not built with software renderer");
+        const int rc = SDL_SetError("SDL not built with software renderer");
 #endif
-        if (!renderer) {
+        if (rc == -1) {
             goto error;
         }
     } else {
+        int rc = -1;
         if (!name) {
             name = SDL_GetHint(SDL_HINT_RENDER_DRIVER);
         }
@@ -948,27 +990,27 @@ SDL_Renderer *SDL_CreateRendererWithProperties(SDL_PropertiesID props)
         if (name) {
             for (i = 0; i < n; i++) {
                 const SDL_RenderDriver *driver = render_drivers[i];
-                if (SDL_strcasecmp(name, driver->info.name) == 0) {
-                    /* Create a new renderer instance */
+                if (SDL_strcasecmp(name, driver->name) == 0) {
+                    // Create a new renderer instance
                     ++attempted;
-                    renderer = driver->CreateRenderer(window, props);
+                    rc = driver->CreateRenderer(renderer, window, props);
                     break;
                 }
             }
         } else {
             for (i = 0; i < n; i++) {
                 const SDL_RenderDriver *driver = render_drivers[i];
-                /* Create a new renderer instance */
+                // Create a new renderer instance
                 ++attempted;
-                renderer = driver->CreateRenderer(window, props);
-                if (renderer) {
-                    /* Yay, we got one! */
-                    break;
+                rc = driver->CreateRenderer(renderer, window, props);
+                if (rc == 0) {
+                    break;  // Yay, we got one!
                 }
+                SDL_zerop(renderer);  // make sure we don't leave function pointers from a previous CreateRenderer() in this struct.
             }
         }
 
-        if (!renderer) {
+        if (rc == -1) {
             if (!name || !attempted) {
                 SDL_SetError("Couldn't find matching render driver");
             }
@@ -976,19 +1018,8 @@ SDL_Renderer *SDL_CreateRendererWithProperties(SDL_PropertiesID props)
         }
     }
 
-    if (SDL_GetBooleanProperty(props, SDL_PROP_RENDERER_CREATE_PRESENT_VSYNC_BOOLEAN, SDL_FALSE)) {
-        renderer->wanted_vsync = SDL_TRUE;
-
-        if (!(renderer->info.flags & SDL_RENDERER_PRESENTVSYNC)) {
-            renderer->simulate_vsync = SDL_TRUE;
-            renderer->info.flags |= SDL_RENDERER_PRESENTVSYNC;
-        }
-    }
-    SDL_CalculateSimulatedVSyncInterval(renderer, window);
-
     VerifyDrawQueueFunctions(renderer);
 
-    renderer->magic = &SDL_renderer_magic;
     renderer->window = window;
     renderer->target_mutex = SDL_CreateMutex();
     if (surface) {
@@ -1017,7 +1048,7 @@ SDL_Renderer *SDL_CreateRendererWithProperties(SDL_PropertiesID props)
     /* new textures start at zero, so we start at 1 so first render doesn't flush by accident. */
     renderer->render_command_generation = 1;
 
-    if (renderer->info.flags & SDL_RENDERER_SOFTWARE) {
+    if (renderer->software) {
         /* Software renderer always uses line method, for speed */
         renderer->line_method = SDL_RENDERLINEMETHOD_LINES;
     } else {
@@ -1039,7 +1070,7 @@ SDL_Renderer *SDL_CreateRendererWithProperties(SDL_PropertiesID props)
     }
 
     new_props = SDL_GetRendererProperties(renderer);
-    SDL_SetStringProperty(new_props, SDL_PROP_RENDERER_NAME_STRING, renderer->info.name);
+    SDL_SetStringProperty(new_props, SDL_PROP_RENDERER_NAME_STRING, renderer->name);
     if (window) {
         SDL_SetProperty(new_props, SDL_PROP_RENDERER_WINDOW_POINTER, window);
     }
@@ -1059,19 +1090,35 @@ SDL_Renderer *SDL_CreateRendererWithProperties(SDL_PropertiesID props)
         SDL_AddEventWatch(SDL_RendererEventWatch, renderer);
     }
 
+    int vsync = (int)SDL_GetNumberProperty(props, SDL_PROP_RENDERER_CREATE_PRESENT_VSYNC_NUMBER, 0);
+    if (SDL_SetRenderVSync(renderer, vsync) < 0) {
+        if (vsync == 0) {
+            // Some renderers require vsync enabled
+            SDL_SetRenderVSync(renderer, 1);
+        }
+    }
+    SDL_CalculateSimulatedVSyncInterval(renderer, window);
+
     SDL_LogInfo(SDL_LOG_CATEGORY_RENDER,
-                "Created renderer: %s", renderer->info.name);
+                "Created renderer: %s", renderer->name);
 
 #ifdef SDL_PLATFORM_ANDROID
     Android_ActivityMutex_Unlock();
 #endif
+
+    SDL_ClearError();
+
     return renderer;
 
 error:
 
+    SDL_SetObjectValid(renderer, SDL_OBJECT_TYPE_RENDERER, SDL_FALSE);
+
 #ifdef SDL_PLATFORM_ANDROID
     Android_ActivityMutex_Unlock();
 #endif
+    SDL_free(renderer->texture_formats);
+    SDL_free(renderer);
     return NULL;
 
 #else
@@ -1080,19 +1127,12 @@ error:
 #endif
 }
 
-SDL_Renderer *SDL_CreateRenderer(SDL_Window *window, const char *name, Uint32 flags)
+SDL_Renderer *SDL_CreateRenderer(SDL_Window *window, const char *name)
 {
     SDL_Renderer *renderer;
     SDL_PropertiesID props = SDL_CreateProperties();
     SDL_SetProperty(props, SDL_PROP_RENDERER_CREATE_WINDOW_POINTER, window);
-    if (flags & SDL_RENDERER_SOFTWARE) {
-        SDL_SetStringProperty(props, SDL_PROP_RENDERER_CREATE_NAME_STRING, "software");
-    } else {
-        SDL_SetStringProperty(props, SDL_PROP_RENDERER_CREATE_NAME_STRING, name);
-    }
-    if (flags & SDL_RENDERER_PRESENTVSYNC) {
-        SDL_SetBooleanProperty(props, SDL_PROP_RENDERER_CREATE_PRESENT_VSYNC_BOOLEAN, SDL_TRUE);
-    }
+    SDL_SetStringProperty(props, SDL_PROP_RENDERER_CREATE_NAME_STRING, name);
     renderer = SDL_CreateRendererWithProperties(props);
     SDL_DestroyProperties(props);
     return renderer;
@@ -1124,12 +1164,11 @@ SDL_Window *SDL_GetRenderWindow(SDL_Renderer *renderer)
     return renderer->window;
 }
 
-int SDL_GetRendererInfo(SDL_Renderer *renderer, SDL_RendererInfo *info)
+const char *SDL_GetRendererName(SDL_Renderer *renderer)
 {
-    CHECK_RENDERER_MAGIC(renderer, -1);
+    CHECK_RENDERER_MAGIC(renderer, NULL);
 
-    SDL_copyp(info, &renderer->info);
-    return 0;
+    return renderer->name;
 }
 
 SDL_PropertiesID SDL_GetRendererProperties(SDL_Renderer *renderer)
@@ -1189,8 +1228,8 @@ static SDL_bool IsSupportedFormat(SDL_Renderer *renderer, SDL_PixelFormatEnum fo
 {
     int i;
 
-    for (i = 0; i < renderer->info.num_texture_formats; ++i) {
-        if (renderer->info.texture_formats[i] == format) {
+    for (i = 0; i < renderer->num_texture_formats; ++i) {
+        if (renderer->texture_formats[i] == format) {
             return SDL_TRUE;
         }
     }
@@ -1203,36 +1242,36 @@ static Uint32 GetClosestSupportedFormat(SDL_Renderer *renderer, SDL_PixelFormatE
 
     if (SDL_ISPIXELFORMAT_FOURCC(format)) {
         /* Look for an exact match */
-        for (i = 0; i < renderer->info.num_texture_formats; ++i) {
-            if (renderer->info.texture_formats[i] == format) {
-                return renderer->info.texture_formats[i];
+        for (i = 0; i < renderer->num_texture_formats; ++i) {
+            if (renderer->texture_formats[i] == format) {
+                return renderer->texture_formats[i];
             }
         }
     } else if (SDL_ISPIXELFORMAT_10BIT(format) || SDL_ISPIXELFORMAT_FLOAT(format)) {
         if (SDL_ISPIXELFORMAT_10BIT(format)) {
-            for (i = 0; i < renderer->info.num_texture_formats; ++i) {
-                if (SDL_ISPIXELFORMAT_10BIT(renderer->info.texture_formats[i])) {
-                    return renderer->info.texture_formats[i];
+            for (i = 0; i < renderer->num_texture_formats; ++i) {
+                if (SDL_ISPIXELFORMAT_10BIT(renderer->texture_formats[i])) {
+                    return renderer->texture_formats[i];
                 }
             }
         }
-        for (i = 0; i < renderer->info.num_texture_formats; ++i) {
-            if (SDL_ISPIXELFORMAT_FLOAT(renderer->info.texture_formats[i])) {
-                return renderer->info.texture_formats[i];
+        for (i = 0; i < renderer->num_texture_formats; ++i) {
+            if (SDL_ISPIXELFORMAT_FLOAT(renderer->texture_formats[i])) {
+                return renderer->texture_formats[i];
             }
         }
     } else {
         SDL_bool hasAlpha = SDL_ISPIXELFORMAT_ALPHA(format);
 
         /* We just want to match the first format that has the same channels */
-        for (i = 0; i < renderer->info.num_texture_formats; ++i) {
-            if (!SDL_ISPIXELFORMAT_FOURCC(renderer->info.texture_formats[i]) &&
-                SDL_ISPIXELFORMAT_ALPHA(renderer->info.texture_formats[i]) == hasAlpha) {
-                return renderer->info.texture_formats[i];
+        for (i = 0; i < renderer->num_texture_formats; ++i) {
+            if (!SDL_ISPIXELFORMAT_FOURCC(renderer->texture_formats[i]) &&
+                SDL_ISPIXELFORMAT_ALPHA(renderer->texture_formats[i]) == hasAlpha) {
+                return renderer->texture_formats[i];
             }
         }
     }
-    return renderer->info.texture_formats[0];
+    return renderer->texture_formats[0];
 }
 
 SDL_Texture *SDL_CreateTextureWithProperties(SDL_Renderer *renderer, SDL_PropertiesID props)
@@ -1248,7 +1287,7 @@ SDL_Texture *SDL_CreateTextureWithProperties(SDL_Renderer *renderer, SDL_Propert
     CHECK_RENDERER_MAGIC(renderer, NULL);
 
     if (!format) {
-        format = renderer->info.texture_formats[0];
+        format = renderer->texture_formats[0];
     }
     if (SDL_BYTESPERPIXEL(format) == 0) {
         SDL_SetError("Invalid texture format");
@@ -1264,9 +1303,9 @@ SDL_Texture *SDL_CreateTextureWithProperties(SDL_Renderer *renderer, SDL_Propert
         SDL_SetError("Texture dimensions can't be 0");
         return NULL;
     }
-    if ((renderer->info.max_texture_width && w > renderer->info.max_texture_width) ||
-        (renderer->info.max_texture_height && h > renderer->info.max_texture_height)) {
-        SDL_SetError("Texture dimensions are limited to %dx%d", renderer->info.max_texture_width, renderer->info.max_texture_height);
+    int max_texture_size = (int)SDL_GetNumberProperty(SDL_GetRendererProperties(renderer), SDL_PROP_RENDERER_MAX_TEXTURE_SIZE_NUMBER, 0);
+    if (max_texture_size && (w > max_texture_size || h > max_texture_size)) {
+        SDL_SetError("Texture dimensions are limited to %dx%d", max_texture_size, max_texture_size);
         return NULL;
     }
 
@@ -1276,7 +1315,7 @@ SDL_Texture *SDL_CreateTextureWithProperties(SDL_Renderer *renderer, SDL_Propert
     if (!texture) {
         return NULL;
     }
-    texture->magic = &SDL_texture_magic;
+    SDL_SetObjectValid(texture, SDL_OBJECT_TYPE_TEXTURE, SDL_TRUE);
     texture->colorspace = (SDL_Colorspace)SDL_GetNumberProperty(props, SDL_PROP_TEXTURE_CREATE_COLORSPACE_NUMBER, default_colorspace);
     texture->format = format;
     texture->access = access;
@@ -1318,7 +1357,7 @@ SDL_Texture *SDL_CreateTextureWithProperties(SDL_Renderer *renderer, SDL_Propert
         if (!texture_is_fourcc_and_target) {
             closest_format = GetClosestSupportedFormat(renderer, format);
         } else {
-            closest_format = renderer->info.texture_formats[0];
+            closest_format = renderer->texture_formats[0];
         }
 
         SDL_SetNumberProperty(native_props, SDL_PROP_TEXTURE_CREATE_COLORSPACE_NUMBER, texture->colorspace);
@@ -1438,15 +1477,15 @@ SDL_Texture *SDL_CreateTextureFromSurface(SDL_Renderer *renderer, SDL_Surface *s
     /* No alpha, but a colorkey => promote to alpha */
     if (!fmt->Amask && SDL_SurfaceHasColorKey(surface)) {
         if (fmt->format == SDL_PIXELFORMAT_XRGB8888) {
-            for (i = 0; i < renderer->info.num_texture_formats; ++i) {
-                if (renderer->info.texture_formats[i] == SDL_PIXELFORMAT_ARGB8888) {
+            for (i = 0; i < renderer->num_texture_formats; ++i) {
+                if (renderer->texture_formats[i] == SDL_PIXELFORMAT_ARGB8888) {
                     format = SDL_PIXELFORMAT_ARGB8888;
                     break;
                 }
             }
         } else if (fmt->format == SDL_PIXELFORMAT_XBGR8888) {
-            for (i = 0; i < renderer->info.num_texture_formats; ++i) {
-                if (renderer->info.texture_formats[i] == SDL_PIXELFORMAT_ABGR8888) {
+            for (i = 0; i < renderer->num_texture_formats; ++i) {
+                if (renderer->texture_formats[i] == SDL_PIXELFORMAT_ABGR8888) {
                     format = SDL_PIXELFORMAT_ABGR8888;
                     break;
                 }
@@ -1454,8 +1493,8 @@ SDL_Texture *SDL_CreateTextureFromSurface(SDL_Renderer *renderer, SDL_Surface *s
         }
     } else {
         /* Exact match would be fine */
-        for (i = 0; i < renderer->info.num_texture_formats; ++i) {
-            if (renderer->info.texture_formats[i] == fmt->format) {
+        for (i = 0; i < renderer->num_texture_formats; ++i) {
+            if (renderer->texture_formats[i] == fmt->format) {
                 format = fmt->format;
                 break;
             }
@@ -1464,9 +1503,9 @@ SDL_Texture *SDL_CreateTextureFromSurface(SDL_Renderer *renderer, SDL_Surface *s
 
     /* Look for 10-bit pixel formats if needed */
     if (format == SDL_PIXELFORMAT_UNKNOWN && SDL_ISPIXELFORMAT_10BIT(fmt->format)) {
-        for (i = 0; i < renderer->info.num_texture_formats; ++i) {
-            if (SDL_ISPIXELFORMAT_10BIT(renderer->info.texture_formats[i])) {
-                format = renderer->info.texture_formats[i];
+        for (i = 0; i < renderer->num_texture_formats; ++i) {
+            if (SDL_ISPIXELFORMAT_10BIT(renderer->texture_formats[i])) {
+                format = renderer->texture_formats[i];
                 break;
             }
         }
@@ -1475,9 +1514,9 @@ SDL_Texture *SDL_CreateTextureFromSurface(SDL_Renderer *renderer, SDL_Surface *s
     /* Look for floating point pixel formats if needed */
     if (format == SDL_PIXELFORMAT_UNKNOWN &&
         (SDL_ISPIXELFORMAT_10BIT(fmt->format) || SDL_ISPIXELFORMAT_FLOAT(fmt->format))) {
-        for (i = 0; i < renderer->info.num_texture_formats; ++i) {
-            if (SDL_ISPIXELFORMAT_FLOAT(renderer->info.texture_formats[i])) {
-                format = renderer->info.texture_formats[i];
+        for (i = 0; i < renderer->num_texture_formats; ++i) {
+            if (SDL_ISPIXELFORMAT_FLOAT(renderer->texture_formats[i])) {
+                format = renderer->texture_formats[i];
                 break;
             }
         }
@@ -1485,11 +1524,11 @@ SDL_Texture *SDL_CreateTextureFromSurface(SDL_Renderer *renderer, SDL_Surface *s
 
     /* Fallback, choose a valid pixel format */
     if (format == SDL_PIXELFORMAT_UNKNOWN) {
-        format = renderer->info.texture_formats[0];
-        for (i = 0; i < renderer->info.num_texture_formats; ++i) {
-            if (!SDL_ISPIXELFORMAT_FOURCC(renderer->info.texture_formats[i]) &&
-                SDL_ISPIXELFORMAT_ALPHA(renderer->info.texture_formats[i]) == needAlpha) {
-                format = renderer->info.texture_formats[i];
+        format = renderer->texture_formats[0];
+        for (i = 0; i < renderer->num_texture_formats; ++i) {
+            if (!SDL_ISPIXELFORMAT_FOURCC(renderer->texture_formats[i]) &&
+                SDL_ISPIXELFORMAT_ALPHA(renderer->texture_formats[i]) == needAlpha) {
+                format = renderer->texture_formats[i];
                 break;
             }
         }
@@ -1704,7 +1743,7 @@ int SDL_SetTextureAlphaModFloat(SDL_Texture *texture, float alpha)
 
 int SDL_GetTextureAlphaMod(SDL_Texture *texture, Uint8 *alpha)
 {
-    float fA;
+    float fA = 1.0f;
 
     if (SDL_GetTextureAlphaModFloat(texture, &fA) < 0) {
         return -1;
@@ -4250,7 +4289,7 @@ int SDL_RenderGeometryRawFloat(SDL_Renderer *renderer,
 
     /* For the software renderer, try to reinterpret triangles as SDL_Rect */
 #if SDL_VIDEO_RENDER_SW
-    if (renderer->info.flags & SDL_RENDERER_SOFTWARE) {
+    if (renderer->software) {
         return SDL_SW_RenderGeometryRaw(renderer, texture,
                                         xy, xy_stride, color, color_stride, uv, uv_stride, num_vertices,
                                         indices, num_indices, size_indices);
@@ -4456,7 +4495,7 @@ static int SDL_DestroyTextureInternal(SDL_Texture *texture, SDL_bool is_destroyi
         renderer->logical_target = NULL;
     }
 
-    texture->magic = NULL;
+    SDL_SetObjectValid(texture, SDL_OBJECT_TYPE_TEXTURE, SDL_FALSE);
 
     if (texture->next) {
         texture->next->prev = texture->prev;
@@ -4513,9 +4552,12 @@ static void SDL_DiscardAllCommands(SDL_Renderer *renderer)
     }
 }
 
-void SDL_DestroyRenderer(SDL_Renderer *renderer)
+void SDL_DestroyRendererWithoutFreeing(SDL_Renderer *renderer)
 {
-    CHECK_RENDERER_MAGIC(renderer,);
+    SDL_assert(renderer != NULL);
+    SDL_assert(!renderer->destroyed);
+
+    renderer->destroyed = SDL_TRUE;
 
     SDL_DestroyProperties(renderer->props);
 
@@ -4526,7 +4568,6 @@ void SDL_DestroyRenderer(SDL_Renderer *renderer)
     /* Free existing textures for this renderer */
     while (renderer->textures) {
         SDL_Texture *tex = renderer->textures;
-        (void)tex;
         SDL_DestroyTextureInternal(renderer->textures, SDL_TRUE /* is_destroying */);
         SDL_assert(tex != renderer->textures); /* satisfy static analysis. */
     }
@@ -4537,15 +4578,28 @@ void SDL_DestroyRenderer(SDL_Renderer *renderer)
         SDL_ClearProperty(SDL_GetWindowProperties(renderer->window), SDL_PROP_WINDOW_RENDERER_POINTER);
     }
 
-    /* It's no longer magical... */
-    renderer->magic = NULL;
-
     /* Free the target mutex */
     SDL_DestroyMutex(renderer->target_mutex);
     renderer->target_mutex = NULL;
 
-    /* Free the renderer instance */
+    /* Clean up renderer-specific resources */
     renderer->DestroyRenderer(renderer);
+}
+
+void SDL_DestroyRenderer(SDL_Renderer *renderer)
+{
+    CHECK_RENDERER_MAGIC_BUT_NOT_DESTROYED_FLAG(renderer,);
+
+    // if we've already destroyed the renderer through SDL_DestroyWindow, we just need
+    // to free the renderer pointer. This lets apps destroy the window and renderer
+    // in either order.
+    if (!renderer->destroyed) {
+        SDL_DestroyRendererWithoutFreeing(renderer);
+    }
+    SDL_SetObjectValid(renderer, SDL_OBJECT_TYPE_RENDERER, SDL_FALSE);  // It's no longer magical...
+
+    SDL_free(renderer->texture_formats);
+    SDL_free(renderer);
 }
 
 void *SDL_GetRenderMetalLayer(SDL_Renderer *renderer)
@@ -4670,33 +4724,40 @@ int SDL_SetRenderVSync(SDL_Renderer *renderer, int vsync)
 {
     CHECK_RENDERER_MAGIC(renderer, -1);
 
-    if (vsync != 0 && vsync != 1) {
-        return SDL_Unsupported();
-    }
-
     renderer->wanted_vsync = vsync ? SDL_TRUE : SDL_FALSE;
 
-    /* for the software renderer, forward eventually the call to the WindowTexture renderer */
+    /* for the software renderer, forward the call to the WindowTexture renderer */
 #if SDL_VIDEO_RENDER_SW
-    if (renderer->info.flags & SDL_RENDERER_SOFTWARE) {
-        if (SDL_SetWindowTextureVSync(renderer->window, vsync) == 0) {
+    if (renderer->software) {
+        if (!renderer->window) {
+            return SDL_Unsupported();
+        }
+        if (SDL_SetWindowTextureVSync(NULL, renderer->window, vsync) == 0) {
             renderer->simulate_vsync = SDL_FALSE;
             return 0;
         }
     }
 #endif
 
-    if (!renderer->SetVSync ||
-        renderer->SetVSync(renderer, vsync) != 0) {
-        renderer->simulate_vsync = vsync ? SDL_TRUE : SDL_FALSE;
-        if (renderer->simulate_vsync) {
-            renderer->info.flags |= SDL_RENDERER_PRESENTVSYNC;
-        } else {
-            renderer->info.flags &= ~SDL_RENDERER_PRESENTVSYNC;
+    if (!renderer->SetVSync) {
+        switch (vsync) {
+        case 0:
+            renderer->simulate_vsync = SDL_FALSE;
+            break;
+        case 1:
+            renderer->simulate_vsync = SDL_TRUE;
+            break;
+        default:
+            return SDL_Unsupported();
         }
-    } else {
-        renderer->simulate_vsync = SDL_FALSE;
+    } else if (renderer->SetVSync(renderer, vsync) < 0) {
+        if (vsync == 1) {
+            renderer->simulate_vsync = SDL_TRUE;
+        } else {
+            return -1;
+        }
     }
+    SDL_SetNumberProperty(SDL_GetRendererProperties(renderer), SDL_PROP_RENDERER_VSYNC_NUMBER, vsync);
     return 0;
 }
 
@@ -4706,6 +4767,6 @@ int SDL_GetRenderVSync(SDL_Renderer *renderer, int *vsync)
     if (!vsync) {
         return SDL_InvalidParamError("vsync");
     }
-    *vsync = renderer->wanted_vsync;
+    *vsync = (int)SDL_GetNumberProperty(SDL_GetRendererProperties(renderer), SDL_PROP_RENDERER_VSYNC_NUMBER, 0);
     return 0;
 }

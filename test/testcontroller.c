@@ -60,6 +60,7 @@ typedef struct
     char *mapping;
     SDL_bool has_bindings;
 
+    int audio_route;
     int trigger_effect;
 } Controller;
 
@@ -100,6 +101,9 @@ static SDL_GamepadAxis virtual_axis_active = SDL_GAMEPAD_AXIS_INVALID;
 static float virtual_axis_start_x;
 static float virtual_axis_start_y;
 static SDL_GamepadButton virtual_button_active = SDL_GAMEPAD_BUTTON_INVALID;
+static SDL_bool virtual_touchpad_active = SDL_FALSE;
+static float virtual_touchpad_x;
+static float virtual_touchpad_y;
 
 static int s_arrBindingOrder[] = {
     /* Standard sequence */
@@ -187,6 +191,44 @@ typedef struct
     Uint8 ucLedGreen;                 /* 45 */
     Uint8 ucLedBlue;                  /* 46 */
 } DS5EffectsState_t;
+
+static void CyclePS5AudioRoute(Controller *device)
+{
+    DS5EffectsState_t state;
+
+    device->audio_route = (device->audio_route + 1) % 4;
+
+    SDL_zero(state);
+    switch (device->audio_route) {
+    case 0:
+        /* Audio disabled */
+        state.ucEnableBits1 |= (0x80 | 0x20 | 0x10); /* Modify audio route and speaker / headphone volume */
+        state.ucSpeakerVolume = 0;                   /* Minimum volume */
+        state.ucHeadphoneVolume = 0;                 /* Minimum volume */
+        state.ucAudioEnableBits = 0x00;              /* Output to headphones */
+        break;
+    case 1:
+        /* Headphones */
+        state.ucEnableBits1 |= (0x80 | 0x10); /* Modify audio route and headphone volume */
+        state.ucHeadphoneVolume = 50;         /* 50% volume - don't blast into the ears */
+        state.ucAudioEnableBits = 0x00;       /* Output to headphones */
+        break;
+    case 2:
+        /* Speaker */
+        state.ucEnableBits1 |= (0x80 | 0x20); /* Modify audio route and speaker volume */
+        state.ucSpeakerVolume = 100;          /* Maximum volume */
+        state.ucAudioEnableBits = 0x30;       /* Output to speaker */
+        break;
+    case 3:
+        /* Both */
+        state.ucEnableBits1 |= (0x80 | 0x20 | 0x10); /* Modify audio route and speaker / headphone volume */
+        state.ucSpeakerVolume = 100;                 /* Maximum volume */
+        state.ucHeadphoneVolume = 50;                /* 50% volume - don't blast into the ears */
+        state.ucAudioEnableBits = 0x20;              /* Output to both speaker and headphones */
+        break;
+    }
+    SDL_SendGamepadEffect(device->gamepad, &state, sizeof(state));
+}
 
 static void CyclePS5TriggerEffect(Controller *device)
 {
@@ -583,7 +625,7 @@ static void ClearBinding(void)
 static void SetDisplayMode(ControllerDisplayMode mode)
 {
     float x, y;
-    Uint32 button_state;
+    SDL_MouseButtonFlags button_state;
 
     if (mode == CONTROLLER_MODE_BINDING) {
         /* Make a backup of the current mapping */
@@ -1109,6 +1151,8 @@ static int SDLCALL VirtualGamepadSetLED(void *userdata, Uint8 red, Uint8 green, 
 
 static void OpenVirtualGamepad(void)
 {
+    SDL_VirtualJoystickTouchpadDesc virtual_touchpad = { 1, { 0, 0, 0 } };
+    SDL_VirtualJoystickSensorDesc virtual_sensor = { SDL_SENSOR_ACCEL, 0.0f };
     SDL_VirtualJoystickDesc desc;
     SDL_JoystickID virtual_id;
 
@@ -1117,16 +1161,19 @@ static void OpenVirtualGamepad(void)
     }
 
     SDL_zero(desc);
-    desc.version = SDL_VIRTUAL_JOYSTICK_DESC_VERSION;
     desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
     desc.naxes = SDL_GAMEPAD_AXIS_MAX;
     desc.nbuttons = SDL_GAMEPAD_BUTTON_MAX;
+    desc.ntouchpads = 1;
+    desc.touchpads = &virtual_touchpad;
+    desc.nsensors = 1;
+    desc.sensors = &virtual_sensor;
     desc.SetPlayerIndex = VirtualGamepadSetPlayerIndex;
     desc.Rumble = VirtualGamepadRumble;
     desc.RumbleTriggers = VirtualGamepadRumbleTriggers;
     desc.SetLED = VirtualGamepadSetLED;
 
-    virtual_id = SDL_AttachVirtualJoystickEx(&desc);
+    virtual_id = SDL_AttachVirtualJoystick(&desc);
     if (virtual_id == 0) {
         SDL_Log("Couldn't attach virtual device: %s\n", SDL_GetError());
     } else {
@@ -1196,6 +1243,14 @@ static void VirtualGamepadMouseMotion(float x, float y)
             SDL_SetJoystickVirtualAxis(virtual_joystick, virtual_axis_active + 1, valueY);
         }
     }
+
+    if (virtual_touchpad_active) {
+        SDL_Rect touchpad;
+        GetGamepadTouchpadArea(image, &touchpad);
+        virtual_touchpad_x = (x - touchpad.x) / touchpad.w;
+        virtual_touchpad_y = (y - touchpad.y) / touchpad.h;
+        SDL_SetJoystickVirtualTouchpad(virtual_joystick, 0, 0, SDL_PRESSED, virtual_touchpad_x, virtual_touchpad_y, 1.0f);
+    }
 }
 
 static void VirtualGamepadMouseDown(float x, float y)
@@ -1203,6 +1258,15 @@ static void VirtualGamepadMouseDown(float x, float y)
     int element = GetGamepadImageElementAt(image, x, y);
 
     if (element == SDL_GAMEPAD_ELEMENT_INVALID) {
+        SDL_Point point = { (int)x, (int)y };
+        SDL_Rect touchpad;
+        GetGamepadTouchpadArea(image, &touchpad);
+        if (SDL_PointInRect(&point, &touchpad)) {
+            virtual_touchpad_active = SDL_TRUE;
+            virtual_touchpad_x = (x - touchpad.x) / touchpad.w;
+            virtual_touchpad_y = (y - touchpad.y) / touchpad.h;
+            SDL_SetJoystickVirtualTouchpad(virtual_joystick, 0, 0, SDL_PRESSED, virtual_touchpad_x, virtual_touchpad_y, 1.0f);
+        }
         return;
     }
 
@@ -1251,6 +1315,11 @@ static void VirtualGamepadMouseUp(float x, float y)
             SDL_SetJoystickVirtualAxis(virtual_joystick, virtual_axis_active + 1, 0);
         }
         virtual_axis_active = SDL_GAMEPAD_AXIS_INVALID;
+    }
+
+    if (virtual_touchpad_active) {
+        SDL_SetJoystickVirtualTouchpad(virtual_joystick, 0, 0, SDL_RELEASED, virtual_touchpad_x, virtual_touchpad_y, 0.0f);
+        virtual_touchpad_active = SDL_FALSE;
     }
 }
 
@@ -1501,6 +1570,12 @@ static void loop(void *arg)
 {
     SDL_Event event;
 
+    /* If we have a virtual controller, send a virtual accelerometer sensor reading */
+    if (virtual_joystick) {
+        float data[3] = { 0.0f, SDL_STANDARD_GRAVITY, 0.0f };
+        SDL_SendJoystickVirtualSensorData(virtual_joystick, SDL_SENSOR_ACCEL, SDL_GetTicksNS(), data, SDL_arraysize(data));
+    }
+
     /* Update to get the current event state */
     SDL_PumpEvents();
 
@@ -1679,11 +1754,17 @@ static void loop(void *arg)
 #endif /* VERBOSE_BUTTONS */
 
             if (display_mode == CONTROLLER_MODE_TESTING) {
-                /* Cycle PS5 trigger effects when the microphone button is pressed */
                 if (event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN &&
-                    controller && SDL_GetGamepadType(controller->gamepad) == SDL_GAMEPAD_TYPE_PS5 &&
-                    event.gbutton.button == SDL_GAMEPAD_BUTTON_MISC1) {
-                    CyclePS5TriggerEffect(controller);
+                    controller && SDL_GetGamepadType(controller->gamepad) == SDL_GAMEPAD_TYPE_PS5) {
+                    /* Cycle PS5 audio routing when the microphone button is pressed */
+                    if (event.gbutton.button == SDL_GAMEPAD_BUTTON_MISC1) {
+                        CyclePS5AudioRoute(controller);
+                    }
+
+                    /* Cycle PS5 trigger effects when the triangle button is pressed */
+                    if (event.gbutton.button == SDL_GAMEPAD_BUTTON_NORTH) {
+                        CyclePS5TriggerEffect(controller);
+                    }
                 }
             }
             break;
@@ -1925,7 +2006,7 @@ int main(int argc, char *argv[])
     SDL_SetHint(SDL_HINT_JOYSTICK_LINUX_DEADZONES, "1");
 
     /* Enable standard application logging */
-    SDL_LogSetPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
+    SDL_SetLogPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
 
     /* Parse commandline */
     for (i = 1; i < argc;) {
@@ -1992,7 +2073,7 @@ int main(int argc, char *argv[])
         return 2;
     }
 
-    screen = SDL_CreateRenderer(window, NULL, 0);
+    screen = SDL_CreateRenderer(window, NULL);
     if (!screen) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't create renderer: %s\n", SDL_GetError());
         SDL_DestroyWindow(window);

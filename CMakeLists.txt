@@ -8,7 +8,7 @@ endif()
 set(CMAKE_POLICY_DEFAULT_CMP0091 NEW)
 
 # See docs/release_checklist.md
-project(SDL3 LANGUAGES C VERSION "3.1.1")
+project(SDL3 LANGUAGES C VERSION "3.1.2")
 
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
   set(SDL3_SUBPROJECT OFF)
@@ -48,15 +48,17 @@ list(APPEND CMAKE_MODULE_PATH "${SDL3_SOURCE_DIR}/cmake")
 include("${SDL3_SOURCE_DIR}/cmake/macros.cmake")
 include("${SDL3_SOURCE_DIR}/cmake/sdlchecks.cmake")
 include("${SDL3_SOURCE_DIR}/cmake/sdlcompilers.cmake")
+include("${SDL3_SOURCE_DIR}/cmake/sdlcpu.cmake")
 include("${SDL3_SOURCE_DIR}/cmake/sdlmanpages.cmake")
 include("${SDL3_SOURCE_DIR}/cmake/sdlplatform.cmake")
 include("${SDL3_SOURCE_DIR}/cmake/sdltargets.cmake")
-include("${SDL3_SOURCE_DIR}/cmake/CheckCPUArchitecture.cmake")
 include("${SDL3_SOURCE_DIR}/cmake/GetGitRevisionDescription.cmake")
 include("${SDL3_SOURCE_DIR}/cmake/3rdparty.cmake")
+include("${SDL3_SOURCE_DIR}/cmake/PreseedMSVCCache.cmake")
 
 SDL_DetectCompiler()
-SDL_DetectCPUArchitecture()
+SDL_DetectTargetCPUArchitectures(SDL_CPUS)
+SDL_Preseed_CMakeCache()
 
 # Increment this if there is an incompatible change - but if that happens,
 # we should rename the library from SDL3 to SDL4, at which point this would
@@ -133,7 +135,7 @@ endif()
 # The hidraw support doesn't catch Xbox, PS4 and Nintendo controllers,
 #  so we'll just use libusb when it's available. libusb does not support iOS,
 #  so we default to yes on iOS.
-if(IOS OR TVOS OR VISIONOS OR ANDROID)
+if(IOS OR TVOS OR VISIONOS OR WATCHOS OR ANDROID)
   set(SDL_HIDAPI_LIBUSB_AVAILABLE FALSE)
 else()
   set(SDL_HIDAPI_LIBUSB_AVAILABLE TRUE)
@@ -152,7 +154,7 @@ endif()
 # Default option knobs
 set(SDL_LIBC_DEFAULT ON)
 set(SDL_SYSTEM_ICONV_DEFAULT ON)
-if(WINDOWS OR IOS OR TVOS OR VISIONOS)
+if(WINDOWS OR MACOS OR IOS OR TVOS OR VISIONOS OR WATCHOS)
   set(SDL_SYSTEM_ICONV_DEFAULT OFF)
 endif()
 
@@ -271,7 +273,7 @@ endif()
 # Allow some projects to be built conditionally.
 set_option(SDL_DISABLE_INSTALL    "Disable installation of SDL3" ${SDL3_SUBPROJECT})
 cmake_dependent_option(SDL_DISABLE_INSTALL_CPACK "Create binary SDL3 archive using CPack" ${SDL3_SUBPROJECT} "NOT SDL_DISABLE_INSTALL" ON)
-cmake_dependent_option(SDL_DISABLE_INSTALL_DOCS "Install docs for SDL3" ${SDL3_SUBPROJECT} "NOT SDL_DISABLE_INSTALL;NOT SDL_FRAMEWORK" ON)
+cmake_dependent_option(SDL_DISABLE_INSTALL_DOCS "Install docs for SDL3" ON "NOT SDL_DISABLE_INSTALL;NOT SDL_FRAMEWORK" ON)
 set_option(SDL_DISABLE_UNINSTALL  "Disable uninstallation of SDL3" OFF)
 
 cmake_dependent_option(SDL_DISABLE_ANDROID_JAR  "Disable creation of SDL3.jar" ${SDL3_SUBPROJECT} "ANDROID" ON)
@@ -303,8 +305,8 @@ dep_option(SDL_DISKAUDIO           "Support the disk writer audio driver" ON "SD
 dep_option(SDL_DUMMYAUDIO          "Support the dummy audio driver" ON "SDL_AUDIO" OFF)
 dep_option(SDL_DUMMYVIDEO          "Use dummy video driver" ON "SDL_VIDEO" OFF)
 dep_option(SDL_IBUS                "Enable IBus support" ON "${UNIX_SYS}" OFF)
-dep_option(SDL_OPENGL              "Include OpenGL support" ON "SDL_VIDEO;NOT VISIONOS" OFF)
-dep_option(SDL_OPENGLES            "Include OpenGL ES support" ON "SDL_VIDEO;NOT VISIONOS" OFF)
+dep_option(SDL_OPENGL              "Include OpenGL support" ON "SDL_VIDEO;NOT IOS;NOT VISIONOS;NOT TVOS;NOT WATCHOS" OFF)
+dep_option(SDL_OPENGLES            "Include OpenGL ES support" ON "SDL_VIDEO;NOT IOS;NOT VISIONOS;NOT TVOS;NOT WATCHOS" OFF)
 set_option(SDL_PTHREADS            "Use POSIX threads for multi-threading" ${SDL_PTHREADS_DEFAULT})
 dep_option(SDL_PTHREADS_SEM        "Use pthread semaphores" ON "SDL_PTHREADS" OFF)
 dep_option(SDL_OSS                 "Support the OSS audio API" ${SDL_OSS_DEFAULT} "UNIX_SYS OR RISCOS;SDL_AUDIO" OFF)
@@ -466,9 +468,9 @@ sdl_include_directories(
 )
 # Note: The clang toolset for Visual Studio does not support the '-idirafter' option.
 if(USE_GCC OR USE_INTELCC OR (USE_CLANG AND NOT MSVC_CLANG))
-  sdl_compile_options(NO_EXPORT PUBLIC "$<BUILD_INTERFACE:-idirafter${SDL3_SOURCE_DIR}/src/video/khronos>")
+  sdl_compile_options(NO_EXPORT PRIVATE "$<BUILD_INTERFACE:-idirafter${SDL3_SOURCE_DIR}/src/video/khronos>")
 else()
-  sdl_include_directories(NO_EXPORT SYSTEM PUBLIC "$<BUILD_INTERFACE:${SDL3_SOURCE_DIR}/src/video/khronos>")
+  sdl_include_directories(NO_EXPORT SYSTEM PRIVATE "$<BUILD_INTERFACE:${SDL3_SOURCE_DIR}/src/video/khronos>")
 endif()
 
 # General source files
@@ -1395,7 +1397,7 @@ if(ANDROID)
     find_package(Java)
     find_package(SdlAndroidPlatform MODULE)
 
-    if(Java_FOUND AND SdlAndroidPlatform_FOUND)
+    if(Java_FOUND AND SdlAndroidPlatform_FOUND AND NOT CMAKE_VERSION VERSION_LESS "3.19")
       include(UseJava)
       set(path_android_jar "${SDL_ANDROID_PLATFORM_ROOT}/android.jar")
       set(android_java_sources_root "${SDL3_SOURCE_DIR}/android-project/app/src/main/java")
@@ -1868,13 +1870,11 @@ elseif(WINDOWS)
     check_include_file(d3d9.h HAVE_D3D_H)
     check_include_file(d3d11_1.h HAVE_D3D11_H)
     check_c_source_compiles("
-      #include <winsdkver.h>
-      #include <sdkddkver.h>
       #include <d3d12.h>
+      #include <d3d12sdklayers.h>
       ID3D12Device1 *device;
-      #if WDK_NTDDI_VERSION > 0x0A000008
       int main(int argc, char **argv) { return 0; }
-      #endif" HAVE_D3D12_H)
+      " HAVE_D3D12_H)
     check_include_file(ddraw.h HAVE_DDRAW_H)
     check_include_file(dsound.h HAVE_DSOUND_H)
     check_include_file(dinput.h HAVE_DINPUT_H)
@@ -1911,12 +1911,21 @@ elseif(WINDOWS)
   endif()
 
   # headers needed elsewhere
+  check_include_file(dxgi1_6.h HAVE_DXGI1_6_H)
   check_include_file(tpcshrd.h HAVE_TPCSHRD_H)
   check_include_file(roapi.h HAVE_ROAPI_H)
   check_include_file(mmdeviceapi.h HAVE_MMDEVICEAPI_H)
   check_include_file(audioclient.h HAVE_AUDIOCLIENT_H)
   check_include_file(sensorsapi.h HAVE_SENSORSAPI_H)
   check_include_file(shellscalingapi.h HAVE_SHELLSCALINGAPI_H)
+  check_c_source_compiles("
+    #include <windows.h>
+    #include <mfapi.h>
+    #include <mfidl.h>
+    #include <mfreadwrite.h>
+    int main(int argc, char **argv) { return 0; }
+    " HAVE_MFAPI_H
+  )
 
   if(SDL_AUDIO)
     if(HAVE_DSOUND_H AND NOT WINDOWS_STORE)
@@ -2113,7 +2122,7 @@ elseif(WINDOWS)
   endif()
 
   if(SDL_CAMERA)
-    if(NOT WINDOWS_STORE)
+    if(HAVE_MFAPI_H AND NOT WINDOWS_STORE)
       set(HAVE_CAMERA TRUE)
       set(SDL_CAMERA_DRIVER_MEDIAFOUNDATION 1)
       sdl_glob_sources("${SDL3_SOURCE_DIR}/src/camera/mediafoundation/*.c")
@@ -2134,7 +2143,7 @@ elseif(APPLE)
   # !!! FIXME: we need Carbon for some very old API calls in
   # !!! FIXME:  src/video/cocoa/SDL_cocoakeyboard.c, but we should figure out
   # !!! FIXME:  how to dump those.
-  if(DARWIN OR MACOSX)
+  if(MACOS)
     set(SDL_FRAMEWORK_COCOA 1)
     set(SDL_FRAMEWORK_CARBON 1)
     set(SDL_FRAMEWORK_UTTYPES 1)
@@ -2143,7 +2152,7 @@ elseif(APPLE)
   set(SDL_FRAMEWORK_COREVIDEO 1)
 
   # iOS can use a CADisplayLink for main callbacks. macOS just uses the generic one atm.
-  if(IOS OR TVOS OR VISIONOS)
+  if(IOS OR TVOS OR VISIONOS OR WATCHOS)
     sdl_glob_sources("${SDL3_SOURCE_DIR}/src/main/ios/*.m")
     set(HAVE_SDL_MAIN_CALLBACKS TRUE)
   endif()
@@ -2151,14 +2160,14 @@ elseif(APPLE)
   sdl_glob_sources("${SDL3_SOURCE_DIR}/src/file/cocoa/*.m")
 
   if(SDL_CAMERA)
-    if(IOS OR TVOS OR MACOSX OR DARWIN)
+    if(MACOS OR IOS)
       set(SDL_CAMERA_DRIVER_COREMEDIA 1)
       set(HAVE_CAMERA TRUE)
       sdl_glob_sources("${SDL3_SOURCE_DIR}/src/camera/coremedia/*.m")
     endif()
   endif()
 
-  if(IOS OR TVOS OR VISIONOS)
+  if(IOS OR TVOS OR VISIONOS OR WATCHOS)
     sdl_glob_sources("${SDL3_SOURCE_DIR}/src/misc/ios/*.m")
   else()
     sdl_glob_sources("${SDL3_SOURCE_DIR}/src/misc/macos/*.m")
@@ -2180,10 +2189,10 @@ elseif(APPLE)
 
   if(SDL_JOYSTICK)
     sdl_glob_sources("${SDL3_SOURCE_DIR}/src/joystick/apple/*.m")
-    if(IOS OR TVOS OR VISIONOS)
+    if(IOS OR TVOS OR VISIONOS OR WATCHOS)
       sdl_glob_sources("${SDL3_SOURCE_DIR}/src/joystick/steam/*.c")
       set(SDL_JOYSTICK_MFI 1)
-      if(IOS OR VISIONOS)
+      if(IOS OR VISIONOS OR WATCHOS)
         set(SDL_FRAMEWORK_COREMOTION 1)
       endif()
       set(SDL_FRAMEWORK_GAMECONTROLLER 1)
@@ -2225,7 +2234,7 @@ elseif(APPLE)
   endif()
 
   if(SDL_HAPTIC)
-    if (IOS OR TVOS OR VISIONOS)
+    if (IOS OR TVOS OR VISIONOS OR WATCHOS)
       sdl_glob_sources("${SDL3_SOURCE_DIR}/src/haptic/dummy/*.c")
       set(SDL_HAPTIC_DUMMY 1)
     else()
@@ -2238,7 +2247,7 @@ elseif(APPLE)
   endif()
 
   if(SDL_POWER)
-    if (IOS OR TVOS OR VISIONOS)
+    if (IOS OR TVOS OR VISIONOS OR WATCHOS)
       sdl_glob_sources("${SDL3_SOURCE_DIR}/src/power/uikit/*.m")
       set(SDL_POWER_UIKIT 1)
     else()
@@ -2267,7 +2276,7 @@ elseif(APPLE)
   # TODO: SDL_STORAGE_ICLOUD
   set(SDL_STORAGE_GENERIC 1)
   sdl_glob_sources("${SDL3_SOURCE_DIR}/src/storage/generic/*.c")
-  if(DARWIN OR MACOSX)
+  if(MACOS)
     set(SDL_STORAGE_STEAM 1)
     sdl_glob_sources("${SDL3_SOURCE_DIR}/src/storage/steam/*.c")
   endif()
@@ -2278,7 +2287,7 @@ elseif(APPLE)
   set(HAVE_SDL_FSOPS TRUE)
 
   if(SDL_SENSOR)
-    if(IOS OR VISIONOS)
+    if(IOS OR VISIONOS OR WATCHOS)
       set(SDL_SENSOR_COREMOTION 1)
       set(HAVE_SDL_SENSORS TRUE)
       sdl_glob_sources("${SDL3_SOURCE_DIR}/src/sensor/coremotion/*.m")
@@ -2287,7 +2296,7 @@ elseif(APPLE)
 
   # iOS hack needed - http://code.google.com/p/ios-cmake/ ?
   if(SDL_VIDEO)
-    if (IOS OR TVOS OR VISIONOS)
+    if(IOS OR TVOS OR VISIONOS OR WATCHOS)
       set(SDL_VIDEO_DRIVER_UIKIT 1)
       set(SDL_FRAMEWORK_COREGRAPHICS 1)
       set(SDL_FRAMEWORK_QUARTZCORE 1)
@@ -2307,7 +2316,7 @@ elseif(APPLE)
     endif()
 
     if(SDL_OPENGLES)
-      if(IOS OR TVOS OR VISIONOS)
+      if(IOS OR TVOS OR VISIONOS OR WATCHOS)
         set(SDL_FRAMEWORK_OPENGLES 1)
         set(SDL_VIDEO_OPENGL_ES 1)
       else()
@@ -2400,7 +2409,7 @@ elseif(APPLE)
     endif()
   endif()
   if(SDL_FRAMEWORK_METAL)
-    if(IOS OR TVOS OR VISIONOS)
+    if(IOS OR TVOS OR VISIONOS OR WATCHOS)
       sdl_link_dependency(metal LINK_OPTIONS "-Wl,-framework,Metal")
     else()
       sdl_link_dependency(metal LINK_OPTIONS "-Wl,-weak_framework,Metal")
@@ -2410,7 +2419,7 @@ elseif(APPLE)
     sdl_link_dependency(opengles LINK_OPTIONS "-Wl,-framework,OpenGLES")
   endif()
   if(SDL_FRAMEWORK_QUARTZCORE)
-    if(IOS OR TVOS OR VISIONOS)
+    if(IOS OR TVOS OR VISIONOS OR WATCHOS)
       sdl_link_dependency(quartz_core LINK_OPTIONS "-Wl,-framework,QuartzCore")
     else()
       sdl_link_dependency(metal LINK_OPTIONS "-Wl,-weak_framework,QuartzCore")
@@ -2873,7 +2882,11 @@ elseif(N3DS)
 endif()
 
 if (SDL_DIALOG)
-  if(UNIX AND NOT APPLE AND NOT RISCOS AND NOT HAIKU)
+  sdl_sources(${SDL3_SOURCE_DIR}/src/dialog/SDL_dialog_utils.c)
+  if(ANDROID)
+    sdl_sources(${SDL3_SOURCE_DIR}/src/dialog/android/SDL_androiddialog.c)
+    set(HAVE_SDL_DIALOG TRUE)
+  elseif(UNIX AND NOT APPLE AND NOT RISCOS AND NOT HAIKU)
     sdl_sources(${SDL3_SOURCE_DIR}/src/dialog/unix/SDL_unixdialog.c)
     sdl_sources(${SDL3_SOURCE_DIR}/src/dialog/unix/SDL_portaldialog.c)
     sdl_sources(${SDL3_SOURCE_DIR}/src/dialog/unix/SDL_zenitydialog.c)
@@ -2884,7 +2897,7 @@ if (SDL_DIALOG)
   elseif(WINDOWS AND NOT WINDOWS_STORE)
     sdl_sources(${SDL3_SOURCE_DIR}/src/dialog/windows/SDL_windowsdialog.c)
     set(HAVE_SDL_DIALOG TRUE)
-  elseif(APPLE)
+  elseif(MACOS)
     sdl_sources(${SDL3_SOURCE_DIR}/src/dialog/cocoa/SDL_cocoadialog.m)
     sdl_link_dependency(uniformtypeidentifiers LINK_OPTIONS "-Wl,-weak_framework,UniformTypeIdentifiers")
     set(HAVE_SDL_DIALOG TRUE)
@@ -2894,7 +2907,7 @@ endif()
 # Platform-independent options
 
 if(SDL_VIDEO)
-  if(SDL_OFFSCREEN AND SDL_VIDEO_OPENGL_EGL)
+  if(SDL_OFFSCREEN)
     set(SDL_VIDEO_DRIVER_OFFSCREEN 1)
     sdl_glob_sources("${SDL3_SOURCE_DIR}/src/video/offscreen/*.c")
     set(HAVE_OFFSCREEN TRUE)
@@ -3041,9 +3054,11 @@ macro(check_add_debug_flag FLAG SUFFIX)
     string(APPEND CMAKE_C_FLAGS_DEBUG " ${FLAG}")
   endif()
 
-  check_cxx_compiler_flag(${FLAG} HAS_CXX_${SUFFIX})
-  if(HAS_CXX_${SUFFIX})
-    string(APPEND CMAKE_CXX_FLAGS_DEBUG " ${FLAG}")
+  if(CMAKE_CXX_COMPILER)
+    check_cxx_compiler_flag(${FLAG} HAS_CXX_${SUFFIX})
+    if(HAS_CXX_${SUFFIX})
+      string(APPEND CMAKE_CXX_FLAGS_DEBUG " ${FLAG}")
+    endif()
   endif()
 endmacro()
 
@@ -3062,18 +3077,20 @@ macro(asan_check_add_debug_flag2 ASAN_FLAG)
 
   cmake_push_check_state()
   list(APPEND CMAKE_REQUIRED_LIBRARIES ${FLAG} asan)
-  check_c_compiler_flag (${FLAG} HAS_C_FLAG_${ASAN_FLAG})
-  check_cxx_compiler_flag (${FLAG} HAS_CXX_FLAG_${ASAN_FLAG})
-  cmake_pop_check_state()
 
+  check_c_compiler_flag (${FLAG} HAS_C_FLAG_${ASAN_FLAG})
   if (HAS_C_FLAG_${ASAN_FLAG})
     string(APPEND CMAKE_C_FLAGS_DEBUG " ${FLAG}")
   endif()
 
-  if (HAS_CXX_${ASAN_FLAG})
-    string(APPEND CMAKE_CXX_FLAGS_DEBUG " ${FLAG}")
+  if(CMAKE_CXX_COMPILER)
+    check_cxx_compiler_flag (${FLAG} HAS_CXX_FLAG_${ASAN_FLAG})
+    if (HAS_CXX_${ASAN_FLAG})
+      string(APPEND CMAKE_CXX_FLAGS_DEBUG " ${FLAG}")
+    endif()
   endif()
 
+  cmake_pop_check_state()
   if(HAS_C_${ASAN_FLAG} OR HAS_CXX_${ASAN_FLAG})
     set(HAVE_ASAN ON)
   endif()
@@ -3214,7 +3231,6 @@ target_include_directories(SDL3_Headers
   INTERFACE
     "$<BUILD_INTERFACE:${SDL3_BINARY_DIR}/include>"
     "$<BUILD_INTERFACE:${SDL3_SOURCE_DIR}/include>"
-    "$<BUILD_INTERFACE:${SDL3_SOURCE_DIR}/include/SDL3>"
 )
 if(SDL_FRAMEWORK)
   target_include_directories(SDL3_Headers
@@ -3230,7 +3246,6 @@ else()
   target_include_directories(SDL3_Headers
     INTERFACE
       "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
-      "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/SDL3>"
   )
 endif()
 
@@ -3266,9 +3281,13 @@ if(SDL_SHARED)
     endif()
   endif()
   if(APPLE)
+    cmake_minimum_required(VERSION 3.17)
     set_target_properties(SDL3-shared PROPERTIES
       MACOSX_RPATH TRUE
       FRAMEWORK "${SDL_FRAMEWORK}"
+      SOVERSION "${SDL_SO_VERSION_MAJOR}"
+      MACHO_COMPATIBILITY_VERSION "${SDL_DYLIB_COMPAT_VERSION}"
+      MACHO_CURRENT_VERSION "${SDL_DYLIB_CURRENT_VERSION}"
     )
     if(SDL_FRAMEWORK)
       set_target_properties(SDL3-shared PROPERTIES
@@ -3278,10 +3297,6 @@ if(SDL_SHARED)
         RESOURCE "${SDL_FRAMEWORK_RESOURCES}"
       )
     endif()
-    set_target_properties(SDL3-shared PROPERTIES
-      SOVERSION "${SDL_DYLIB_COMPAT_VERSION}" # SOVERSION corresponds to compatibility version
-      VERSION "${SDL_DYLIB_CURRENT_VERSION}"  # VERSION corresponds to the current version
-    )
   elseif(UNIX AND NOT ANDROID)
     set_target_properties(SDL3-shared PROPERTIES
       VERSION "${SDL_SO_VERSION}"

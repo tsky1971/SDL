@@ -118,7 +118,7 @@ int main(int argc, char *argv[])
     }
 
     /* Enable standard application logging */
-    SDL_LogSetPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
+    SDL_SetLogPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
 
     /* Parse commandline */
     if (!SDLTest_CommonDefaultArgs(state, argc, argv)) {
@@ -164,7 +164,7 @@ int main(int argc, char *argv[])
     SDL_SetWindowTitle(window, "SDL Native Window Test");
 
     /* Create the renderer */
-    renderer = SDL_CreateRenderer(window, NULL, 0);
+    renderer = SDL_CreateRenderer(window, NULL);
     if (!renderer) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't create renderer: %s\n", SDL_GetError());
         quit(5);
@@ -196,7 +196,7 @@ int main(int argc, char *argv[])
         positions[i].h = (float)sprite_h;
         velocities[i].x = 0.0f;
         velocities[i].y = 0.0f;
-        while (!velocities[i].x && !velocities[i].y) {
+        while (velocities[i].x == 0.f && velocities[i].y == 0.f) {
             velocities[i].x = (float)((rand() % (MAX_SPEED * 2 + 1)) - MAX_SPEED);
             velocities[i].y = (float)((rand() % (MAX_SPEED * 2 + 1)) - MAX_SPEED);
         }

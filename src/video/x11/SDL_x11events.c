@@ -39,7 +39,6 @@
 #include "../../events/SDL_mouse_c.h"
 #include "../../events/SDL_touch_c.h"
 #include "../../core/linux/SDL_system_theme.h"
-#include "../../SDL_utils_c.h"
 #include "../SDL_sysvideo.h"
 
 #include <stdio.h>
@@ -571,7 +570,7 @@ SDL_bool X11_ProcessHitTest(SDL_VideoDevice *_this, SDL_WindowData *data, const 
 {
     SDL_Window *window = data->window;
     if (!window->hit_test) return SDL_FALSE;
-    const SDL_Point point = { x, y };
+    const SDL_Point point = { (int)x, (int)y };
     SDL_HitTestResult rc = window->hit_test(window, &point, window->hit_test_data);
     if (!force_new_result && rc == data->hit_test_result) {
         return SDL_TRUE;
@@ -586,7 +585,7 @@ SDL_bool X11_TriggerHitTestAction(SDL_VideoDevice *_this, SDL_WindowData *data, 
     SDL_Window *window = data->window;
 
     if (window->hit_test) {
-        const SDL_Point point = { x, y };
+        const SDL_Point point = { (int)x, (int)y };
         static const int directions[] = {
             _NET_WM_MOVERESIZE_SIZE_TOPLEFT, _NET_WM_MOVERESIZE_SIZE_TOP,
             _NET_WM_MOVERESIZE_SIZE_TOPRIGHT, _NET_WM_MOVERESIZE_SIZE_RIGHT,
@@ -764,6 +763,19 @@ static void X11_HandleClipboardEvent(SDL_VideoDevice *_this, const XEvent *xeven
             SDL_zerop(clipboard);
         }
     } break;
+
+    case PropertyNotify:
+    {
+        char *name_of_atom = X11_XGetAtomName(display, xevent->xproperty.atom);
+
+        if (SDL_strncmp(name_of_atom, "SDL_SELECTION", sizeof("SDL_SELECTION") - 1) == 0 && xevent->xproperty.state == PropertyNewValue) {
+            videodata->selection_incr_waiting = SDL_FALSE;
+        }
+
+        if (name_of_atom) {
+            X11_XFree(name_of_atom);
+        }
+    } break;
     }
 }
 
@@ -839,6 +851,7 @@ void X11_HandleKeyEvent(SDL_VideoDevice *_this, SDL_WindowData *windowdata, SDL_
     Display *display = videodata->display;
     KeyCode keycode = xevent->xkey.keycode;
     KeySym keysym = NoSymbol;
+    int text_length = 0;
     char text[64];
     Status status = 0;
     SDL_bool handled_by_ime = SDL_FALSE;
@@ -891,13 +904,13 @@ void X11_HandleKeyEvent(SDL_VideoDevice *_this, SDL_WindowData *windowdata, SDL_
 
 #ifdef X_HAVE_UTF8_STRING
         if (windowdata->ic && xevent->type == KeyPress) {
-            X11_Xutf8LookupString(windowdata->ic, &xevent->xkey, text, sizeof(text),
+            text_length = X11_Xutf8LookupString(windowdata->ic, &xevent->xkey, text, sizeof(text) - 1,
                                   &keysym, &status);
         } else {
-            XLookupStringAsUTF8(&xevent->xkey, text, sizeof(text), &keysym, NULL);
+            text_length = XLookupStringAsUTF8(&xevent->xkey, text, sizeof(text) - 1, &keysym, NULL);
         }
 #else
-        XLookupStringAsUTF8(&xevent->xkey, text, sizeof(text), &keysym, NULL);
+        text_length = XLookupStringAsUTF8(&xevent->xkey, text, sizeof(text) - 1, &keysym, NULL);
 #endif
 
 #ifdef SDL_USE_IME
@@ -912,6 +925,7 @@ void X11_HandleKeyEvent(SDL_VideoDevice *_this, SDL_WindowData *windowdata, SDL_
                 SDL_SendKeyboardKey(0, keyboardID, SDL_PRESSED, videodata->key_layout[keycode]);
             }
             if (*text) {
+                text[text_length] = '\0';
                 SDL_SendKeyboardText(text);
             }
         } else {
@@ -1687,8 +1701,7 @@ static void X11_DispatchEvent(SDL_VideoDevice *_this, XEvent *xevent)
 
                     if (flags & SDL_WINDOW_FULLSCREEN) {
                         if (!(flags & SDL_WINDOW_MINIMIZED)) {
-                            const SDL_bool commit = data->requested_fullscreen_mode.displayID == 0 ||
-                                                    SDL_memcmp(&data->window->current_fullscreen_mode, &data->requested_fullscreen_mode, sizeof(SDL_DisplayMode)) != 0;
+                            const SDL_bool commit = SDL_memcmp(&data->window->current_fullscreen_mode, &data->requested_fullscreen_mode, sizeof(SDL_DisplayMode)) != 0;
 
                             SDL_SendWindowEvent(data->window, SDL_EVENT_WINDOW_ENTER_FULLSCREEN, 0, 0);
                             if (commit) {
@@ -1696,17 +1709,25 @@ static void X11_DispatchEvent(SDL_VideoDevice *_this, XEvent *xevent)
                                  * becoming fullscreen. Switch to the application requested mode if necessary.
                                  */
                                 SDL_copyp(&data->window->current_fullscreen_mode, &data->window->requested_fullscreen_mode);
-                                SDL_UpdateFullscreenMode(data->window, SDL_TRUE, SDL_TRUE);
+                                SDL_UpdateFullscreenMode(data->window, SDL_FULLSCREEN_OP_UPDATE, SDL_TRUE);
                             } else {
-                                SDL_UpdateFullscreenMode(data->window, SDL_TRUE, SDL_FALSE);
+                                SDL_UpdateFullscreenMode(data->window, SDL_FULLSCREEN_OP_ENTER, SDL_FALSE);
                             }
                         }
                     } else {
                         SDL_SendWindowEvent(data->window, SDL_EVENT_WINDOW_LEAVE_FULLSCREEN, 0, 0);
                         SDL_UpdateFullscreenMode(data->window, SDL_FALSE, SDL_FALSE);
 
+                        SDL_zero(data->requested_fullscreen_mode);
+
                         /* Need to restore or update any limits changed while the window was fullscreen. */
                         X11_SetWindowMinMax(data->window, !!(flags & SDL_WINDOW_MAXIMIZED));
+
+                        /* Toggle the borders if they were forced on while creating a borderless fullscreen window. */
+                        if (data->fullscreen_borders_forced_on) {
+                            data->toggle_borders = SDL_TRUE;
+                            data->fullscreen_borders_forced_on = SDL_FALSE;
+                        }
                     }
 
                     if ((flags & SDL_WINDOW_FULLSCREEN) &&
@@ -1753,17 +1774,17 @@ static void X11_DispatchEvent(SDL_VideoDevice *_this, XEvent *xevent)
                 }
                 if (!(flags & (SDL_WINDOW_MAXIMIZED | SDL_WINDOW_MINIMIZED))) {
                     data->pending_operation &= ~X11_PENDING_OP_RESTORE;
-                    SDL_SendWindowEvent(data->window, SDL_EVENT_WINDOW_RESTORED, 0, 0);
-
-                    /* Restore the last known floating state if leaving maximized mode */
-                    if (!(flags & SDL_WINDOW_FULLSCREEN)) {
-                        data->pending_operation |= X11_PENDING_OP_MOVE | X11_PENDING_OP_RESIZE;
-                        data->expected.x = data->window->floating.x - data->border_left;
-                        data->expected.y = data->window->floating.y - data->border_top;
-                        data->expected.w = data->window->floating.w;
-                        data->expected.h = data->window->floating.h;
-                        X11_XMoveWindow(display, data->xwindow, data->window->floating.x - data->border_left, data->window->floating.y - data->border_top);
-                        X11_XResizeWindow(display, data->xwindow, data->window->floating.w, data->window->floating.h);
+                    if (SDL_SendWindowEvent(data->window, SDL_EVENT_WINDOW_RESTORED, 0, 0)) {
+                        /* Restore the last known floating state if leaving maximized mode */
+                        if (!(flags & SDL_WINDOW_FULLSCREEN)) {
+                            data->pending_operation |= X11_PENDING_OP_MOVE | X11_PENDING_OP_RESIZE;
+                            data->expected.x = data->window->floating.x - data->border_left;
+                            data->expected.y = data->window->floating.y - data->border_top;
+                            data->expected.w = data->window->floating.w;
+                            data->expected.h = data->window->floating.h;
+                            X11_XMoveWindow(display, data->xwindow, data->window->floating.x - data->border_left, data->window->floating.y - data->border_top);
+                            X11_XResizeWindow(display, data->xwindow, data->window->floating.w, data->window->floating.h);
+                        }
                     }
                 }
                 if ((flags & SDL_WINDOW_INPUT_FOCUS)) {
@@ -1785,24 +1806,26 @@ static void X11_DispatchEvent(SDL_VideoDevice *_this, XEvent *xevent)
                right approach, but it seems to work. */
             X11_UpdateKeymap(_this, SDL_TRUE);
         } else if (xevent->xproperty.atom == videodata->_NET_FRAME_EXTENTS) {
-            /* Re-enable size events if they were turned off waiting for the borders to come back
-             * when leaving fullscreen.
-             */
-            data->disable_size_position_events = SDL_FALSE;
-            X11_GetBorderValues(data);
-            if (data->border_top != 0 || data->border_left != 0 || data->border_right != 0 || data->border_bottom != 0) {
-                /* Adjust if the window size/position changed to accommodate the borders. */
-                if (data->window->flags & SDL_WINDOW_MAXIMIZED) {
-                    data->pending_operation |= X11_PENDING_OP_RESIZE;
-                    data->expected.w = data->window->windowed.w;
-                    data->expected.h = data->window->windowed.h;
-                    X11_XResizeWindow(display, data->xwindow, data->window->windowed.w, data->window->windowed.h);
-                } else {
-                    data->pending_operation |= X11_PENDING_OP_RESIZE | X11_PENDING_OP_MOVE;
-                    data->expected.w = data->window->floating.w;
-                    data->expected.h = data->window->floating.h;
-                    X11_XMoveWindow(display, data->xwindow, data->window->floating.x - data->border_left, data->window->floating.y - data->border_top);
-                    X11_XResizeWindow(display, data->xwindow, data->window->floating.w, data->window->floating.h);
+            if (data->disable_size_position_events) {
+                /* Re-enable size events if they were turned off waiting for the borders to come back
+                 * when leaving fullscreen.
+                 */
+                data->disable_size_position_events = SDL_FALSE;
+                X11_GetBorderValues(data);
+                if (data->border_top != 0 || data->border_left != 0 || data->border_right != 0 || data->border_bottom != 0) {
+                    /* Adjust if the window size/position changed to accommodate the borders. */
+                    if (data->window->flags & SDL_WINDOW_MAXIMIZED) {
+                        data->pending_operation |= X11_PENDING_OP_RESIZE;
+                        data->expected.w = data->window->windowed.w;
+                        data->expected.h = data->window->windowed.h;
+                        X11_XResizeWindow(display, data->xwindow, data->window->windowed.w, data->window->windowed.h);
+                    } else {
+                        data->pending_operation |= X11_PENDING_OP_RESIZE | X11_PENDING_OP_MOVE;
+                        data->expected.w = data->window->floating.w;
+                        data->expected.h = data->window->floating.h;
+                        X11_XMoveWindow(display, data->xwindow, data->window->floating.x - data->border_left, data->window->floating.y - data->border_top);
+                        X11_XResizeWindow(display, data->xwindow, data->window->floating.w, data->window->floating.h);
+                    }
                 }
             }
             if (!(data->window->flags & SDL_WINDOW_FULLSCREEN) && data->toggle_borders) {
@@ -1992,11 +2015,10 @@ void X11_PumpEvents(SDL_VideoDevice *_this)
      * fullscreen. If there is no fullscreen window past the elapsed timeout, revert the mode switch.
      */
     for (i = 0; i < _this->num_displays; ++i) {
-        if (_this->displays[i]->driverdata->mode_switch_deadline_ns &&
-            SDL_GetTicksNS() >= _this->displays[i]->driverdata->mode_switch_deadline_ns) {
+        if (_this->displays[i]->driverdata->mode_switch_deadline_ns) {
             if (_this->displays[i]->fullscreen_window) {
                 _this->displays[i]->driverdata->mode_switch_deadline_ns = 0;
-            } else {
+            } else if (SDL_GetTicksNS() >= _this->displays[i]->driverdata->mode_switch_deadline_ns) {
                 SDL_LogError(SDL_LOG_CATEGORY_VIDEO,
                              "Time out elapsed after mode switch on display %" SDL_PRIu32 " with no window becoming fullscreen; reverting", _this->displays[i]->id);
                 SDL_SetDisplayModeForDisplay(_this->displays[i], NULL);

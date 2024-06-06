@@ -88,9 +88,9 @@ Here is a rough list of what works, and what doesn't:
     UWP itself).
   * turning off VSync when rendering on Windows Phone.  Attempts to turn VSync
     off on Windows Phone result either in Direct3D not drawing anything, or it
-    forcing VSync back on.  As such, SDL_RENDERER_PRESENTVSYNC will always get
-    turned-on on Windows Phone.  This limitation is not present in non-Phone
-    WinRT (such as Windows 8.x), where turning off VSync appears to work.
+    forcing VSync back on.  As such, vsync will always get turned-on on Windows
+    Phone.  This limitation is not present in non-Phone WinRT (such as Windows 8.x),
+    where turning off VSync appears to work.
   * probably anything else that's not listed as supported
 
 
@@ -129,8 +129,7 @@ SDL_GetPrefPath(), starting with SDL 2.0.4, addresses these by:
    (and which require less work to use safely, in terms of data integrity).
 
 Apps that wish to get their Roaming folder's path can do so either by using
-SDL_WinRTGetFSPathUTF8(), SDL_WinRTGetFSPathUNICODE() (which returns a
-UCS-2/wide-char string), or directly through the WinRT class,
+SDL_WinRTGetFSPath(), or directly through the WinRT class,
 Windows.Storage.ApplicationData.
 
 
@@ -340,7 +339,7 @@ int main(int argc, char **argv)
 
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
         return 1;
-    } else if (SDL_CreateWindowAndRenderer(0, 0, SDL_WINDOW_FULLSCREEN, &window, &renderer) != 0) {
+    } else if (SDL_CreateWindowAndRenderer("Hello SDL", 0, 0, SDL_WINDOW_FULLSCREEN, &window, &renderer) != 0) {
         return 1;
     }
 

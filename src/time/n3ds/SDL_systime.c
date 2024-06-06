@@ -56,10 +56,10 @@ static void civil_from_days(int days, int *year, int *month, int *day)
     *day = (int)d;
 }
 
-void SDL_GetSystemTimeLocalePreferences(SDL_DATE_FORMAT *df, SDL_TIME_FORMAT *tf)
+void SDL_GetSystemTimeLocalePreferences(SDL_DateFormat *df, SDL_TimeFormat *tf)
 {
     /* The 3DS only has 12 supported languages, so take the standard for each */
-    static const SDL_DATE_FORMAT LANG_TO_DATE_FORMAT[] = {
+    static const SDL_DateFormat LANG_TO_DATE_FORMAT[] = {
         SDL_DATE_FORMAT_YYYYMMDD, /* JP */
         SDL_DATE_FORMAT_DDMMYYYY, /* EN, assume non-american format */
         SDL_DATE_FORMAT_DDMMYYYY, /* FR */
@@ -86,15 +86,23 @@ void SDL_GetSystemTimeLocalePreferences(SDL_DATE_FORMAT *df, SDL_TIME_FORMAT *tf
         return;
     }
 
-    *df = LANG_TO_DATE_FORMAT[system_language];
-    *tf = SDL_TIME_FORMAT_24HR;
+    if (df) {
+        *df = LANG_TO_DATE_FORMAT[system_language];
+    }
+    if (tf) {
+        *tf = SDL_TIME_FORMAT_24HR;
+    }
 
     /* Only American English (en_US) uses MM/DD/YYYY and 12hr system, this gets
        the formats wrong for canadians though (en_CA) */
     if (system_language == CFG_LANGUAGE_EN &&
         R_SUCCEEDED(has_region) && is_north_america) {
-        *df = SDL_DATE_FORMAT_MMDDYYYY;
-        *tf = SDL_TIME_FORMAT_12HR;
+        if (df) {
+            *df = SDL_DATE_FORMAT_MMDDYYYY;
+        }
+        if (tf) {
+            *tf = SDL_TIME_FORMAT_12HR;
+        }
     }
 }
 

@@ -23,8 +23,6 @@
 #ifdef SDL_TIME_WINDOWS
 
 #include "../../core/windows/SDL_windows.h"
-#include <minwinbase.h>
-#include <timezoneapi.h>
 
 #include "../SDL_time_c.h"
 
@@ -34,11 +32,11 @@
 
 typedef void(WINAPI *pfnGetSystemTimePreciseAsFileTime)(FILETIME *);
 
-void SDL_GetSystemTimeLocalePreferences(SDL_DATE_FORMAT *df, SDL_TIME_FORMAT *tf)
+void SDL_GetSystemTimeLocalePreferences(SDL_DateFormat *df, SDL_TimeFormat *tf)
 {
     WCHAR str[80]; /* Per the docs, the time and short date format strings can be a max of 80 characters. */
 
-    if (GetLocaleInfoW(LOCALE_USER_DEFAULT, LOCALE_SSHORTDATE, str, sizeof(str) / sizeof(WCHAR))) {
+    if (df && GetLocaleInfoW(LOCALE_USER_DEFAULT, LOCALE_SSHORTDATE, str, sizeof(str) / sizeof(WCHAR))) {
         LPWSTR s = str;
         while (*s) {
             switch (*s++) {
@@ -60,7 +58,7 @@ void SDL_GetSystemTimeLocalePreferences(SDL_DATE_FORMAT *df, SDL_TIME_FORMAT *tf
 found_date:
 
     /* Figure out the preferred system date format. */
-    if (GetLocaleInfoW(LOCALE_USER_DEFAULT, LOCALE_STIMEFORMAT, str, sizeof(str) / sizeof(WCHAR))) {
+    if (tf && GetLocaleInfoW(LOCALE_USER_DEFAULT, LOCALE_STIMEFORMAT, str, sizeof(str) / sizeof(WCHAR))) {
         LPWSTR s = str;
         while (*s) {
             switch (*s++) {

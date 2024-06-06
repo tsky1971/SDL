@@ -30,36 +30,6 @@
 #include <spa/utils/json.h>
 
 /*
- * The following keys are defined for compatibility when building against older versions of Pipewire
- * prior to their introduction and can be removed if the minimum required Pipewire build version is
- * increased to or beyond their point of introduction.
- */
-
-/*
- * Introduced in 0.3.22
- * Taken from /src/pipewire/keys.h
- */
-#ifndef PW_KEY_CONFIG_NAME
-#define PW_KEY_CONFIG_NAME "config.name"
-#endif
-
-/*
- * Introduced in 0.3.33
- * Taken from src/pipewire/keys.h
- */
-#ifndef PW_KEY_NODE_RATE
-#define PW_KEY_NODE_RATE "node.rate"
-#endif
-
-/*
- * Introduced in 0.3.44
- * Taken from src/pipewire/keys.h
- */
-#ifndef PW_KEY_TARGET_OBJECT
-#define PW_KEY_TARGET_OBJECT "target.object"
-#endif
-
-/*
  * This seems to be a sane lower limit as Pipewire
  * uses it in several of it's own modules.
  */
@@ -86,6 +56,11 @@ static SDL_bool pipewire_initialized = SDL_FALSE;
 static const char *(*PIPEWIRE_pw_get_library_version)(void);
 static void (*PIPEWIRE_pw_init)(int *, char ***);
 static void (*PIPEWIRE_pw_deinit)(void);
+static struct pw_main_loop *(*PIPEWIRE_pw_main_loop_new)(struct pw_main_loop *loop);
+static struct pw_loop *(*PIPEWIRE_pw_main_loop_get_loop)(struct pw_main_loop *loop);
+static int (*PIPEWIRE_pw_main_loop_run)(struct pw_main_loop *loop);
+static int (*PIPEWIRE_pw_main_loop_quit)(struct pw_main_loop *loop);
+static void(*PIPEWIRE_pw_main_loop_destroy)(struct pw_main_loop *loop);
 static struct pw_thread_loop *(*PIPEWIRE_pw_thread_loop_new)(const char *, const struct spa_dict *);
 static void (*PIPEWIRE_pw_thread_loop_destroy)(struct pw_thread_loop *);
 static void (*PIPEWIRE_pw_thread_loop_stop)(struct pw_thread_loop *);
@@ -113,10 +88,6 @@ static int (*PIPEWIRE_pw_stream_queue_buffer)(struct pw_stream *, struct pw_buff
 static struct pw_properties *(*PIPEWIRE_pw_properties_new)(const char *, ...)SPA_SENTINEL;
 static int (*PIPEWIRE_pw_properties_set)(struct pw_properties *, const char *, const char *);
 static int (*PIPEWIRE_pw_properties_setf)(struct pw_properties *, const char *, const char *, ...) SPA_PRINTF_FUNC(3, 4);
-
-static int pipewire_version_major;
-static int pipewire_version_minor;
-static int pipewire_version_patch;
 
 #ifdef SDL_AUDIO_DRIVER_PIPEWIRE_DYNAMIC
 
@@ -174,6 +145,11 @@ static int load_pipewire_syms(void)
     SDL_PIPEWIRE_SYM(pw_get_library_version);
     SDL_PIPEWIRE_SYM(pw_init);
     SDL_PIPEWIRE_SYM(pw_deinit);
+    SDL_PIPEWIRE_SYM(pw_main_loop_new);
+    SDL_PIPEWIRE_SYM(pw_main_loop_get_loop);
+    SDL_PIPEWIRE_SYM(pw_main_loop_run);
+    SDL_PIPEWIRE_SYM(pw_main_loop_quit);
+    SDL_PIPEWIRE_SYM(pw_main_loop_destroy);
     SDL_PIPEWIRE_SYM(pw_thread_loop_new);
     SDL_PIPEWIRE_SYM(pw_thread_loop_destroy);
     SDL_PIPEWIRE_SYM(pw_thread_loop_stop);
@@ -203,27 +179,97 @@ static int load_pipewire_syms(void)
     return 0;
 }
 
-static SDL_bool pipewire_version_at_least(int major, int minor, int patch)
+/* When in a container, the library version can differ from the underlying core version,
+ * so make sure the underlying Pipewire implementation meets the version requirement.
+ */
+struct version_data
 {
-    return (pipewire_version_major >= major) &&
-           (pipewire_version_major > major || pipewire_version_minor >= minor) &&
-           (pipewire_version_major > major || pipewire_version_minor > minor || pipewire_version_patch >= patch);
+    struct pw_main_loop *loop;
+    int major, minor, patch;
+    int seq;
+};
+
+void version_check_core_info_callback(void *data, const struct pw_core_info *info)
+{
+    struct version_data *v = data;
+
+    if (SDL_sscanf(info->version, "%d.%d.%d", &v->major, &v->minor, &v->patch) < 3) {
+        v->major = 0;
+        v->minor = 0;
+        v->patch = 0;
+    }
 }
 
-static int init_pipewire_library(void)
+void version_check_core_done_callback(void *data, uint32_t id, int seq)
+{
+    struct version_data *v = data;
+
+    if (id == PW_ID_CORE && v->seq == seq) {
+        PIPEWIRE_pw_main_loop_quit(v->loop);
+    }
+}
+
+static const struct pw_core_events version_check_core_events = { PW_VERSION_CORE_EVENTS, .info = version_check_core_info_callback, .done = version_check_core_done_callback };
+
+SDL_bool pipewire_core_version_at_least(int major, int minor, int patch)
+{
+    struct pw_main_loop *loop = NULL;
+    struct pw_context *context = NULL;
+    struct pw_core *core = NULL;
+    struct version_data version_data;
+    struct spa_hook core_listener;
+    SDL_bool ret = SDL_FALSE;
+
+    loop = PIPEWIRE_pw_main_loop_new(NULL);
+    if (!loop) {
+        goto done;
+    }
+
+    context = PIPEWIRE_pw_context_new(PIPEWIRE_pw_main_loop_get_loop(loop), NULL, 0);
+    if (!context) {
+        goto done;
+    }
+
+    core = PIPEWIRE_pw_context_connect(context, NULL, 0);
+    if (!core) {
+        goto done;
+    }
+
+    /* Attach a core listener and get the version. */
+    spa_zero(version_data);
+    version_data.loop = loop;
+    pw_core_add_listener(core, &core_listener, &version_check_core_events, &version_data);
+    version_data.seq = pw_core_sync(core, PW_ID_CORE, 0);
+
+    PIPEWIRE_pw_main_loop_run(loop);
+
+    spa_hook_remove(&core_listener);
+
+    ret = (version_data.major >= major) &&
+           (version_data.major > major || version_data.minor >= minor) &&
+           (version_data.major > major || version_data.minor > minor || version_data.patch >= patch);
+
+done:
+    if (core) {
+        PIPEWIRE_pw_core_disconnect(core);
+    }
+    if (context) {
+        PIPEWIRE_pw_context_destroy(context);
+    }
+    if (loop) {
+        PIPEWIRE_pw_main_loop_destroy(loop);
+    }
+
+    return ret;
+}
+
+static int init_pipewire_library(SDL_bool check_preferred_version)
 {
     if (!load_pipewire_library()) {
         if (!load_pipewire_syms()) {
-            int nargs;
-            const char *version = PIPEWIRE_pw_get_library_version();
-            nargs = SDL_sscanf(version, "%d.%d.%d", &pipewire_version_major, &pipewire_version_minor, &pipewire_version_patch);
-            if (nargs < 3) {
-                return -1;
-            }
+            PIPEWIRE_pw_init(NULL, NULL);
 
-            // SDL can build against 0.3.20, but requires 0.3.24
-            if (pipewire_version_at_least(0, 3, 24)) {
-                PIPEWIRE_pw_init(NULL, NULL);
+            if (!check_preferred_version || pipewire_core_version_at_least(1, 0, 0)) {
                 return 0;
             }
         }
@@ -1062,7 +1108,7 @@ static int PIPEWIRE_OpenDevice(SDL_AudioDevice *device)
     const struct spa_pod *params = NULL;
     struct SDL_PrivateAudioData *priv;
     struct pw_properties *props;
-    const char *app_name, *app_id, *stream_name, *stream_role, *error;
+    const char *app_name, *icon_name, *app_id, *stream_name, *stream_role, *error;
     Uint32 node_id = !device->handle ? PW_ID_ANY : PW_HANDLE_TO_ID(device->handle);
     const SDL_bool iscapture = device->iscapture;
     int res;
@@ -1070,13 +1116,18 @@ static int PIPEWIRE_OpenDevice(SDL_AudioDevice *device)
     // Clamp the period size to sane values
     const int min_period = PW_MIN_SAMPLES * SPA_MAX(device->spec.freq / PW_BASE_CLOCK_RATE, 1);
 
-    // Get the hints for the application name, stream name and role
+    // Get the hints for the application name, icon name, stream name and role
     app_name = SDL_GetHint(SDL_HINT_AUDIO_DEVICE_APP_NAME);
     if (!app_name || *app_name == '\0') {
         app_name = SDL_GetHint(SDL_HINT_APP_NAME);
         if (!app_name || *app_name == '\0') {
             app_name = "SDL Application";
         }
+    }
+
+    icon_name = SDL_GetHint(SDL_HINT_AUDIO_DEVICE_APP_ICON_NAME);
+    if (!icon_name || *icon_name == '\0') {
+        icon_name = "applications-games";
     }
 
     // App ID. Default to NULL if not available.
@@ -1144,6 +1195,7 @@ static int PIPEWIRE_OpenDevice(SDL_AudioDevice *device)
     PIPEWIRE_pw_properties_set(props, PW_KEY_MEDIA_CATEGORY, iscapture ? "Capture" : "Playback");
     PIPEWIRE_pw_properties_set(props, PW_KEY_MEDIA_ROLE, stream_role);
     PIPEWIRE_pw_properties_set(props, PW_KEY_APP_NAME, app_name);
+    PIPEWIRE_pw_properties_set(props, PW_KEY_APP_ICON_NAME, icon_name);
     if (app_id) {
         PIPEWIRE_pw_properties_set(props, PW_KEY_APP_ID, app_id);
     }
@@ -1154,25 +1206,13 @@ static int PIPEWIRE_OpenDevice(SDL_AudioDevice *device)
     PIPEWIRE_pw_properties_set(props, PW_KEY_NODE_ALWAYS_PROCESS, "true");
     PIPEWIRE_pw_properties_set(props, PW_KEY_NODE_DONT_RECONNECT, "true");  // Requesting a specific device, don't migrate to new default hardware.
 
-    /*
-     * Pipewire 0.3.44 introduced PW_KEY_TARGET_OBJECT that takes either a path
-     * (PW_KEY_NODE_NAME) or node serial number (PE_KEY_OBJECT_SERIAL) to connect
-     * the stream to its target. The target_id parameter in pw_stream_connect() is
-     * now deprecated and should always be PW_ID_ANY.
-     */
-    if (pipewire_version_at_least(0, 3, 44)) {
-        if (node_id != PW_ID_ANY) {
-            const struct io_node *node;
-
-            PIPEWIRE_pw_thread_loop_lock(hotplug_loop);
-            node = io_list_get_by_id(node_id);
-            if (node) {
-                PIPEWIRE_pw_properties_set(props, PW_KEY_TARGET_OBJECT, node->path);
-            }
-            PIPEWIRE_pw_thread_loop_unlock(hotplug_loop);
-
-            node_id = PW_ID_ANY;
+    if (node_id != PW_ID_ANY) {
+        PIPEWIRE_pw_thread_loop_lock(hotplug_loop);
+        const struct io_node *node = io_list_get_by_id(node_id);
+        if (node) {
+            PIPEWIRE_pw_properties_set(props, PW_KEY_TARGET_OBJECT, node->path);
         }
+        PIPEWIRE_pw_thread_loop_unlock(hotplug_loop);
     }
 
     // Create the new stream
@@ -1182,7 +1222,8 @@ static int PIPEWIRE_OpenDevice(SDL_AudioDevice *device)
         return SDL_SetError("Pipewire: Failed to create stream (%i)", errno);
     }
 
-    res = PIPEWIRE_pw_stream_connect(priv->stream, iscapture ? PW_DIRECTION_INPUT : PW_DIRECTION_OUTPUT, node_id, STREAM_FLAGS,
+    // The target node is passed via PW_KEY_TARGET_OBJECT; target_id is a legacy parameter and must be PW_ID_ANY.
+    res = PIPEWIRE_pw_stream_connect(priv->stream, iscapture ? PW_DIRECTION_INPUT : PW_DIRECTION_OUTPUT, PW_ID_ANY, STREAM_FLAGS,
                                      &params, 1);
     if (res != 0) {
         return SDL_SetError("Pipewire: Failed to connect stream");
@@ -1251,10 +1292,11 @@ static void PIPEWIRE_Deinitialize(void)
     }
 }
 
-static SDL_bool PIPEWIRE_Init(SDL_AudioDriverImpl *impl)
+static SDL_bool PipewireInitialize(SDL_AudioDriverImpl *impl, SDL_bool check_preferred_version)
 {
     if (!pipewire_initialized) {
-        if (init_pipewire_library() < 0) {
+
+        if (init_pipewire_library(check_preferred_version) < 0) {
             return SDL_FALSE;
         }
 
@@ -1282,6 +1324,42 @@ static SDL_bool PIPEWIRE_Init(SDL_AudioDriverImpl *impl)
     return SDL_TRUE;
 }
 
-AudioBootStrap PIPEWIRE_bootstrap = { "pipewire", "Pipewire", PIPEWIRE_Init, SDL_FALSE };
+static SDL_bool PIPEWIRE_PREFERRED_Init(SDL_AudioDriverImpl *impl)
+{
+    if (!PipewireInitialize(impl, SDL_TRUE)) {
+        return SDL_FALSE;
+    }
+
+    // run device detection but don't add any devices to SDL; we're just waiting to see if PipeWire sees any devices. If not, fall back to the next backend.
+    PIPEWIRE_pw_thread_loop_lock(hotplug_loop);
+
+    // Wait until the initial registry enumeration is complete
+    if (!hotplug_init_complete) {
+        PIPEWIRE_pw_thread_loop_wait(hotplug_loop);
+    }
+
+    const int no_devices = spa_list_is_empty(&hotplug_io_list);
+
+    PIPEWIRE_pw_thread_loop_unlock(hotplug_loop);
+
+    if (no_devices) {
+        PIPEWIRE_Deinitialize();
+        return SDL_FALSE;
+    }
+
+    return SDL_TRUE;  // this will move on to PIPEWIRE_DetectDevices and reuse hotplug_io_list.
+}
+
+static SDL_bool PIPEWIRE_Init(SDL_AudioDriverImpl *impl)
+{
+    return PipewireInitialize(impl, SDL_FALSE);
+}
+
+AudioBootStrap PIPEWIRE_PREFERRED_bootstrap = {
+    "pipewire", "Pipewire", PIPEWIRE_PREFERRED_Init, SDL_FALSE
+};
+AudioBootStrap PIPEWIRE_bootstrap = {
+    "pipewire", "Pipewire", PIPEWIRE_Init, SDL_FALSE
+};
 
 #endif // SDL_AUDIO_DRIVER_PIPEWIRE

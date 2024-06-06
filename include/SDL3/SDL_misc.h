@@ -20,15 +20,16 @@
 */
 
 /**
- *  \file SDL_misc.h
+ * # CategoryMisc
  *
- *  Include file for SDL API functions that don't fit elsewhere.
+ * SDL API functions that don't fit elsewhere.
  */
 
 #ifndef SDL_misc_h_
 #define SDL_misc_h_
 
 #include <SDL3/SDL_stdinc.h>
+#include <SDL3/SDL_error.h>
 
 #include <SDL3/SDL_begin_code.h>
 
@@ -66,7 +67,7 @@ extern "C" {
  *
  * \since This function is available since SDL 3.0.0.
  */
-extern DECLSPEC int SDLCALL SDL_OpenURL(const char *url);
+extern SDL_DECLSPEC int SDLCALL SDL_OpenURL(const char *url);
 
 /* Ends C function definitions when using C++ */
 #ifdef __cplusplus

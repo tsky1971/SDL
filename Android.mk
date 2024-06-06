@@ -30,6 +30,8 @@ LOCAL_SRC_FILES := \
 	$(wildcard $(LOCAL_PATH)/src/core/*.c) \
 	$(wildcard $(LOCAL_PATH)/src/core/android/*.c) \
 	$(wildcard $(LOCAL_PATH)/src/cpuinfo/*.c) \
+    $(LOCAL_PATH)/src/dialog/SDL_dialog_utils.c \
+    $(LOCAL_PATH)/src/dialog/android/SDL_androiddialog.c \
 	$(wildcard $(LOCAL_PATH)/src/dynapi/*.c) \
 	$(wildcard $(LOCAL_PATH)/src/events/*.c) \
 	$(wildcard $(LOCAL_PATH)/src/file/*.c) \
@@ -39,6 +41,7 @@ LOCAL_SRC_FILES := \
 	$(wildcard $(LOCAL_PATH)/src/hidapi/android/*.cpp) \
 	$(wildcard $(LOCAL_PATH)/src/joystick/*.c) \
 	$(wildcard $(LOCAL_PATH)/src/joystick/android/*.c) \
+	$(wildcard $(LOCAL_PATH)/src/joystick/dummy/*.c) \
 	$(wildcard $(LOCAL_PATH)/src/joystick/hidapi/*.c) \
 	$(wildcard $(LOCAL_PATH)/src/joystick/virtual/*.c) \
 	$(wildcard $(LOCAL_PATH)/src/loadso/dlopen/*.c) \

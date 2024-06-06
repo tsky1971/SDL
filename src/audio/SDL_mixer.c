@@ -78,15 +78,19 @@ static const Uint8 mix8[] = {
 };
 
 // The volume ranges from 0 - 128
-#define ADJUST_VOLUME(type, s, v) ((s) = (type)(((s) * (v)) / SDL_MIX_MAXVOLUME))
-#define ADJUST_VOLUME_U8(s, v)    ((s) = (Uint8)(((((s) - 128) * (v)) / SDL_MIX_MAXVOLUME) + 128))
+#define MIX_MAXVOLUME 128
+#define ADJUST_VOLUME(type, s, v) ((s) = (type)(((s) * (v)) / MIX_MAXVOLUME))
+#define ADJUST_VOLUME_U8(s, v)    ((s) = (Uint8)(((((s) - 128) * (v)) / MIX_MAXVOLUME) + 128))
 
+// !!! FIXME: This needs some SIMD magic.
+// !!! FIXME: Add fast-path for volume = 1
+// !!! FIXME: Use larger scales for 16-bit/32-bit integers
 
-// !!! FIXME: this needs some SIMD magic.
-
-int SDL_MixAudioFormat(Uint8 *dst, const Uint8 *src, SDL_AudioFormat format,
-                        Uint32 len, int volume)
+int SDL_MixAudio(Uint8 *dst, const Uint8 *src, SDL_AudioFormat format,
+                 Uint32 len, float fvolume)
 {
+    int volume = (int)SDL_roundf(fvolume * MIX_MAXVOLUME);
+
     if (volume == 0) {
         return 0;
     }
@@ -231,62 +235,56 @@ int SDL_MixAudioFormat(Uint8 *dst, const Uint8 *src, SDL_AudioFormat format,
 
     case SDL_AUDIO_F32LE:
     {
-        const float fmaxvolume = 1.0f / ((float)SDL_MIX_MAXVOLUME);
-        const float fvolume = (float)volume;
         const float *src32 = (float *)src;
         float *dst32 = (float *)dst;
         float src1, src2;
-        double dst_sample;
-        // !!! FIXME: are these right?
-        const double max_audioval = 3.402823466e+38F;
-        const double min_audioval = -3.402823466e+38F;
+        float dst_sample;
+        const float max_audioval = 1.0f;
+        const float min_audioval = -1.0f;
 
         len /= 4;
         while (len--) {
-            src1 = ((SDL_SwapFloatLE(*src32) * fvolume) * fmaxvolume);
+            src1 = SDL_SwapFloatLE(*src32) * fvolume;
             src2 = SDL_SwapFloatLE(*dst32);
             src32++;
 
-            dst_sample = ((double)src1) + ((double)src2);
+            dst_sample = src1 + src2;
             if (dst_sample > max_audioval) {
                 dst_sample = max_audioval;
             } else if (dst_sample < min_audioval) {
                 dst_sample = min_audioval;
             }
-            *(dst32++) = SDL_SwapFloatLE((float)dst_sample);
+            *(dst32++) = SDL_SwapFloatLE(dst_sample);
         }
     } break;
 
     case SDL_AUDIO_F32BE:
     {
-        const float fmaxvolume = 1.0f / ((float)SDL_MIX_MAXVOLUME);
-        const float fvolume = (float)volume;
         const float *src32 = (float *)src;
         float *dst32 = (float *)dst;
         float src1, src2;
-        double dst_sample;
-        // !!! FIXME: are these right?
-        const double max_audioval = 3.402823466e+38F;
-        const double min_audioval = -3.402823466e+38F;
+        float dst_sample;
+        const float max_audioval = 1.0f;
+        const float min_audioval = -1.0f;
 
         len /= 4;
         while (len--) {
-            src1 = ((SDL_SwapFloatBE(*src32) * fvolume) * fmaxvolume);
+            src1 = SDL_SwapFloatBE(*src32) * fvolume;
             src2 = SDL_SwapFloatBE(*dst32);
             src32++;
 
-            dst_sample = ((double)src1) + ((double)src2);
+            dst_sample = src1 + src2;
             if (dst_sample > max_audioval) {
                 dst_sample = max_audioval;
             } else if (dst_sample < min_audioval) {
                 dst_sample = min_audioval;
             }
-            *(dst32++) = SDL_SwapFloatBE((float)dst_sample);
+            *(dst32++) = SDL_SwapFloatBE(dst_sample);
         }
     } break;
 
     default: // If this happens... FIXME!
-        return SDL_SetError("SDL_MixAudioFormat(): unknown audio format");
+        return SDL_SetError("SDL_MixAudio(): unknown audio format");
     }
 
     return 0;

@@ -71,7 +71,7 @@ static void iteration(void)
         } else if (e.type == SDL_EVENT_AUDIO_DEVICE_ADDED) {
             const SDL_AudioDeviceID which = (SDL_AudioDeviceID) e.adevice.which;
             const SDL_bool iscapture = e.adevice.iscapture ? SDL_TRUE : SDL_FALSE;
-            char *name = SDL_GetAudioDeviceName(which);
+            const char *name = SDL_GetAudioDeviceName(which);
             if (name) {
                 SDL_Log("New %s audio device at id %u: %s", devtypestr(iscapture), (unsigned int)which, name);
             } else {
@@ -92,7 +92,6 @@ static void iteration(void)
                     /* !!! FIXME: this is leaking the stream for now. We'll wire it up to a dictionary or whatever later. */
                 }
             }
-            SDL_free(name);
         } else if (e.type == SDL_EVENT_AUDIO_DEVICE_REMOVED) {
             dev = (SDL_AudioDeviceID)e.adevice.which;
             SDL_Log("%s device %u removed.\n", devtypestr(e.adevice.iscapture), (unsigned int)dev);
@@ -124,7 +123,7 @@ int main(int argc, char *argv[])
     }
 
     /* Enable standard application logging */
-    SDL_LogSetPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
+    SDL_SetLogPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
 
     /* Parse commandline */
     for (i = 1; i < argc;) {

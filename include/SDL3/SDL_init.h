@@ -20,15 +20,17 @@
 */
 
 /**
- *  \file SDL_init.h
+ * # CategoryInit
  *
- *  Init and quit header for the SDL library
+ * SDL subsystem init and quit functions.
  */
+
 
 #ifndef SDL_init_h_
 #define SDL_init_h_
 
 #include <SDL3/SDL_stdinc.h>
+#include <SDL3/SDL_error.h>
 
 #include <SDL3/SDL_begin_code.h>
 /* Set up for C function definitions, even when using C++ */
@@ -39,10 +41,12 @@ extern "C" {
 /* As of version 0.5, SDL is loaded dynamically into the application */
 
 /**
- *   Initialization flags for SDL_Init and/or SDL_InitSubSystem
+ * Initialization flags for SDL_Init and/or SDL_InitSubSystem
  *
- * These are the flags which may be passed to SDL_Init().  You should
- * specify the subsystems which you will be using in your application.
+ * These are the flags which may be passed to SDL_Init(). You should specify
+ * the subsystems which you will be using in your application.
+ *
+ * \since This datatype is available since SDL 3.0.0.
  *
  * \sa SDL_Init
  * \sa SDL_Quit
@@ -50,18 +54,17 @@ extern "C" {
  * \sa SDL_QuitSubSystem
  * \sa SDL_WasInit
  */
-typedef enum
-{
-    SDL_INIT_TIMER        = 0x00000001,
-    SDL_INIT_AUDIO        = 0x00000010,  /**< `SDL_INIT_AUDIO` implies `SDL_INIT_EVENTS` */
-    SDL_INIT_VIDEO        = 0x00000020,  /**< `SDL_INIT_VIDEO` implies `SDL_INIT_EVENTS` */
-    SDL_INIT_JOYSTICK     = 0x00000200,  /**< `SDL_INIT_JOYSTICK` implies `SDL_INIT_EVENTS` */
-    SDL_INIT_HAPTIC       = 0x00001000,
-    SDL_INIT_GAMEPAD      = 0x00002000,  /**< `SDL_INIT_GAMEPAD` implies `SDL_INIT_JOYSTICK` */
-    SDL_INIT_EVENTS       = 0x00004000,
-    SDL_INIT_SENSOR       = 0x00008000,  /**< `SDL_INIT_SENSOR` implies `SDL_INIT_EVENTS` */
-    SDL_INIT_CAMERA       = 0x00010000   /**< `SDL_INIT_CAMERA` implies `SDL_INIT_EVENTS` */
-} SDL_InitFlags;
+typedef Uint32 SDL_InitFlags;
+
+#define SDL_INIT_TIMER      0x00000001u
+#define SDL_INIT_AUDIO      0x00000010u /**< `SDL_INIT_AUDIO` implies `SDL_INIT_EVENTS` */
+#define SDL_INIT_VIDEO      0x00000020u /**< `SDL_INIT_VIDEO` implies `SDL_INIT_EVENTS` */
+#define SDL_INIT_JOYSTICK   0x00000200u /**< `SDL_INIT_JOYSTICK` implies `SDL_INIT_EVENTS`, should be initialized on the same thread as SDL_INIT_VIDEO on Windows if you don't set SDL_HINT_JOYSTICK_THREAD */
+#define SDL_INIT_HAPTIC     0x00001000u
+#define SDL_INIT_GAMEPAD    0x00002000u /**< `SDL_INIT_GAMEPAD` implies `SDL_INIT_JOYSTICK` */
+#define SDL_INIT_EVENTS     0x00004000u
+#define SDL_INIT_SENSOR     0x00008000u /**< `SDL_INIT_SENSOR` implies `SDL_INIT_EVENTS` */
+#define SDL_INIT_CAMERA     0x00010000u /**< `SDL_INIT_CAMERA` implies `SDL_INIT_EVENTS` */
 
 /**
  * Initialize the SDL library.
@@ -82,7 +85,8 @@ typedef enum
  * `flags` may be any of the following OR'd together:
  *
  * - `SDL_INIT_TIMER`: timer subsystem
- * - `SDL_INIT_AUDIO`: audio subsystem
+ * - `SDL_INIT_AUDIO`: audio subsystem; automatically initializes the events
+ *   subsystem
  * - `SDL_INIT_VIDEO`: video subsystem; automatically initializes the events
  *   subsystem
  * - `SDL_INIT_JOYSTICK`: joystick subsystem; automatically initializes the
@@ -91,7 +95,10 @@ typedef enum
  * - `SDL_INIT_GAMEPAD`: gamepad subsystem; automatically initializes the
  *   joystick subsystem
  * - `SDL_INIT_EVENTS`: events subsystem
- * - `SDL_INIT_SENSOR`: sensor subsystem
+ * - `SDL_INIT_SENSOR`: sensor subsystem; automatically initializes the events
+ *   subsystem
+ * - `SDL_INIT_CAMERA`: camera subsystem; automatically initializes the events
+ *   subsystem
  *
  * Subsystem initialization is ref-counted, you must call SDL_QuitSubSystem()
  * for each SDL_InitSubSystem() to correctly shutdown a subsystem manually (or
@@ -109,7 +116,7 @@ typedef enum
  * \sa SDL_SetMainReady
  * \sa SDL_WasInit
  */
-extern DECLSPEC int SDLCALL SDL_Init(Uint32 flags);
+extern SDL_DECLSPEC int SDLCALL SDL_Init(SDL_InitFlags flags);
 
 /**
  * Compatibility function to initialize the SDL library.
@@ -126,7 +133,7 @@ extern DECLSPEC int SDLCALL SDL_Init(Uint32 flags);
  * \sa SDL_Quit
  * \sa SDL_QuitSubSystem
  */
-extern DECLSPEC int SDLCALL SDL_InitSubSystem(Uint32 flags);
+extern SDL_DECLSPEC int SDLCALL SDL_InitSubSystem(SDL_InitFlags flags);
 
 /**
  * Shut down specific SDL subsystems.
@@ -141,7 +148,7 @@ extern DECLSPEC int SDLCALL SDL_InitSubSystem(Uint32 flags);
  * \sa SDL_InitSubSystem
  * \sa SDL_Quit
  */
-extern DECLSPEC void SDLCALL SDL_QuitSubSystem(Uint32 flags);
+extern SDL_DECLSPEC void SDLCALL SDL_QuitSubSystem(SDL_InitFlags flags);
 
 /**
  * Get a mask of the specified subsystems which are currently initialized.
@@ -155,7 +162,7 @@ extern DECLSPEC void SDLCALL SDL_QuitSubSystem(Uint32 flags);
  * \sa SDL_Init
  * \sa SDL_InitSubSystem
  */
-extern DECLSPEC Uint32 SDLCALL SDL_WasInit(Uint32 flags);
+extern SDL_DECLSPEC SDL_InitFlags SDLCALL SDL_WasInit(SDL_InitFlags flags);
 
 /**
  * Clean up all initialized subsystems.
@@ -173,7 +180,7 @@ extern DECLSPEC Uint32 SDLCALL SDL_WasInit(Uint32 flags);
  * \sa SDL_Init
  * \sa SDL_QuitSubSystem
  */
-extern DECLSPEC void SDLCALL SDL_Quit(void);
+extern SDL_DECLSPEC void SDLCALL SDL_Quit(void);
 
 /* Ends C function definitions when using C++ */
 #ifdef __cplusplus

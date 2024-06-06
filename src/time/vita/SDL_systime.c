@@ -30,7 +30,7 @@
 /* Sony seems to use 0001-01-01T00:00:00 as an epoch. */
 #define DELTA_EPOCH_0001_OFFSET 62135596800ULL
 
-void SDL_GetSystemTimeLocalePreferences(SDL_DATE_FORMAT *df, SDL_TIME_FORMAT *tf)
+void SDL_GetSystemTimeLocalePreferences(SDL_DateFormat *df, SDL_TimeFormat *tf)
 {
     int val;
     SceAppUtilInitParam initParam;
@@ -39,7 +39,7 @@ void SDL_GetSystemTimeLocalePreferences(SDL_DATE_FORMAT *df, SDL_TIME_FORMAT *tf
     SDL_zero(bootParam);
     sceAppUtilInit(&initParam, &bootParam);
 
-    if (sceAppUtilSystemParamGetInt(SCE_SYSTEM_PARAM_ID_DATE_FORMAT, &val) == 0) {
+    if (df && sceAppUtilSystemParamGetInt(SCE_SYSTEM_PARAM_ID_DATE_FORMAT, &val) == 0) {
         switch (val) {
         case SCE_SYSTEM_PARAM_DATE_FORMAT_YYYYMMDD:
             *df = SDL_DATE_FORMAT_YYYYMMDD;
@@ -55,7 +55,7 @@ void SDL_GetSystemTimeLocalePreferences(SDL_DATE_FORMAT *df, SDL_TIME_FORMAT *tf
         }
     }
 
-    if (sceAppUtilSystemParamGetInt(SCE_SYSTEM_PARAM_ID_DATE_FORMAT, &val) == 0) {
+    if (tf && sceAppUtilSystemParamGetInt(SCE_SYSTEM_PARAM_ID_DATE_FORMAT, &val) == 0) {
         switch (val) {
         case SCE_SYSTEM_PARAM_TIME_FORMAT_24HR:
             *tf = SDL_TIME_FORMAT_24HR;
