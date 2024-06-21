@@ -52,15 +52,15 @@ extern SDL_DisplayOrientation Android_JNI_GetDisplayNaturalOrientation(void);
 extern SDL_DisplayOrientation Android_JNI_GetDisplayCurrentOrientation(void);
 
 /* Audio support */
-void Android_StartAudioHotplug(SDL_AudioDevice **default_output, SDL_AudioDevice **default_capture);
+void Android_StartAudioHotplug(SDL_AudioDevice **default_playback, SDL_AudioDevice **default_recording);
 void Android_StopAudioHotplug(void);
 extern void Android_AudioThreadInit(SDL_AudioDevice *device);
 extern int Android_JNI_OpenAudioDevice(SDL_AudioDevice *device);
 extern void *Android_JNI_GetAudioBuffer(void);
 extern void Android_JNI_WriteAudioBuffer(void);
-extern int Android_JNI_CaptureAudioBuffer(void *buffer, int buflen);
-extern void Android_JNI_FlushCapturedAudio(void);
-extern void Android_JNI_CloseAudioDevice(const int iscapture);
+extern int Android_JNI_RecordAudioBuffer(void *buffer, int buflen);
+extern void Android_JNI_FlushRecordedAudio(void);
+extern void Android_JNI_CloseAudioDevice(const int recording);
 
 /* Detecting device type */
 extern SDL_bool Android_IsDeXMode(void);
@@ -68,7 +68,7 @@ extern SDL_bool Android_IsChromebook(void);
 
 int Android_JNI_FileOpen(void **puserdata, const char *fileName, const char *mode);
 Sint64 Android_JNI_FileSize(void *userdata);
-Sint64 Android_JNI_FileSeek(void *userdata, Sint64 offset, int whence);
+Sint64 Android_JNI_FileSeek(void *userdata, Sint64 offset, SDL_IOWhence whence);
 size_t Android_JNI_FileRead(void *userdata, void *buffer, size_t size, SDL_IOStatus *status);
 size_t Android_JNI_FileWrite(void *userdata, const void *buffer, size_t size, SDL_IOStatus *status);
 int Android_JNI_FileClose(void *userdata);

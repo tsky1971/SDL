@@ -35,13 +35,6 @@
 #endif
 #include "../video/SDL_sysvideo.h"
 
-#undef SDL_PRIs64
-#if (defined(SDL_PLATFORM_WIN32) || defined(SDL_PLATFORM_GDK)) && !defined(SDL_PLATFORM_CYGWIN)
-#define SDL_PRIs64 "I64d"
-#else
-#define SDL_PRIs64 "lld"
-#endif
-
 /* An arbitrary limit so we don't have unbounded growth */
 #define SDL_MAX_QUEUED_EVENTS 65535
 
@@ -292,7 +285,6 @@ static void SDL_LogEvent(const SDL_Event *event)
         SDL_DISPLAYEVENT_CASE(SDL_EVENT_DISPLAY_REMOVED);
         SDL_DISPLAYEVENT_CASE(SDL_EVENT_DISPLAY_MOVED);
         SDL_DISPLAYEVENT_CASE(SDL_EVENT_DISPLAY_CONTENT_SCALE_CHANGED);
-        SDL_DISPLAYEVENT_CASE(SDL_EVENT_DISPLAY_HDR_STATE_CHANGED);
 #undef SDL_DISPLAYEVENT_CASE
 
 #define SDL_WINDOWEVENT_CASE(x)                \
@@ -326,6 +318,7 @@ static void SDL_LogEvent(const SDL_Event *event)
         SDL_WINDOWEVENT_CASE(SDL_EVENT_WINDOW_ENTER_FULLSCREEN);
         SDL_WINDOWEVENT_CASE(SDL_EVENT_WINDOW_LEAVE_FULLSCREEN);
         SDL_WINDOWEVENT_CASE(SDL_EVENT_WINDOW_DESTROYED);
+        SDL_WINDOWEVENT_CASE(SDL_EVENT_WINDOW_HDR_STATE_CHANGED);
 #undef SDL_WINDOWEVENT_CASE
 
 #define PRINT_KEYDEV_EVENT(event) (void)SDL_snprintf(details, sizeof(details), " (timestamp=%u which=%u)", (uint)event->kdevice.timestamp, (uint)event->kdevice.which)
@@ -588,7 +581,7 @@ static void SDL_LogEvent(const SDL_Event *event)
         break;
 #undef PRINT_DROP_EVENT
 
-#define PRINT_AUDIODEV_EVENT(event) (void)SDL_snprintf(details, sizeof(details), " (timestamp=%u which=%u iscapture=%s)", (uint)event->adevice.timestamp, (uint)event->adevice.which, event->adevice.iscapture ? "true" : "false")
+#define PRINT_AUDIODEV_EVENT(event) (void)SDL_snprintf(details, sizeof(details), " (timestamp=%u which=%u recording=%s)", (uint)event->adevice.timestamp, (uint)event->adevice.which, event->adevice.recording ? "true" : "false")
         SDL_EVENT_CASE(SDL_EVENT_AUDIO_DEVICE_ADDED)
         PRINT_AUDIODEV_EVENT(event);
         break;

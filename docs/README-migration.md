@@ -70,6 +70,8 @@ The SDL 1.2 audio compatibility API has also been removed, as it was a simplifie
 
 SDL3 will not implicitly initialize the audio subsystem on your behalf if you open a device without doing so. Please explicitly call SDL_Init(SDL_INIT_AUDIO) at some point.
 
+SDL2 referred to audio devices that record sound as "capture" devices, and ones that play sound to speakers as "output" devices. In SDL3, we've changed this terminology to be "recording" devices and "playback" devices, which we hope is more clear.
+
 SDL3's audio subsystem offers an enormous amount of power over SDL2, but if you just want a simple migration of your existing code, you can ignore most of it. The simplest migration path from SDL2 looks something like this:
 
 In SDL2, you might have done something like this to play audio...
@@ -114,7 +116,7 @@ In SDL2, you might have done something like this to play audio...
 
     /* ...somewhere near startup... */
     const SDL_AudioSpec spec = { SDL_AUDIO_S16, 2, 44100 };
-    SDL_AudioStream *stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_OUTPUT, &spec, MyNewAudioCallback, &my_audio_callback_user_data);
+    SDL_AudioStream *stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, MyNewAudioCallback, &my_audio_callback_user_data);
     SDL_ResumeAudioDevice(SDL_GetAudioStreamDevice(stream));
 ```
 
@@ -123,7 +125,7 @@ If you used SDL_QueueAudio instead of a callback in SDL2, this is also straightf
 ```c
     /* ...somewhere near startup... */
     const SDL_AudioSpec spec = { SDL_AUDIO_S16, 2, 44100 };
-    SDL_AudioStream *stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_OUTPUT, &spec, NULL, NULL);
+    SDL_AudioStream *stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
     SDL_ResumeAudioDevice(SDL_GetAudioStreamDevice(stream));
 
     /* ...in your main loop... */
@@ -132,7 +134,7 @@ If you used SDL_QueueAudio instead of a callback in SDL2, this is also straightf
 
 ```
 
-...these same migration examples apply to audio capture, just using SDL_GetAudioStreamData instead of SDL_PutAudioStreamData.
+...these same migration examples apply to audio recording, just using SDL_GetAudioStreamData instead of SDL_PutAudioStreamData.
 
 SDL_AudioInit() and SDL_AudioQuit() have been removed. Instead you can call SDL_InitSubSystem() and SDL_QuitSubSystem() with SDL_INIT_AUDIO, which will properly refcount the subsystems. You can choose a specific audio driver using SDL_AUDIO_DRIVER hint.
 
@@ -144,7 +146,7 @@ Devices are opened by physical device instance ID, and a new logical instance ID
 
 Devices are not opened by an arbitrary string name anymore, but by device instance ID (or magic numbers to request a reasonable default, like a NULL string in SDL2). In SDL2, the string was used to open both a standard list of system devices, but also allowed for arbitrary devices, such as hostnames of network sound servers. In SDL3, many of the backends that supported arbitrary device names are obsolete and have been removed; of those that remain, arbitrary devices will be opened with a default device ID and an SDL_hint, so specific end-users can set an environment variable to fit their needs and apps don't have to concern themselves with it.
 
-Many functions that would accept a device index and an `iscapture` parameter now just take an SDL_AudioDeviceID, as they are unique across all devices, instead of separate indices into output and capture device lists.
+Many functions that would accept a device index and an `iscapture` parameter now just take an SDL_AudioDeviceID, as they are unique across all devices, instead of separate indices into playback and recording device lists.
 
 Rather than iterating over audio devices using a device index, there are new functions, SDL_GetAudioOutputDevices() and SDL_GetAudioCaptureDevices(), to get the current list of devices, and new functions to get information about devices from their instance ID:
 
@@ -182,7 +184,7 @@ SDL_AudioSpec has been reduced; now it only holds format, channel, and sample ra
 
 SDL_GetAudioDeviceSpec() is removed; use SDL_GetAudioDeviceFormat() instead.
 
-SDL_GetDefaultAudioInfo() is removed; SDL_GetAudioDeviceFormat() with SDL_AUDIO_DEVICE_DEFAULT_OUTPUT or SDL_AUDIO_DEVICE_DEFAULT_CAPTURE. There is no replacement for querying the default device name; the string is no longer used to open devices, and SDL3 will migrate between physical devices on the fly if the system default changes, so if you must show this to the user, a generic name like "System default" is recommended.
+SDL_GetDefaultAudioInfo() is removed; SDL_GetAudioDeviceFormat() with SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK or SDL_AUDIO_DEVICE_DEFAULT_RECORDING. There is no replacement for querying the default device name; the string is no longer used to open devices, and SDL3 will migrate between physical devices on the fly if the system default changes, so if you must show this to the user, a generic name like "System default" is recommended.
 
 SDL_MixAudioFormat() and SDL_MIX_MAXVOLUME have been removed in favour of SDL_MixAudio(), which now takes the audio format, and a float volume between 0.0 and 1.0.
 
@@ -310,6 +312,16 @@ SDL_SIMDAlloc(), SDL_SIMDRealloc(), and SDL_SIMDFree() have been removed. You ca
 The following functions have been renamed:
 * SDL_SIMDGetAlignment() => SDL_GetSIMDAlignment()
 
+## SDL_endian.h
+
+The following functions have been renamed:
+* SDL_SwapBE16() => SDL_Swap16BE()
+* SDL_SwapBE32() => SDL_Swap32BE()
+* SDL_SwapBE64() => SDL_Swap64BE()
+* SDL_SwapLE16() => SDL_Swap16LE()
+* SDL_SwapLE32() => SDL_Swap32LE()
+* SDL_SwapLE64() => SDL_Swap64LE()
+
 ## SDL_error.h
 
 The following functions have been removed:
@@ -342,6 +354,8 @@ The mouseX and mouseY fields of SDL_MouseWheelEvent have been renamed mouse_x an
 The touchId and fingerId fields of SDL_TouchFingerEvent have been renamed touchID and fingerID.
 
 The level field of SDL_JoyBatteryEvent has been split into state and percent.
+
+The iscapture field of SDL_AudioDeviceEvent has been renamed recording.
 
 SDL_QUERY, SDL_IGNORE, SDL_ENABLE, and SDL_DISABLE have been removed. You can use the functions SDL_SetEventEnabled() and SDL_EventEnabled() to set and query event processing state.
 
@@ -976,14 +990,6 @@ The following symbols have been renamed:
 * SDL_SYSTEM_CURSOR_SIZENWSE => SDL_SYSTEM_CURSOR_NWSE_RESIZE
 * SDL_SYSTEM_CURSOR_SIZEWE => SDL_SYSTEM_CURSOR_EW_RESIZE
 * SDL_SYSTEM_CURSOR_WAITARROW => SDL_SYSTEM_CURSOR_PROGRESS
-* SDL_SYSTEM_CURSOR_WINDOW_BOTTOM => SDL_SYSTEM_CURSOR_S_RESIZE
-* SDL_SYSTEM_CURSOR_WINDOW_BOTTOMLEFT => SDL_SYSTEM_CURSOR_SW_RESIZE
-* SDL_SYSTEM_CURSOR_WINDOW_BOTTOMRIGHT => SDL_SYSTEM_CURSOR_SE_RESIZE
-* SDL_SYSTEM_CURSOR_WINDOW_LEFT => SDL_SYSTEM_CURSOR_W_RESIZE
-* SDL_SYSTEM_CURSOR_WINDOW_RIGHT => SDL_SYSTEM_CURSOR_E_RESIZE
-* SDL_SYSTEM_CURSOR_WINDOW_TOP => SDL_SYSTEM_CURSOR_N_RESIZE
-* SDL_SYSTEM_CURSOR_WINDOW_TOPLEFT => SDL_SYSTEM_CURSOR_NW_RESIZE
-* SDL_SYSTEM_CURSOR_WINDOW_TOPRIGHT => SDL_SYSTEM_CURSOR_NE_RESIZE
 
 ## SDL_mutex.h
 
@@ -1143,7 +1149,9 @@ SDL_CreateRenderer()'s flags parameter has been removed. See specific flags belo
 
 SDL_CreateWindowAndRenderer() now takes the window title as the first parameter.
 
-SDL_GetRendererInfo() has been removed, the name of a renderer can be retrieved using SDL_GetRendererName(), and the other information is available as properties on the renderer.
+SDL_GetRendererInfo() has been removed. The name of a renderer can be retrieved using SDL_GetRendererName(), and the other information is available as properties on the renderer.
+
+SDL_QueryTexture() has been removed. The properties of the texture can be queried using SDL_PROP_TEXTURE_FORMAT_NUMBER, SDL_PROP_TEXTURE_ACCESS_NUMBER, SDL_PROP_TEXTURE_WIDTH_NUMBER, and SDL_PROP_TEXTURE_HEIGHT_NUMBER. A function SDL_GetTextureSize() has been added to get the size of the texture as floating point values.
 
 Mouse and touch events are no longer filtered to change their coordinates, instead you
 can call SDL_ConvertEventToRenderCoordinates() to explicitly map event coordinates into
@@ -1910,7 +1918,7 @@ a corresponding event has been received:
 * SDL_RestoreWindow() (SDL_EVENT_WINDOW_RESTORED)
 * SDL_SetWindowFullscreen() (SDL_EVENT_WINDOW_ENTER_FULLSCREEN / SDL_EVENT_WINDOW_LEAVE_FULLSCREEN)
 
-If it is required that operations be applied immediately after one of the preceeding calls, the `SDL_SyncWindow()` function
+If it is required that operations be applied immediately after one of the preceding calls, the `SDL_SyncWindow()` function
 will attempt to wait until all pending window operations have completed. The `SDL_HINT_VIDEO_SYNC_WINDOW_OPERATIONS` hint
 can also be set to automatically synchronize after all calls to an asynchronous window operation, mimicking the behavior
 of SDL 2. Be aware that synchronizing can potentially block for long periods of time, as it may have to wait for window

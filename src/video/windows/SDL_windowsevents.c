@@ -369,6 +369,21 @@ static SDL_bool ShouldGenerateWindowCloseOnAltF4(void)
     return SDL_GetHintBoolean(SDL_HINT_WINDOWS_CLOSE_ON_ALT_F4, SDL_TRUE);
 }
 
+static SDL_bool ShouldClearWindowOnEraseBackground(SDL_WindowData *data)
+{
+    switch (data->hint_erase_background_mode) {
+    case SDL_ERASEBACKGROUNDMODE_NEVER:
+        return SDL_FALSE;
+    case SDL_ERASEBACKGROUNDMODE_INITIAL:
+        return !data->videodata->cleared;
+    case SDL_ERASEBACKGROUNDMODE_ALWAYS:
+        return SDL_TRUE;
+    default:
+        // Unexpected value, fallback to default behaviour
+        return !data->videodata->cleared;
+    }
+}
+
 #if !defined(SDL_PLATFORM_XBOXONE) && !defined(SDL_PLATFORM_XBOXSERIES)
 /* We want to generate mouse events from mouse and pen, and touch events from touchscreens */
 #define MI_WP_SIGNATURE      0xFF515700
@@ -432,6 +447,10 @@ WIN_KeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam)
 
     if (nCode < 0 || nCode != HC_ACTION) {
         return CallNextHookEx(NULL, nCode, wParam, lParam);
+    }
+    if (hookData->scanCode == 0x21d) {
+        // Skip fake LCtrl when RAlt is pressed
+        return 1;
     }
 
     switch (hookData->vkCode) {
@@ -950,6 +969,36 @@ void WIN_CheckKeyboardAndMouseHotplug(SDL_VideoDevice *_this, SDL_bool initial_c
 }
 #endif /*!defined(SDL_PLATFORM_XBOXONE) && !defined(SDL_PLATFORM_XBOXSERIES)*/
 
+// Return SDL_TRUE if spurious LCtrl is pressed
+// LCtrl is sent when RAltGR is pressed
+static SDL_bool SkipAltGrLeftControl(WPARAM wParam, LPARAM lParam)
+{
+    if (wParam != VK_CONTROL) {
+        return SDL_FALSE;
+    }
+
+    // Is this an extended key (i.e. right key)?
+    if (lParam & 0x01000000) {
+        return SDL_FALSE;
+    }
+
+    // Here is a trick: "Alt Gr" sends LCTRL, then RALT. We only
+    // want the RALT message, so we try to see if the next message
+    // is a RALT message. In that case, this is a false LCTRL!
+    MSG next_msg;
+    DWORD msg_time = GetMessageTime();
+    if (PeekMessage(&next_msg, NULL, 0, 0, PM_NOREMOVE)) {
+        if (next_msg.message == WM_KEYDOWN ||
+            next_msg.message == WM_SYSKEYDOWN) {
+            if (next_msg.wParam == VK_MENU && (next_msg.lParam & 0x01000000) && next_msg.time == msg_time) {
+                // Next message is a RALT down message, which means that this is NOT a proper LCTRL message!
+                return SDL_TRUE;
+            }
+        }
+    }
+    return SDL_FALSE;
+}
+
 LRESULT CALLBACK WIN_WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     SDL_WindowData *data;
@@ -1158,6 +1207,11 @@ LRESULT CALLBACK WIN_WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     case WM_KEYDOWN:
     case WM_SYSKEYDOWN:
     {
+        if (SkipAltGrLeftControl(wParam, lParam)) {
+            returnCode = 0;
+            break;
+        }
+
         SDL_bool virtual_key = SDL_FALSE;
         SDL_Scancode code = WindowsScanCodeToSDLScanCode(lParam, wParam, &virtual_key);
         const Uint8 *keyboardState = SDL_GetKeyboardState(NULL);
@@ -1181,6 +1235,11 @@ LRESULT CALLBACK WIN_WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     case WM_SYSKEYUP:
     case WM_KEYUP:
     {
+        if (SkipAltGrLeftControl(wParam, lParam)) {
+            returnCode = 0;
+            break;
+        }
+
         SDL_bool virtual_key = SDL_FALSE;
         SDL_Scancode code = WindowsScanCodeToSDLScanCode(lParam, wParam, &virtual_key);
         const Uint8 *keyboardState = SDL_GetKeyboardState(NULL);
@@ -1645,7 +1704,7 @@ LRESULT CALLBACK WIN_WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
 
         /* We'll do our own drawing, prevent flicker */
     case WM_ERASEBKGND:
-        if (!data->videodata->cleared) {
+        if (ShouldClearWindowOnEraseBackground(data)) {
             RECT client_rect;
             HBRUSH brush;
             data->videodata->cleared = SDL_TRUE;
