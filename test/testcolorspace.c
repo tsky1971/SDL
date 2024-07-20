@@ -78,7 +78,7 @@ static void CreateRenderer(void)
     SDL_PropertiesID props;
 
     props = SDL_CreateProperties();
-    SDL_SetProperty(props, SDL_PROP_RENDERER_CREATE_WINDOW_POINTER, window);
+    SDL_SetPointerProperty(props, SDL_PROP_RENDERER_CREATE_WINDOW_POINTER, window);
     SDL_SetStringProperty(props, SDL_PROP_RENDERER_CREATE_NAME_STRING, SDL_GetRenderDriver(renderer_index));
     SDL_SetNumberProperty(props, SDL_PROP_RENDERER_CREATE_OUTPUT_COLORSPACE_NUMBER, colorspace);
     renderer = SDL_CreateRendererWithProperties(props);
@@ -388,7 +388,7 @@ static void DrawGradient(float x, float y, float width, float height, float star
     color[2] = max_color;
     color[3] = min_color;
 
-    SDL_RenderGeometryRawFloat(renderer, NULL, xy, xy_stride, color, color_stride, NULL, 0, num_vertices, indices, num_indices, size_indices);
+    SDL_RenderGeometryRaw(renderer, NULL, xy, xy_stride, color, color_stride, NULL, 0, num_vertices, indices, num_indices, size_indices);
 }
 
 static void RenderGradientDrawing(void)
@@ -503,7 +503,7 @@ static void loop(void)
     /* Check for events */
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_EVENT_KEY_DOWN) {
-            switch (event.key.keysym.sym) {
+            switch (event.key.key) {
             case SDLK_ESCAPE:
                 done = 1;
                 break;

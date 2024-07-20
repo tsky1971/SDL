@@ -31,7 +31,6 @@ typedef struct SDL_VideoDisplay SDL_VideoDisplay;
 typedef struct SDL_VideoDevice SDL_VideoDevice;
 typedef struct SDL_VideoData SDL_VideoData;
 typedef struct SDL_DisplayData SDL_DisplayData;
-typedef struct SDL_DisplayModeData SDL_DisplayModeData;
 typedef struct SDL_WindowData SDL_WindowData;
 
 typedef struct
@@ -101,6 +100,10 @@ struct SDL_Window
     SDL_bool is_destroying;
     SDL_bool is_dropping; /* drag/drop in progress, expecting SDL_SendDropComplete(). */
 
+    SDL_bool text_input_active;
+    SDL_Rect text_input_rect;
+    int text_input_cursor;
+
     SDL_Rect mouse_rect;
 
     SDL_HitTest hit_test;
@@ -108,7 +111,7 @@ struct SDL_Window
 
     SDL_PropertiesID props;
 
-    SDL_WindowData *driverdata;
+    SDL_WindowData *internal;
 
     SDL_Window *prev;
     SDL_Window *next;
@@ -150,7 +153,7 @@ struct SDL_VideoDisplay
 
     SDL_PropertiesID props;
 
-    SDL_DisplayData *driverdata;
+    SDL_DisplayData *internal;
 };
 
 /* Video device flags */
@@ -248,7 +251,6 @@ struct SDL_VideoDevice
     void (*GetWindowSizeInPixels)(SDL_VideoDevice *_this, SDL_Window *window, int *w, int *h);
     int (*SetWindowOpacity)(SDL_VideoDevice *_this, SDL_Window *window, float opacity);
     int (*SetWindowModalFor)(SDL_VideoDevice *_this, SDL_Window *modal_window, SDL_Window *parent_window);
-    int (*SetWindowInputFocus)(SDL_VideoDevice *_this, SDL_Window *window);
     void (*ShowWindow)(SDL_VideoDevice *_this, SDL_Window *window);
     void (*HideWindow)(SDL_VideoDevice *_this, SDL_Window *window);
     void (*RaiseWindow)(SDL_VideoDevice *_this, SDL_Window *window);
@@ -265,7 +267,7 @@ struct SDL_VideoDevice
     int (*SetWindowMouseGrab)(SDL_VideoDevice *_this, SDL_Window *window, SDL_bool grabbed);
     int (*SetWindowKeyboardGrab)(SDL_VideoDevice *_this, SDL_Window *window, SDL_bool grabbed);
     void (*DestroyWindow)(SDL_VideoDevice *_this, SDL_Window *window);
-    int (*CreateWindowFramebuffer)(SDL_VideoDevice *_this, SDL_Window *window, SDL_PixelFormatEnum *format, void **pixels, int *pitch);
+    int (*CreateWindowFramebuffer)(SDL_VideoDevice *_this, SDL_Window *window, SDL_PixelFormat *format, void **pixels, int *pitch);
     int (*SetWindowFramebufferVSync)(SDL_VideoDevice *_this, SDL_Window *window, int vsync);
     int (*GetWindowFramebufferVSync)(SDL_VideoDevice *_this, SDL_Window *window, int *vsync);
     int (*UpdateWindowFramebuffer)(SDL_VideoDevice *_this, SDL_Window *window, const SDL_Rect *rects, int numrects);
@@ -299,8 +301,9 @@ struct SDL_VideoDevice
     int (*Vulkan_LoadLibrary)(SDL_VideoDevice *_this, const char *path);
     void (*Vulkan_UnloadLibrary)(SDL_VideoDevice *_this);
     char const* const* (*Vulkan_GetInstanceExtensions)(SDL_VideoDevice *_this, Uint32 *count);
-    SDL_bool (*Vulkan_CreateSurface)(SDL_VideoDevice *_this, SDL_Window *window, VkInstance instance, const struct VkAllocationCallbacks *allocator, VkSurfaceKHR *surface);
+    int (*Vulkan_CreateSurface)(SDL_VideoDevice *_this, SDL_Window *window, VkInstance instance, const struct VkAllocationCallbacks *allocator, VkSurfaceKHR *surface);
     void (*Vulkan_DestroySurface)(SDL_VideoDevice *_this, VkInstance instance, VkSurfaceKHR surface, const struct VkAllocationCallbacks *allocator);
+    SDL_bool (*Vulkan_GetPresentationSupport)(SDL_VideoDevice *_this, VkInstance instance, VkPhysicalDevice physicalDevice, Uint32 queueFamilyIndex);
 
     /* * * */
     /*
@@ -322,10 +325,10 @@ struct SDL_VideoDevice
     int (*SuspendScreenSaver)(SDL_VideoDevice *_this);
 
     /* Text input */
-    void (*StartTextInput)(SDL_VideoDevice *_this);
-    void (*StopTextInput)(SDL_VideoDevice *_this);
-    int (*SetTextInputRect)(SDL_VideoDevice *_this, const SDL_Rect *rect);
-    void (*ClearComposition)(SDL_VideoDevice *_this);
+    int (*StartTextInput)(SDL_VideoDevice *_this, SDL_Window *window);
+    int (*StopTextInput)(SDL_VideoDevice *_this, SDL_Window *window);
+    int (*UpdateTextInputArea)(SDL_VideoDevice *_this, SDL_Window *window);
+    int (*ClearComposition)(SDL_VideoDevice *_this, SDL_Window *window);
 
     /* Screen keyboard */
     SDL_bool (*HasScreenKeyboardSupport)(SDL_VideoDevice *_this);
@@ -382,7 +385,6 @@ struct SDL_VideoDevice
     SDL_bool setting_display_mode;
     Uint32 device_caps;
     SDL_SystemTheme system_theme;
-    SDL_bool text_input_active;
 
     /* * * */
     /* Data used by the GL drivers */
@@ -453,7 +455,7 @@ struct SDL_VideoDevice
 
     /* * * */
     /* Data private to this driver */
-    SDL_VideoData *driverdata;
+    SDL_VideoData *internal;
     struct SDL_GLDriverData *gl_data;
 
 #ifdef SDL_VIDEO_OPENGL_EGL

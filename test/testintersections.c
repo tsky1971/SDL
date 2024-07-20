@@ -74,8 +74,8 @@ static void DrawPoints(SDL_Renderer *renderer)
         SDL_SetRenderDrawColor(renderer, 255, (Uint8)current_color,
                                (Uint8)current_color, (Uint8)current_alpha);
 
-        x = (float)SDL_rand_n(viewport.w);
-        y = (float)SDL_rand_n(viewport.h);
+        x = (float)SDL_rand(viewport.w);
+        y = (float)SDL_rand(viewport.h);
         SDL_RenderPoint(renderer, x, y);
     }
 }
@@ -225,27 +225,27 @@ static void loop(void *arg)
             }
             break;
         case SDL_EVENT_KEY_DOWN:
-            switch (event.key.keysym.sym) {
-            case 'l':
-                if (event.key.keysym.mod & SDL_KMOD_SHIFT) {
+            switch (event.key.key) {
+            case SDLK_L:
+                if (event.key.mod & SDL_KMOD_SHIFT) {
                     num_lines = 0;
                 } else {
                     add_line(
-                        (float)SDL_rand_n(640),
-                        (float)SDL_rand_n(480),
-                        (float)SDL_rand_n(640),
-                        (float)SDL_rand_n(480));
+                        (float)SDL_rand(640),
+                        (float)SDL_rand(480),
+                        (float)SDL_rand(640),
+                        (float)SDL_rand(480));
                 }
                 break;
-            case 'r':
-                if (event.key.keysym.mod & SDL_KMOD_SHIFT) {
+            case SDLK_R:
+                if (event.key.mod & SDL_KMOD_SHIFT) {
                     num_rects = 0;
                 } else {
                     add_rect(
-                        (float)SDL_rand_n(640),
-                        (float)SDL_rand_n(480),
-                        (float)SDL_rand_n(640),
-                        (float)SDL_rand_n(480));
+                        (float)SDL_rand(640),
+                        (float)SDL_rand(480),
+                        (float)SDL_rand(640),
+                        (float)SDL_rand(480));
                 }
                 break;
             default:
@@ -312,8 +312,14 @@ int main(int argc, char *argv[])
                     } else if (SDL_strcasecmp(argv[i + 1], "blend") == 0) {
                         blendMode = SDL_BLENDMODE_BLEND;
                         consumed = 2;
+                    } else if (SDL_strcasecmp(argv[i + 1], "blend_premultiplied") == 0) {
+                        blendMode = SDL_BLENDMODE_BLEND_PREMULTIPLIED;
+                        consumed = 2;
                     } else if (SDL_strcasecmp(argv[i + 1], "add") == 0) {
                         blendMode = SDL_BLENDMODE_ADD;
+                        consumed = 2;
+                    } else if (SDL_strcasecmp(argv[i + 1], "add_premultiplied") == 0) {
+                        blendMode = SDL_BLENDMODE_ADD_PREMULTIPLIED;
                         consumed = 2;
                     } else if (SDL_strcasecmp(argv[i + 1], "mod") == 0) {
                         blendMode = SDL_BLENDMODE_MOD;
@@ -338,7 +344,7 @@ int main(int argc, char *argv[])
             }
         }
         if (consumed < 0) {
-            static const char *options[] = { "[--blend none|blend|add|mod|mul]", "[--cyclecolor]", "[--cyclealpha]", "[count]", NULL };
+            static const char *options[] = { "[--blend none|blend|blend_premultiplied|add|add_premultiplied|mod|mul]", "[--cyclecolor]", "[--cyclealpha]", "[count]", NULL };
             SDLTest_CommonLogUsage(state, argv[0], options);
             return 1;
         }

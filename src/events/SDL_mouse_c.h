@@ -32,7 +32,7 @@
 struct SDL_Cursor
 {
     struct SDL_Cursor *next;
-    void *driverdata;
+    void *internal;
 };
 
 typedef struct
@@ -92,6 +92,7 @@ typedef struct
     SDL_bool relative_mode_warp;
     SDL_bool relative_mode_warp_motion;
     SDL_bool relative_mode_cursor_visible;
+    int relative_mode_clip_interval;
     SDL_bool enable_normal_speed_scale;
     float normal_speed_scale;
     SDL_bool enable_relative_speed_scale;
@@ -125,7 +126,7 @@ typedef struct
     SDL_bool cursor_shown;
 
     /* Driver-dependent data. */
-    void *driverdata;
+    void *internal;
 } SDL_Mouse;
 
 /* Initialize the mouse subsystem, called before the main video driver is initialized */

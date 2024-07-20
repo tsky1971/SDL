@@ -55,11 +55,11 @@ SDL_Window *Vita_Window;
 
 static void VITA_Destroy(SDL_VideoDevice *device)
 {
-    SDL_free(device->driverdata);
+    SDL_free(device->internal);
     SDL_free(device);
 }
 
-static SDL_VideoDevice *VITA_Create()
+static SDL_VideoDevice *VITA_Create(void)
 {
     SDL_VideoDevice *device;
     SDL_VideoData *phdata;
@@ -91,7 +91,7 @@ static SDL_VideoDevice *VITA_Create()
 #endif
     phdata->ime_active = SDL_FALSE;
 
-    device->driverdata = phdata;
+    device->internal = phdata;
 
     /* Setup amount of available displays and current display */
     device->num_displays = 0;
@@ -234,7 +234,7 @@ int VITA_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_Properties
     }
 
     /* Setup driver data for this window */
-    window->driverdata = wdata;
+    window->internal = wdata;
 
     // Vita can only have one window
     if (Vita_Window) {
@@ -328,13 +328,13 @@ void VITA_DestroyWindow(SDL_VideoDevice *_this, SDL_Window *window)
 {
     SDL_WindowData *data;
 
-    data = window->driverdata;
+    data = window->internal;
     if (data) {
         // TODO: should we destroy egl context? No one sane should recreate ogl window as non-ogl
         SDL_free(data);
     }
 
-    window->driverdata = NULL;
+    window->internal = NULL;
     Vita_Window = NULL;
 }
 
@@ -380,7 +380,6 @@ SceImeCaret caret_rev;
 void VITA_ImeEventHandler(void *arg, const SceImeEventData *e)
 {
     SDL_VideoData *videodata = (SDL_VideoData *)arg;
-    SDL_Scancode scancode;
     uint8_t utf8_buffer[SCE_IME_MAX_TEXT_LENGTH];
     switch (e->id) {
     case SCE_IME_EVENT_UPDATE_TEXT:
@@ -388,11 +387,10 @@ void VITA_ImeEventHandler(void *arg, const SceImeEventData *e)
             SDL_SendKeyboardKeyAutoRelease(0, SDL_SCANCODE_BACKSPACE);
             sceImeSetText((SceWChar16 *)libime_initval, 4);
         } else {
-            scancode = SDL_GetScancodeFromKey(*(SceWChar16 *)&libime_out[1]);
-            if (scancode == SDL_SCANCODE_SPACE) {
+            utf16_to_utf8((SceWChar16 *)&libime_out[1], utf8_buffer);
+            if (utf8_buffer[0] == ' ') {
                 SDL_SendKeyboardKeyAutoRelease(0, SDL_SCANCODE_SPACE);
             } else {
-                utf16_to_utf8((SceWChar16 *)&libime_out[1], utf8_buffer);
                 SDL_SendKeyboardText((const char *)utf8_buffer);
             }
             SDL_memset(&caret_rev, 0, sizeof(SceImeCaret));
@@ -415,7 +413,7 @@ void VITA_ImeEventHandler(void *arg, const SceImeEventData *e)
 
 void VITA_ShowScreenKeyboard(SDL_VideoDevice *_this, SDL_Window *window)
 {
-    SDL_VideoData *videodata = _this->driverdata;
+    SDL_VideoData *videodata = _this->internal;
     SceInt32 res;
 
 #ifdef SDL_VIDEO_VITA_PVR
@@ -477,7 +475,7 @@ void VITA_ShowScreenKeyboard(SDL_VideoDevice *_this, SDL_Window *window)
 void VITA_HideScreenKeyboard(SDL_VideoDevice *_this, SDL_Window *window)
 {
 #ifndef SDL_VIDEO_VITA_PVR
-    SDL_VideoData *videodata = _this->driverdata;
+    SDL_VideoData *videodata = _this->internal;
 
     SceCommonDialogStatus dialogStatus = sceImeDialogGetStatus();
 
@@ -498,7 +496,7 @@ void VITA_HideScreenKeyboard(SDL_VideoDevice *_this, SDL_Window *window)
 SDL_bool VITA_IsScreenKeyboardShown(SDL_VideoDevice *_this, SDL_Window *window)
 {
 #ifdef SDL_VIDEO_VITA_PVR
-    SDL_VideoData *videodata = _this->driverdata;
+    SDL_VideoData *videodata = _this->internal;
     return videodata->ime_active;
 #else
     SceCommonDialogStatus dialogStatus = sceImeDialogGetStatus();
@@ -509,7 +507,7 @@ SDL_bool VITA_IsScreenKeyboardShown(SDL_VideoDevice *_this, SDL_Window *window)
 void VITA_PumpEvents(SDL_VideoDevice *_this)
 {
 #ifndef SDL_VIDEO_VITA_PVR
-    SDL_VideoData *videodata = _this->driverdata;
+    SDL_VideoData *videodata = _this->internal;
 #endif
 
     if (_this->suspend_screensaver) {

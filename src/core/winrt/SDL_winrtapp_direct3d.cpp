@@ -108,7 +108,7 @@ static void WINRT_ProcessWindowSizeChange() // TODO: Pass an SDL_Window-identify
     if (coreWindow) {
         if (WINRT_GlobalSDLWindow) {
             SDL_Window *window = WINRT_GlobalSDLWindow;
-            SDL_WindowData *data = window->driverdata;
+            SDL_WindowData *data = window->internal;
 
             int x = (int)SDL_lroundf(data->coreWindow->Bounds.Left);
             int y = (int)SDL_lroundf(data->coreWindow->Bounds.Top);
@@ -228,7 +228,7 @@ void SDL_WinRTApp::OnOrientationChanged(Object ^ sender)
     // TODO, WinRT: do more extensive research into why orientation changes on Win 8.x don't need D3D changes, or if they might, in some cases
     SDL_Window *window = WINRT_GlobalSDLWindow;
     if (window) {
-        SDL_WindowData *data = window->driverdata;
+        SDL_WindowData *data = window->internal;
         int w = (int)SDL_floorf(data->coreWindow->Bounds.Width);
         int h = (int)SDL_floorf(data->coreWindow->Bounds.Height);
         SDL_SendWindowEvent(WINRT_GlobalSDLWindow, SDL_EVENT_WINDOW_RESIZED, w, h);
@@ -724,8 +724,8 @@ void SDL_WinRTApp::OnCharacterReceived(Windows::UI::Core::CoreWindow ^ sender, W
 template <typename BackButtonEventArgs>
 static void WINRT_OnBackButtonPressed(BackButtonEventArgs ^ args)
 {
-    SDL_SendKeyboardKey(0, SDL_GLOBAL_KEYBOARD_ID, SDL_PRESSED, SDL_SCANCODE_AC_BACK);
-    SDL_SendKeyboardKey(0, SDL_GLOBAL_KEYBOARD_ID, SDL_RELEASED, SDL_SCANCODE_AC_BACK);
+    SDL_SendKeyboardKey(0, SDL_GLOBAL_KEYBOARD_ID, 0, SDL_SCANCODE_AC_BACK, SDL_PRESSED);
+    SDL_SendKeyboardKey(0, SDL_GLOBAL_KEYBOARD_ID, 0, SDL_SCANCODE_AC_BACK, SDL_RELEASED);
 
     if (SDL_GetHintBoolean(SDL_HINT_WINRT_HANDLE_BACK_BUTTON, SDL_FALSE)) {
         args->Handled = true;

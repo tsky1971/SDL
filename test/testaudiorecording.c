@@ -23,7 +23,7 @@ static SDLTest_CommonState *state = NULL;
 
 int SDL_AppInit(void **appstate, int argc, char **argv)
 {
-    SDL_AudioDeviceID *devices;
+    const SDL_AudioDeviceID *devices;
     SDL_AudioSpec outspec;
     SDL_AudioSpec inspec;
     SDL_AudioDeviceID device;
@@ -149,7 +149,7 @@ int SDL_AppEvent(void *appstate, const SDL_Event *event)
     if (event->type == SDL_EVENT_QUIT) {
         return SDL_APP_SUCCESS;
     } else if (event->type == SDL_EVENT_KEY_DOWN) {
-        if (event->key.keysym.sym == SDLK_ESCAPE) {
+        if (event->key.key == SDLK_ESCAPE) {
             return SDL_APP_SUCCESS;
         }
     } else if (event->type == SDL_EVENT_MOUSE_BUTTON_DOWN) {

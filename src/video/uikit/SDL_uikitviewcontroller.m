@@ -165,7 +165,7 @@ static void SDLCALL SDL_HideHomeIndicatorHintChanged(void *userdata, const char 
 #ifdef SDL_PLATFORM_VISIONOS
     displayLink.preferredFramesPerSecond = 90 / animationInterval;      //TODO: Get frame max frame rate on visionOS
 #elif defined(__IPHONE_10_3)
-    SDL_UIKitWindowData *data = (__bridge SDL_UIKitWindowData *)window->driverdata;
+    SDL_UIKitWindowData *data = (__bridge SDL_UIKitWindowData *)window->internal;
 
     if ([displayLink respondsToSelector:@selector(preferredFramesPerSecond)] && data != nil && data.uiwindow != nil && [data.uiwindow.screen respondsToSelector:@selector(maximumFramesPerSecond)]) {
         displayLink.preferredFramesPerSecond = data.uiwindow.screen.maximumFramesPerSecond / animationInterval;
@@ -425,7 +425,7 @@ static void SDLCALL SDL_HideHomeIndicatorHintChanged(void *userdata, const char 
 {
     BOOL shouldStartTextInput = NO;
 
-    if (!SDL_TextInputActive() && !hidingKeyboard && !rotatingOrientation) {
+    if (!SDL_TextInputActive(window) && !hidingKeyboard && !rotatingOrientation) {
         shouldStartTextInput = YES;
     }
 
@@ -441,7 +441,7 @@ static void SDLCALL SDL_HideHomeIndicatorHintChanged(void *userdata, const char 
 #endif
 
     if (shouldStartTextInput) {
-        SDL_StartTextInput();
+        SDL_StartTextInput(window);
     }
 }
 
@@ -454,7 +454,7 @@ static void SDLCALL SDL_HideHomeIndicatorHintChanged(void *userdata, const char 
 {
     BOOL shouldStopTextInput = NO;
 
-    if (SDL_TextInputActive() && !showingKeyboard && !rotatingOrientation) {
+    if (SDL_TextInputActive(window) && !showingKeyboard && !rotatingOrientation) {
         shouldStopTextInput = YES;
     }
 
@@ -462,7 +462,7 @@ static void SDLCALL SDL_HideHomeIndicatorHintChanged(void *userdata, const char 
     [self setKeyboardHeight:0];
 
     if (shouldStopTextInput) {
-        SDL_StopTextInput();
+        SDL_StopTextInput(window);
     }
 }
 
@@ -487,8 +487,8 @@ static void SDLCALL SDL_HideHomeIndicatorHintChanged(void *userdata, const char 
             size_t deleteLength = SDL_utf8strlen([[committedText substringFromIndex:matchLength] UTF8String]);
             while (deleteLength > 0) {
                 /* Send distinct down and up events for each backspace action */
-                SDL_SendVirtualKeyboardKey(0, SDL_PRESSED, SDL_SCANCODE_BACKSPACE);
-                SDL_SendVirtualKeyboardKey(0, SDL_RELEASED, SDL_SCANCODE_BACKSPACE);
+                SDL_SendKeyboardKey(0, SDL_GLOBAL_KEYBOARD_ID, 0, SDL_SCANCODE_BACKSPACE, SDL_PRESSED);
+                SDL_SendKeyboardKey(0, SDL_GLOBAL_KEYBOARD_ID, 0, SDL_SCANCODE_BACKSPACE, SDL_RELEASED);
                 --deleteLength;
             }
         }
@@ -511,7 +511,7 @@ static void SDLCALL SDL_HideHomeIndicatorHintChanged(void *userdata, const char 
 
 - (void)updateKeyboard
 {
-    SDL_UIKitWindowData *data = (__bridge SDL_UIKitWindowData *) window->driverdata;
+    SDL_UIKitWindowData *data = (__bridge SDL_UIKitWindowData *) window->internal;
 
     CGAffineTransform t = self.view.transform;
     CGPoint offset = CGPointMake(0.0, 0.0);
@@ -567,7 +567,7 @@ static void SDLCALL SDL_HideHomeIndicatorHintChanged(void *userdata, const char 
     SDL_SendKeyboardKeyAutoRelease(0, SDL_SCANCODE_RETURN);
     if (keyboardVisible &&
         SDL_GetHintBoolean(SDL_HINT_RETURN_KEY_HIDES_IME, SDL_FALSE)) {
-        SDL_StopTextInput();
+        SDL_StopTextInput(window);
     }
     return YES;
 }
@@ -581,12 +581,12 @@ static void SDLCALL SDL_HideHomeIndicatorHintChanged(void *userdata, const char 
 
 static SDL_uikitviewcontroller *GetWindowViewController(SDL_Window *window)
 {
-    if (!window || !window->driverdata) {
+    if (!window || !window->internal) {
         SDL_SetError("Invalid window");
         return nil;
     }
 
-    SDL_UIKitWindowData *data = (__bridge SDL_UIKitWindowData *)window->driverdata;
+    SDL_UIKitWindowData *data = (__bridge SDL_UIKitWindowData *)window->internal;
 
     return data.viewcontroller;
 }
@@ -623,12 +623,12 @@ SDL_bool UIKit_IsScreenKeyboardShown(SDL_VideoDevice *_this, SDL_Window *window)
     }
 }
 
-int UIKit_SetTextInputRect(SDL_VideoDevice *_this, const SDL_Rect *rect)
+int UIKit_UpdateTextInputArea(SDL_VideoDevice *_this, SDL_Window *window)
 {
     @autoreleasepool {
-        SDL_uikitviewcontroller *vc = GetWindowViewController(SDL_GetKeyboardFocus());
+        SDL_uikitviewcontroller *vc = GetWindowViewController(window);
         if (vc != nil) {
-            vc.textInputRect = *rect;
+            vc.textInputRect = window->text_input_rect;
 
             if (vc.keyboardVisible) {
                 [vc updateKeyboard];

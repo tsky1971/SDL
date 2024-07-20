@@ -47,9 +47,13 @@
 #include "haptic/SDL_haptic_c.h"
 #include "joystick/SDL_gamepad_c.h"
 #include "joystick/SDL_joystick_c.h"
+#include "render/SDL_sysrender.h"
 #include "sensor/SDL_sensor_c.h"
 #include "stdlib/SDL_getenv_c.h"
+#include "thread/SDL_thread_c.h"
+#include "video/SDL_pixels_c.h"
 #include "video/SDL_video_c.h"
+#include "filesystem/SDL_filesystem_c.h"
 
 #define SDL_INIT_EVERYTHING ~0U
 
@@ -110,6 +114,7 @@ static SDL_bool SDL_MainIsReady = SDL_FALSE;
 #else
 static SDL_bool SDL_MainIsReady = SDL_TRUE;
 #endif
+static SDL_bool SDL_main_thread_initialized = SDL_FALSE;
 static SDL_bool SDL_bInMainQuit = SDL_FALSE;
 static Uint8 SDL_SubsystemRefCount[32];
 
@@ -179,6 +184,38 @@ void SDL_SetMainReady(void)
     SDL_MainIsReady = SDL_TRUE;
 }
 
+/* Initialize all the subsystems that require initialization before threads start */
+void SDL_InitMainThread(void)
+{
+    if (SDL_main_thread_initialized) {
+        return;
+    }
+
+    SDL_InitTLSData();
+    SDL_InitTicks();
+    SDL_InitFilesystem();
+    SDL_InitLog();
+    SDL_InitProperties();
+    SDL_GetGlobalProperties();
+
+    SDL_main_thread_initialized = SDL_TRUE;
+}
+
+static void SDL_QuitMainThread(void)
+{
+    if (!SDL_main_thread_initialized) {
+        return;
+    }
+
+    SDL_QuitProperties();
+    SDL_QuitLog();
+    SDL_QuitFilesystem();
+    SDL_QuitTicks();
+    SDL_QuitTLSData();
+
+    SDL_main_thread_initialized = SDL_FALSE;
+}
+
 int SDL_InitSubSystem(Uint32 flags)
 {
     Uint32 flags_initialized = 0;
@@ -187,12 +224,7 @@ int SDL_InitSubSystem(Uint32 flags)
         return SDL_SetError("Application didn't initialize properly, did you include SDL_main.h in the file containing your main() function?");
     }
 
-    SDL_InitLog();
-    SDL_InitProperties();
-    SDL_GetGlobalProperties();
-
-    /* Clear the error message */
-    SDL_ClearError();
+    SDL_InitMainThread();
 
 #ifdef SDL_USE_LIBDBUS
     SDL_DBus_Init();
@@ -205,8 +237,6 @@ int SDL_InitSubSystem(Uint32 flags)
         }
     }
 #endif
-
-    SDL_InitTicks();
 
     /* Initialize the event subsystem */
     if (flags & SDL_INIT_EVENTS) {
@@ -474,6 +504,7 @@ void SDL_QuitSubSystem(Uint32 flags)
 #ifndef SDL_VIDEO_DISABLED
     if (flags & SDL_INIT_VIDEO) {
         if (SDL_ShouldQuitSubsystem(SDL_INIT_VIDEO)) {
+            SDL_QuitRender();
             SDL_VideoQuit();
             /* video implies events */
             SDL_QuitSubSystem(SDL_INIT_EVENTS);
@@ -537,8 +568,6 @@ void SDL_Quit(void)
 #endif
     SDL_QuitSubSystem(SDL_INIT_EVERYTHING);
 
-    SDL_QuitTicks();
-
 #ifdef SDL_USE_LIBDBUS
     SDL_DBus_Quit();
 #endif
@@ -547,19 +576,18 @@ void SDL_Quit(void)
     SDL_ClearHints();
     SDL_AssertionsQuit();
 
-    SDL_QuitCPUInfo();
+    SDL_QuitPixelFormatDetails();
 
-    SDL_QuitProperties();
-    SDL_QuitLog();
+    SDL_QuitCPUInfo();
 
     /* Now that every subsystem has been quit, we reset the subsystem refcount
      * and the list of initialized subsystems.
      */
     SDL_memset(SDL_SubsystemRefCount, 0x0, sizeof(SDL_SubsystemRefCount));
 
-    SDL_CleanupTLS();
-
     SDL_FreeEnvironmentMemory();
+
+    SDL_QuitMainThread();
 
     SDL_bInMainQuit = SDL_FALSE;
 }
@@ -573,11 +601,10 @@ int SDL_GetVersion(void)
 /* Get the library source revision */
 const char *SDL_GetRevision(void)
 {
-    return SDL_REVISION;  // a string literal, no need to SDL_FreeLater it.
+    return SDL_REVISION;
 }
 
 // Get the name of the platform
-// (a string literal, no need to SDL_FreeLater it.)
 const char *SDL_GetPlatform(void)
 {
 #if defined(SDL_PLATFORM_AIX)

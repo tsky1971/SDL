@@ -61,8 +61,8 @@ static int SDLCALL enum_callback(void *userdata, const char *origdir, const char
 int main(int argc, char *argv[])
 {
     SDLTest_CommonState *state;
-    char *pref_path;
-    char *base_path;
+    const char *pref_path;
+    const char *base_path;
 
     /* Initialize test framework */
     state = SDLTest_CommonCreateState(argv, 0);
@@ -97,7 +97,6 @@ int main(int argc, char *argv[])
                      SDL_GetError());
     } else {
         SDL_Log("pref path: '%s'\n", pref_path);
-        SDL_free(pref_path);
     }
 
     pref_path = SDL_GetPrefPath(NULL, "test_filesystem");
@@ -106,11 +105,10 @@ int main(int argc, char *argv[])
                      SDL_GetError());
     } else {
         SDL_Log("pref path: '%s'\n", pref_path);
-        SDL_free(pref_path);
     }
 
     if (base_path) {
-        char **globlist;
+        const char * const *globlist;
 
         if (SDL_EnumerateDirectory(base_path, enum_callback, NULL) < 0) {
             SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Base path enumeration failed!");
@@ -124,7 +122,6 @@ int main(int argc, char *argv[])
             for (i = 0; globlist[i]; i++) {
                 SDL_Log("GLOB[%d]: '%s'", i, globlist[i]);
             }
-            SDL_free(globlist);
         }
 
         /* !!! FIXME: put this in a subroutine and make it test more thoroughly (and put it in testautomation). */
@@ -144,8 +141,6 @@ int main(int argc, char *argv[])
             SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "SDL_RemovePath('testfilesystem-test') failed: %s", SDL_GetError());
         }
     }
-
-    SDL_free(base_path);
 
     SDL_Quit();
     SDLTest_CommonDestroyState(state);

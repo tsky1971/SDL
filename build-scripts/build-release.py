@@ -471,6 +471,10 @@ class Releaser:
                 "-DCMAKE_EXE_LINKER_FLAGS=-DEBUG",
                 # Linker flag for shared libraries
                 "-DCMAKE_SHARED_LINKER_FLAGS=-INCREMENTAL:NO -DEBUG -OPT:REF -OPT:ICF",
+                # MSVC runtime library flags are selected by an abstraction
+                "-DCMAKE_POLICY_DEFAULT_CMP0091=NEW",
+                # Use statically linked runtime (-MT) (ideally, should be "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+                "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",
             ])
 
         with self.section_printer.group(f"Build VC CMake project for {arch}"):
@@ -694,7 +698,7 @@ class Releaser:
                     zip_object.write(test_library, arcname=f"prefab/modules/{self.project}_test/libs/android.{android_abi}/lib{self.project}_test.a")
                     zip_object.writestr(f"prefab/modules/{self.project}_test/libs/android.{android_abi}/abi.json", self.get_prefab_abi_json_text(abi=android_abi, cpp=False, shared=False))
 
-        self.artifacts[f"android-prefab-aar"] = aar_path
+        self.artifacts[f"android-aar"] = aar_path
 
     @classmethod
     def extract_sdl_version(cls, root: Path, project: str):

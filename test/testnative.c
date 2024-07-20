@@ -151,7 +151,7 @@ int main(int argc, char *argv[])
         quit(3);
     }
     props = SDL_CreateProperties();
-    SDL_SetProperty(props, "sdl2-compat.external_window", native_window);
+    SDL_SetPointerProperty(props, "sdl2-compat.external_window", native_window);
     SDL_SetBooleanProperty(props, SDL_PROP_WINDOW_CREATE_OPENGL_BOOLEAN, SDL_TRUE);
     SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, WINDOW_W);
     SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, WINDOW_H);
@@ -189,15 +189,15 @@ int main(int argc, char *argv[])
         quit(2);
     }
     for (i = 0; i < NUM_SPRITES; ++i) {
-        positions[i].x = (float)(SDL_rand_n(window_w - (int)sprite_w));
-        positions[i].y = (float)(SDL_rand_n(window_h - (int)sprite_h));
+        positions[i].x = (float)(SDL_rand(window_w - (int)sprite_w));
+        positions[i].y = (float)(SDL_rand(window_h - (int)sprite_h));
         positions[i].w = sprite_w;
         positions[i].h = sprite_h;
         velocities[i].x = 0.0f;
         velocities[i].y = 0.0f;
         while (velocities[i].x == 0.f && velocities[i].y == 0.f) {
-            velocities[i].x = (float)(SDL_rand_n(MAX_SPEED * 2 + 1) - MAX_SPEED);
-            velocities[i].y = (float)(SDL_rand_n(MAX_SPEED * 2 + 1) - MAX_SPEED);
+            velocities[i].x = (float)(SDL_rand(MAX_SPEED * 2 + 1) - MAX_SPEED);
+            velocities[i].y = (float)(SDL_rand(MAX_SPEED * 2 + 1) - MAX_SPEED);
         }
     }
 

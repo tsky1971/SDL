@@ -11,9 +11,6 @@
 */
 /* Simple program:  Move N sprites around on the screen as fast as possible */
 
-#include <stdlib.h>
-#include <time.h>
-
 #define SDL_MAIN_USE_CALLBACKS 1
 #include <SDL3/SDL_test.h>
 #include <SDL3/SDL_test_common.h>
@@ -454,8 +451,14 @@ int SDL_AppInit(void **appstate, int argc, char *argv[])
                     } else if (SDL_strcasecmp(argv[i + 1], "blend") == 0) {
                         blendMode = SDL_BLENDMODE_BLEND;
                         consumed = 2;
+                    } else if (SDL_strcasecmp(argv[i + 1], "blend_premultiplied") == 0) {
+                        blendMode = SDL_BLENDMODE_BLEND_PREMULTIPLIED;
+                        consumed = 2;
                     } else if (SDL_strcasecmp(argv[i + 1], "add") == 0) {
                         blendMode = SDL_BLENDMODE_ADD;
+                        consumed = 2;
+                    } else if (SDL_strcasecmp(argv[i + 1], "add_premultiplied") == 0) {
+                        blendMode = SDL_BLENDMODE_ADD_PREMULTIPLIED;
                         consumed = 2;
                     } else if (SDL_strcasecmp(argv[i + 1], "mod") == 0) {
                         blendMode = SDL_BLENDMODE_MOD;
@@ -509,7 +512,7 @@ int SDL_AppInit(void **appstate, int argc, char *argv[])
         }
         if (consumed < 0) {
             static const char *options[] = {
-                "[--blend none|blend|add|mod|mul|sub]",
+                "[--blend none|blend|blend_premultiplied|add|add_premultiplied|mod|mul|sub]",
                 "[--cyclecolor]",
                 "[--cyclealpha]",
                 "[--suspend-when-occluded]",
@@ -558,7 +561,7 @@ int SDL_AppInit(void **appstate, int argc, char *argv[])
         seed = (Uint64)iterations;
     } else {
         /* Pseudo-random seed generated from the time */
-        seed = (Uint64)time(NULL);
+        seed = SDL_GetPerformanceCounter();
     }
     SDLTest_FuzzerInit(seed);
     for (i = 0; i < num_sprites; ++i) {

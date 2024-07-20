@@ -136,20 +136,45 @@ void *alloca(size_t);
      (SDL_static_cast(Uint32, SDL_static_cast(Uint8, (C))) << 16) | \
      (SDL_static_cast(Uint32, SDL_static_cast(Uint8, (D))) << 24))
 
+#ifdef SDL_WIKI_DOCUMENTATION_SECTION
+
 /**
- * Append the 64 bit integer suffix to an integer literal.
+ * Append the 64 bit integer suffix to a signed integer literal.
+ *
+ * This helps compilers that might believe a integer literal larger than
+ * 0xFFFFFFFF is overflowing a 32-bit value. Use `SDL_SINT64_C(0xFFFFFFFF1)`
+ * instead of `0xFFFFFFFF1` by itself.
+ *
+ * \since This macro is available since SDL 3.0.0.
+ *
+ * \sa SDL_UINT64_C
  */
-#if defined(INT64_C)
+#define SDL_SINT64_C(c)  c ## LL  /* or whatever the current compiler uses. */
+
+/**
+ * Append the 64 bit integer suffix to an unsigned integer literal.
+ *
+ * This helps compilers that might believe a integer literal larger than
+ * 0xFFFFFFFF is overflowing a 32-bit value. Use `SDL_UINT64_C(0xFFFFFFFF1)`
+ * instead of `0xFFFFFFFF1` by itself.
+ *
+ * \since This macro is available since SDL 3.0.0.
+ *
+ * \sa SDL_SINT64_C
+ */
+#define SDL_UINT64_C(c)  c ## ULL /* or whatever the current compiler uses. */
+
+#elif defined(INT64_C)
 #define SDL_SINT64_C(c)  INT64_C(c)
 #define SDL_UINT64_C(c)  UINT64_C(c)
 #elif defined(_MSC_VER)
-#define SDL_INT64_C(c)   c ## i64
+#define SDL_SINT64_C(c)  c ## i64
 #define SDL_UINT64_C(c)  c ## ui64
 #elif defined(__LP64__) || defined(_LP64)
-#define SDL_INT64_C(c)   c ## L
+#define SDL_SINT64_C(c)  c ## L
 #define SDL_UINT64_C(c)  c ## UL
 #else
-#define SDL_INT64_C(c)   c ## LL
+#define SDL_SINT64_C(c)  c ## LL
 #define SDL_UINT64_C(c)  c ## ULL
 #endif
 
@@ -191,72 +216,76 @@ typedef int SDL_bool;
  *
  * \since This macro is available since SDL 3.0.0.
  */
+typedef int8_t Sint8;
 #define SDL_MAX_SINT8   ((Sint8)0x7F)           /* 127 */
 #define SDL_MIN_SINT8   ((Sint8)(~0x7F))        /* -128 */
-typedef int8_t Sint8;
 
 /**
  * An unsigned 8-bit integer type.
  *
  * \since This macro is available since SDL 3.0.0.
  */
+typedef uint8_t Uint8;
 #define SDL_MAX_UINT8   ((Uint8)0xFF)           /* 255 */
 #define SDL_MIN_UINT8   ((Uint8)0x00)           /* 0 */
-typedef uint8_t Uint8;
 
 /**
  * A signed 16-bit integer type.
  *
  * \since This macro is available since SDL 3.0.0.
  */
+typedef int16_t Sint16;
 #define SDL_MAX_SINT16  ((Sint16)0x7FFF)        /* 32767 */
 #define SDL_MIN_SINT16  ((Sint16)(~0x7FFF))     /* -32768 */
-typedef int16_t Sint16;
 
 /**
  * An unsigned 16-bit integer type.
  *
  * \since This macro is available since SDL 3.0.0.
  */
+typedef uint16_t Uint16;
 #define SDL_MAX_UINT16  ((Uint16)0xFFFF)        /* 65535 */
 #define SDL_MIN_UINT16  ((Uint16)0x0000)        /* 0 */
-typedef uint16_t Uint16;
 
 /**
  * A signed 32-bit integer type.
  *
  * \since This macro is available since SDL 3.0.0.
  */
+typedef int32_t Sint32;
 #define SDL_MAX_SINT32  ((Sint32)0x7FFFFFFF)    /* 2147483647 */
 #define SDL_MIN_SINT32  ((Sint32)(~0x7FFFFFFF)) /* -2147483648 */
-typedef int32_t Sint32;
 
 /**
  * An unsigned 32-bit integer type.
  *
  * \since This macro is available since SDL 3.0.0.
  */
+typedef uint32_t Uint32;
 #define SDL_MAX_UINT32  ((Uint32)0xFFFFFFFFu)   /* 4294967295 */
 #define SDL_MIN_UINT32  ((Uint32)0x00000000)    /* 0 */
-typedef uint32_t Uint32;
 
 /**
  * A signed 64-bit integer type.
  *
  * \since This macro is available since SDL 3.0.0.
+ *
+ * \sa SDL_SINT64_C
  */
+typedef int64_t Sint64;
 #define SDL_MAX_SINT64  SDL_SINT64_C(0x7FFFFFFFFFFFFFFF)   /* 9223372036854775807 */
 #define SDL_MIN_SINT64  ~SDL_SINT64_C(0x7FFFFFFFFFFFFFFF)  /* -9223372036854775808 */
-typedef int64_t Sint64;
 
 /**
  * An unsigned 64-bit integer type.
  *
  * \since This macro is available since SDL 3.0.0.
+ *
+ * \sa SDL_UINT64_C
  */
+typedef uint64_t Uint64;
 #define SDL_MAX_UINT64  SDL_UINT64_C(0xFFFFFFFFFFFFFFFF)   /* 18446744073709551615 */
 #define SDL_MIN_UINT64  SDL_UINT64_C(0x0000000000000000)   /* 0 */
-typedef uint64_t Uint64;
 
 /**
  * SDL times are signed, 64-bit integers representing nanoseconds since the
@@ -267,10 +296,13 @@ typedef uint64_t Uint64;
  * SDL_TimeToWindows() and SDL_TimeFromWindows().
  *
  * \since This macro is available since SDL 3.0.0.
+ *
+ * \sa SDL_MAX_SINT64
+ * \sa SDL_MIN_SINT64
  */
+typedef Sint64 SDL_Time;
 #define SDL_MAX_TIME SDL_MAX_SINT64
 #define SDL_MIN_TIME SDL_MIN_SINT64
-typedef Sint64 SDL_Time;
 
 /* @} *//* Basic data types */
 
@@ -491,9 +523,9 @@ extern "C" {
 #define SDL_stack_free(data)            SDL_free(data)
 #endif
 
-extern SDL_DECLSPEC SDL_MALLOC void *SDLCALL SDL_malloc(size_t size);
-extern SDL_DECLSPEC SDL_MALLOC SDL_ALLOC_SIZE2(1, 2) void *SDLCALL SDL_calloc(size_t nmemb, size_t size);
-extern SDL_DECLSPEC SDL_ALLOC_SIZE(2) void *SDLCALL SDL_realloc(void *mem, size_t size);
+extern SDL_DECLSPEC SDL_MALLOC void * SDLCALL SDL_malloc(size_t size);
+extern SDL_DECLSPEC SDL_MALLOC SDL_ALLOC_SIZE2(1, 2) void * SDLCALL SDL_calloc(size_t nmemb, size_t size);
+extern SDL_DECLSPEC SDL_ALLOC_SIZE(2) void * SDLCALL SDL_realloc(void *mem, size_t size);
 extern SDL_DECLSPEC void SDLCALL SDL_free(void *mem);
 
 typedef void *(SDLCALL *SDL_malloc_func)(size_t size);
@@ -598,7 +630,7 @@ extern SDL_DECLSPEC int SDLCALL SDL_SetMemoryFunctions(SDL_malloc_func malloc_fu
  *
  * \sa SDL_aligned_free
  */
-extern SDL_DECLSPEC SDL_MALLOC void *SDLCALL SDL_aligned_alloc(size_t alignment, size_t size);
+extern SDL_DECLSPEC SDL_MALLOC void * SDLCALL SDL_aligned_alloc(size_t alignment, size_t size);
 
 /**
  * Free memory allocated by SDL_aligned_alloc().
@@ -627,7 +659,7 @@ extern SDL_DECLSPEC void SDLCALL SDL_aligned_free(void *mem);
  */
 extern SDL_DECLSPEC int SDLCALL SDL_GetNumAllocations(void);
 
-extern SDL_DECLSPEC char *SDLCALL SDL_getenv(const char *name);
+extern SDL_DECLSPEC char * SDLCALL SDL_getenv(const char *name);
 extern SDL_DECLSPEC int SDLCALL SDL_setenv(const char *name, const char *value, int overwrite);
 
 typedef int (SDLCALL *SDL_CompareCallback)(const void *a, const void *b);
@@ -884,7 +916,7 @@ extern SDL_DECLSPEC int SDLCALL SDL_tolower(int x);
 extern SDL_DECLSPEC Uint16 SDLCALL SDL_crc16(Uint16 crc, const void *data, size_t len);
 extern SDL_DECLSPEC Uint32 SDLCALL SDL_crc32(Uint32 crc, const void *data, size_t len);
 
-extern SDL_DECLSPEC void *SDLCALL SDL_memcpy(SDL_OUT_BYTECAP(len) void *dst, SDL_IN_BYTECAP(len) const void *src, size_t len);
+extern SDL_DECLSPEC void * SDLCALL SDL_memcpy(SDL_OUT_BYTECAP(len) void *dst, SDL_IN_BYTECAP(len) const void *src, size_t len);
 
 /* Take advantage of compiler optimizations for memcpy */
 #ifndef SDL_SLOW_MEMCPY
@@ -898,7 +930,7 @@ extern SDL_DECLSPEC void *SDLCALL SDL_memcpy(SDL_OUT_BYTECAP(len) void *dst, SDL
     { SDL_COMPILE_TIME_ASSERT(SDL_copyp, sizeof (*(dst)) == sizeof (*(src))); }             \
     SDL_memcpy((dst), (src), sizeof(*(src)))
 
-extern SDL_DECLSPEC void *SDLCALL SDL_memmove(SDL_OUT_BYTECAP(len) void *dst, SDL_IN_BYTECAP(len) const void *src, size_t len);
+extern SDL_DECLSPEC void * SDLCALL SDL_memmove(SDL_OUT_BYTECAP(len) void *dst, SDL_IN_BYTECAP(len) const void *src, size_t len);
 
 /* Take advantage of compiler optimizations for memmove */
 #ifndef SDL_SLOW_MEMMOVE
@@ -908,8 +940,8 @@ extern SDL_DECLSPEC void *SDLCALL SDL_memmove(SDL_OUT_BYTECAP(len) void *dst, SD
 #define SDL_memmove memmove
 #endif
 
-extern SDL_DECLSPEC void *SDLCALL SDL_memset(SDL_OUT_BYTECAP(len) void *dst, int c, size_t len);
-extern SDL_DECLSPEC void *SDLCALL SDL_memset4(void *dst, Uint32 val, size_t dwords);
+extern SDL_DECLSPEC void * SDLCALL SDL_memset(SDL_OUT_BYTECAP(len) void *dst, int c, size_t len);
+extern SDL_DECLSPEC void * SDLCALL SDL_memset4(void *dst, Uint32 val, size_t dwords);
 
 /* Take advantage of compiler optimizations for memset */
 #ifndef SDL_SLOW_MEMSET
@@ -929,9 +961,9 @@ extern SDL_DECLSPEC size_t SDLCALL SDL_wcslen(const wchar_t *wstr);
 extern SDL_DECLSPEC size_t SDLCALL SDL_wcsnlen(const wchar_t *wstr, size_t maxlen);
 extern SDL_DECLSPEC size_t SDLCALL SDL_wcslcpy(SDL_OUT_Z_CAP(maxlen) wchar_t *dst, const wchar_t *src, size_t maxlen);
 extern SDL_DECLSPEC size_t SDLCALL SDL_wcslcat(SDL_INOUT_Z_CAP(maxlen) wchar_t *dst, const wchar_t *src, size_t maxlen);
-extern SDL_DECLSPEC wchar_t *SDLCALL SDL_wcsdup(const wchar_t *wstr);
-extern SDL_DECLSPEC wchar_t *SDLCALL SDL_wcsstr(const wchar_t *haystack, const wchar_t *needle);
-extern SDL_DECLSPEC wchar_t *SDLCALL SDL_wcsnstr(const wchar_t *haystack, const wchar_t *needle, size_t maxlen);
+extern SDL_DECLSPEC wchar_t * SDLCALL SDL_wcsdup(const wchar_t *wstr);
+extern SDL_DECLSPEC wchar_t * SDLCALL SDL_wcsstr(const wchar_t *haystack, const wchar_t *needle);
+extern SDL_DECLSPEC wchar_t * SDLCALL SDL_wcsnstr(const wchar_t *haystack, const wchar_t *needle, size_t maxlen);
 
 /**
  * Compare two null-terminated wide strings.
@@ -1062,9 +1094,9 @@ extern SDL_DECLSPEC size_t SDLCALL SDL_strnlen(const char *str, size_t maxlen);
 extern SDL_DECLSPEC size_t SDLCALL SDL_strlcpy(SDL_OUT_Z_CAP(maxlen) char *dst, const char *src, size_t maxlen);
 extern SDL_DECLSPEC size_t SDLCALL SDL_utf8strlcpy(SDL_OUT_Z_CAP(dst_bytes) char *dst, const char *src, size_t dst_bytes);
 extern SDL_DECLSPEC size_t SDLCALL SDL_strlcat(SDL_INOUT_Z_CAP(maxlen) char *dst, const char *src, size_t maxlen);
-extern SDL_DECLSPEC SDL_MALLOC char *SDLCALL SDL_strdup(const char *str);
-extern SDL_DECLSPEC SDL_MALLOC char *SDLCALL SDL_strndup(const char *str, size_t maxlen);
-extern SDL_DECLSPEC char *SDLCALL SDL_strrev(char *str);
+extern SDL_DECLSPEC SDL_MALLOC char * SDLCALL SDL_strdup(const char *str);
+extern SDL_DECLSPEC SDL_MALLOC char * SDLCALL SDL_strndup(const char *str, size_t maxlen);
+extern SDL_DECLSPEC char * SDLCALL SDL_strrev(char *str);
 
 /**
  * Convert a string to uppercase.
@@ -1085,7 +1117,7 @@ extern SDL_DECLSPEC char *SDLCALL SDL_strrev(char *str);
  *
  * \sa SDL_strlwr
  */
-extern SDL_DECLSPEC char *SDLCALL SDL_strupr(char *str);
+extern SDL_DECLSPEC char * SDLCALL SDL_strupr(char *str);
 
 /**
  * Convert a string to lowercase.
@@ -1106,23 +1138,23 @@ extern SDL_DECLSPEC char *SDLCALL SDL_strupr(char *str);
  *
  * \sa SDL_strupr
  */
-extern SDL_DECLSPEC char *SDLCALL SDL_strlwr(char *str);
+extern SDL_DECLSPEC char * SDLCALL SDL_strlwr(char *str);
 
-extern SDL_DECLSPEC char *SDLCALL SDL_strchr(const char *str, int c);
-extern SDL_DECLSPEC char *SDLCALL SDL_strrchr(const char *str, int c);
-extern SDL_DECLSPEC char *SDLCALL SDL_strstr(const char *haystack, const char *needle);
-extern SDL_DECLSPEC char *SDLCALL SDL_strnstr(const char *haystack, const char *needle, size_t maxlen);
-extern SDL_DECLSPEC char *SDLCALL SDL_strcasestr(const char *haystack, const char *needle);
-extern SDL_DECLSPEC char *SDLCALL SDL_strtok_r(char *s1, const char *s2, char **saveptr);
+extern SDL_DECLSPEC char * SDLCALL SDL_strchr(const char *str, int c);
+extern SDL_DECLSPEC char * SDLCALL SDL_strrchr(const char *str, int c);
+extern SDL_DECLSPEC char * SDLCALL SDL_strstr(const char *haystack, const char *needle);
+extern SDL_DECLSPEC char * SDLCALL SDL_strnstr(const char *haystack, const char *needle, size_t maxlen);
+extern SDL_DECLSPEC char * SDLCALL SDL_strcasestr(const char *haystack, const char *needle);
+extern SDL_DECLSPEC char * SDLCALL SDL_strtok_r(char *s1, const char *s2, char **saveptr);
 extern SDL_DECLSPEC size_t SDLCALL SDL_utf8strlen(const char *str);
 extern SDL_DECLSPEC size_t SDLCALL SDL_utf8strnlen(const char *str, size_t bytes);
 
-extern SDL_DECLSPEC char *SDLCALL SDL_itoa(int value, char *str, int radix);
-extern SDL_DECLSPEC char *SDLCALL SDL_uitoa(unsigned int value, char *str, int radix);
-extern SDL_DECLSPEC char *SDLCALL SDL_ltoa(long value, char *str, int radix);
-extern SDL_DECLSPEC char *SDLCALL SDL_ultoa(unsigned long value, char *str, int radix);
-extern SDL_DECLSPEC char *SDLCALL SDL_lltoa(Sint64 value, char *str, int radix);
-extern SDL_DECLSPEC char *SDLCALL SDL_ulltoa(Uint64 value, char *str, int radix);
+extern SDL_DECLSPEC char * SDLCALL SDL_itoa(int value, char *str, int radix);
+extern SDL_DECLSPEC char * SDLCALL SDL_uitoa(unsigned int value, char *str, int radix);
+extern SDL_DECLSPEC char * SDLCALL SDL_ltoa(long value, char *str, int radix);
+extern SDL_DECLSPEC char * SDLCALL SDL_ultoa(unsigned long value, char *str, int radix);
+extern SDL_DECLSPEC char * SDLCALL SDL_lltoa(Sint64 value, char *str, int radix);
+extern SDL_DECLSPEC char * SDLCALL SDL_ulltoa(Uint64 value, char *str, int radix);
 
 extern SDL_DECLSPEC int SDLCALL SDL_atoi(const char *str);
 extern SDL_DECLSPEC double SDLCALL SDL_atof(const char *str);
@@ -1250,6 +1282,95 @@ extern SDL_DECLSPEC int SDLCALL SDL_strcasecmp(const char *str1, const char *str
  */
 extern SDL_DECLSPEC int SDLCALL SDL_strncasecmp(const char *str1, const char *str2, size_t maxlen);
 
+/**
+ * The Unicode REPLACEMENT CHARACTER codepoint.
+ *
+ * SDL_StepUTF8() reports this codepoint when it encounters a UTF-8 string
+ * with encoding errors.
+ *
+ * This tends to render as something like a question mark in most places.
+ *
+ * \since This macro is available since SDL 3.0.0.
+ *
+ * \sa SDL_StepUTF8
+ */
+#define SDL_INVALID_UNICODE_CODEPOINT 0xFFFD
+
+/**
+ * Decode a UTF-8 string, one Unicode codepoint at a time.
+ *
+ * This will return the first Unicode codepoint in the UTF-8 encoded string in
+ * `*pstr`, and then advance `*pstr` past any consumed bytes before returning.
+ *
+ * It will not access more than `*pslen` bytes from the string. `*pslen` will
+ * be adjusted, as well, subtracting the number of bytes consumed.
+ *
+ * `pslen` is allowed to be NULL, in which case the string _must_ be
+ * NULL-terminated, as the function will blindly read until it sees the NULL
+ * char.
+ *
+ * if `*pslen` is zero, it assumes the end of string is reached and returns a
+ * zero codepoint regardless of the contents of the string buffer.
+ *
+ * If the resulting codepoint is zero (a NULL terminator), or `*pslen` is
+ * zero, it will not advance `*pstr` or `*pslen` at all.
+ *
+ * Generally this function is called in a loop until it returns zero,
+ * adjusting its parameters each iteration.
+ *
+ * If an invalid UTF-8 sequence is encountered, this function returns
+ * SDL_INVALID_UNICODE_CODEPOINT and advances the string/length by one byte
+ * (which is to say, a multibyte sequence might produce several
+ * SDL_INVALID_UNICODE_CODEPOINT returns before it syncs to the next valid
+ * UTF-8 sequence).
+ *
+ * Several things can generate invalid UTF-8 sequences, including overlong
+ * encodings, the use of UTF-16 surrogate values, and truncated data. Please
+ * refer to
+ * [RFC3629](https://www.ietf.org/rfc/rfc3629.txt)
+ * for details.
+ *
+ * \param pstr a pointer to a UTF-8 string pointer to be read and adjusted.
+ * \param pslen a pointer to the number of bytes in the string, to be read and
+ *              adjusted. NULL is allowed.
+ * \returns the first Unicode codepoint in the string.
+ *
+ * \threadsafety It is safe to call this function from any thread.
+ *
+ * \since This function is available since SDL 3.0.0.
+ */
+extern SDL_DECLSPEC Uint32 SDLCALL SDL_StepUTF8(const char **pstr, size_t *pslen);
+
+/**
+ * Convert a single Unicode codepoint to UTF-8.
+ *
+ * The buffer pointed to by `dst` must be at least 4 bytes long, as this
+ * function may generate between 1 and 4 bytes of output.
+ *
+ * This function returns the first byte _after_ the newly-written UTF-8
+ * sequence, which is useful for encoding multiple codepoints in a loop, or
+ * knowing where to write a NULL-terminator character to end the string (in
+ * either case, plan to have a buffer of _more_ than 4 bytes!).
+ *
+ * If `codepoint` is an invalid value (outside the Unicode range, or a UTF-16
+ * surrogate value, etc), this will use U+FFFD (REPLACEMENT CHARACTER) for the
+ * codepoint instead, and not set an error.
+ *
+ * If `dst` is NULL, this returns NULL immediately without writing to the
+ * pointer and without setting an error.
+ *
+ * \param codepoint a Unicode codepoint to convert to UTF-8.
+ * \param dst the location to write the encoded UTF-8. Must point to at least
+ *            4 bytes!
+ * \returns the first byte past the newly-written UTF-8 sequence.
+ *
+ * \threadsafety It is safe to call this function from any thread.
+ *
+ * \since This function is available since SDL 3.0.0.
+ */
+extern SDL_DECLSPEC char * SDLCALL SDL_UCS4ToUTF8(Uint32 codepoint, char *dst);
+
+
 extern SDL_DECLSPEC int SDLCALL SDL_sscanf(const char *text, SDL_SCANF_FORMAT_STRING const char *fmt, ...) SDL_SCANF_VARARG_FUNC(2);
 extern SDL_DECLSPEC int SDLCALL SDL_vsscanf(const char *text, SDL_SCANF_FORMAT_STRING const char *fmt, va_list ap) SDL_SCANF_VARARG_FUNCV(2);
 extern SDL_DECLSPEC int SDLCALL SDL_snprintf(SDL_OUT_Z_CAP(maxlen) char *text, size_t maxlen, SDL_PRINTF_FORMAT_STRING const char *fmt, ... ) SDL_PRINTF_VARARG_FUNC(3);
@@ -1273,47 +1394,24 @@ extern SDL_DECLSPEC int SDLCALL SDL_vasprintf(char **strp, SDL_PRINTF_FORMAT_STR
  *
  * \since This function is available since SDL 3.0.0.
  *
- * \sa SDL_rand_n
- * \sa SDL_rand_float
+ * \sa SDL_rand
  * \sa SDL_rand_bits
+ * \sa SDL_randf
  */
 extern SDL_DECLSPEC void SDLCALL SDL_srand(Uint64 seed);
 
 /**
- * Generates 32 pseudo-random bits.
- *
- * You likely want to use SDL_rand_n() to get a psuedo-randum number instead.
- *
- * If you want reproducible output, be sure to initialize with SDL_srand()
- * first.
- *
- * There are no guarantees as to the quality of the random sequence produced,
- * and this should not be used for security (cryptography, passwords) or where
- * money is on the line (loot-boxes, casinos). There are many random number
- * libraries available with different characteristics and you should pick one
- * of those to meet any serious needs.
- *
- * \returns a random value in the range of [0-SDL_MAX_UINT32].
- *
- * \threadsafety All calls should be made from a single thread
- *
- * \since This function is available since SDL 3.0.0.
- *
- * \sa SDL_srand
- * \sa SDL_rand_n
- * \sa SDL_rand_float
- */
-extern SDL_DECLSPEC Uint32 SDLCALL SDL_rand_bits(void);
-
-/**
- * Generates a pseudo-random number less than n for positive n
+ * Generate a pseudo-random number less than n for positive n
  *
  * The method used is faster and of better quality than `rand() % n`. Odds are
  * roughly 99.9% even for n = 1 million. Evenness is better for smaller n, and
  * much worse as n gets bigger.
  *
- * Example: to simulate a d6 use `SDL_rand_n(6) + 1` The +1 converts 0..5 to
+ * Example: to simulate a d6 use `SDL_rand(6) + 1` The +1 converts 0..5 to
  * 1..6
+ *
+ * If you want to generate a pseudo-random number in the full range of Sint32,
+ * you should use: (Sint32)SDL_rand_bits()
  *
  * If you want reproducible output, be sure to initialize with SDL_srand()
  * first.
@@ -1332,12 +1430,12 @@ extern SDL_DECLSPEC Uint32 SDLCALL SDL_rand_bits(void);
  * \since This function is available since SDL 3.0.0.
  *
  * \sa SDL_srand
- * \sa SDL_rand_float
+ * \sa SDL_randf
  */
-extern SDL_DECLSPEC Sint32 SDLCALL SDL_rand_n(Sint32 n);
+extern SDL_DECLSPEC Sint32 SDLCALL SDL_rand(Sint32 n);
 
 /**
- * Generates a uniform pseudo-random floating point number less than 1.0
+ * Generate a uniform pseudo-random floating point number less than 1.0
  *
  * If you want reproducible output, be sure to initialize with SDL_srand()
  * first.
@@ -1355,9 +1453,120 @@ extern SDL_DECLSPEC Sint32 SDLCALL SDL_rand_n(Sint32 n);
  * \since This function is available since SDL 3.0.0.
  *
  * \sa SDL_srand
- * \sa SDL_rand_n
+ * \sa SDL_rand
  */
-extern SDL_DECLSPEC float SDLCALL SDL_rand_float(void);
+extern SDL_DECLSPEC float SDLCALL SDL_randf(void);
+
+/**
+ * Generate 32 pseudo-random bits.
+ *
+ * You likely want to use SDL_rand() to get a psuedo-random number instead.
+ *
+ * There are no guarantees as to the quality of the random sequence produced,
+ * and this should not be used for security (cryptography, passwords) or where
+ * money is on the line (loot-boxes, casinos). There are many random number
+ * libraries available with different characteristics and you should pick one
+ * of those to meet any serious needs.
+ *
+ * \returns a random value in the range of [0-SDL_MAX_UINT32].
+ *
+ * \threadsafety All calls should be made from a single thread
+ *
+ * \since This function is available since SDL 3.0.0.
+ *
+ * \sa SDL_rand
+ * \sa SDL_randf
+ * \sa SDL_srand
+ */
+extern SDL_DECLSPEC Uint32 SDLCALL SDL_rand_bits(void);
+
+/**
+ * Generate a pseudo-random number less than n for positive n
+ *
+ * The method used is faster and of better quality than `rand() % n`. Odds are
+ * roughly 99.9% even for n = 1 million. Evenness is better for smaller n, and
+ * much worse as n gets bigger.
+ *
+ * Example: to simulate a d6 use `SDL_rand_r(state, 6) + 1` The +1 converts
+ * 0..5 to 1..6
+ *
+ * If you want to generate a pseudo-random number in the full range of Sint32,
+ * you should use: (Sint32)SDL_rand_bits_r(state)
+ *
+ * There are no guarantees as to the quality of the random sequence produced,
+ * and this should not be used for security (cryptography, passwords) or where
+ * money is on the line (loot-boxes, casinos). There are many random number
+ * libraries available with different characteristics and you should pick one
+ * of those to meet any serious needs.
+ *
+ * \param state a pointer to the current random number state, this may not be
+ *              NULL.
+ * \param n the number of possible outcomes. n must be positive.
+ * \returns a random value in the range of [0 .. n-1].
+ *
+ * \threadsafety This function is thread-safe, as long as the state pointer
+ *               isn't shared between threads.
+ *
+ * \since This function is available since SDL 3.0.0.
+ *
+ * \sa SDL_rand
+ * \sa SDL_rand_bits_r
+ * \sa SDL_randf_r
+ */
+extern SDL_DECLSPEC Sint32 SDLCALL SDL_rand_r(Uint64 *state, Sint32 n);
+
+/**
+ * Generate a uniform pseudo-random floating point number less than 1.0
+ *
+ * If you want reproducible output, be sure to initialize with SDL_srand()
+ * first.
+ *
+ * There are no guarantees as to the quality of the random sequence produced,
+ * and this should not be used for security (cryptography, passwords) or where
+ * money is on the line (loot-boxes, casinos). There are many random number
+ * libraries available with different characteristics and you should pick one
+ * of those to meet any serious needs.
+ *
+ * \param state a pointer to the current random number state, this may not be
+ *              NULL.
+ * \returns a random value in the range of [0.0, 1.0).
+ *
+ * \threadsafety This function is thread-safe, as long as the state pointer
+ *               isn't shared between threads.
+ *
+ * \since This function is available since SDL 3.0.0.
+ *
+ * \sa SDL_rand_bits_r
+ * \sa SDL_rand_r
+ * \sa SDL_randf
+ */
+extern SDL_DECLSPEC float SDLCALL SDL_randf_r(Uint64 *state);
+
+/**
+ * Generate 32 pseudo-random bits.
+ *
+ * You likely want to use SDL_rand_r() to get a psuedo-random number instead.
+ *
+ * There are no guarantees as to the quality of the random sequence produced,
+ * and this should not be used for security (cryptography, passwords) or where
+ * money is on the line (loot-boxes, casinos). There are many random number
+ * libraries available with different characteristics and you should pick one
+ * of those to meet any serious needs.
+ *
+ * \param state a pointer to the current random number state, this may not be
+ *              NULL.
+ * \returns a random value in the range of [0-SDL_MAX_UINT32].
+ *
+ * \threadsafety This function is thread-safe, as long as the state pointer
+ *               isn't shared between threads.
+ *
+ * \since This function is available since SDL 3.0.0.
+ *
+ * \sa SDL_rand_r
+ * \sa SDL_randf_r
+ */
+extern SDL_DECLSPEC Uint32 SDLCALL SDL_rand_bits_r(Uint64 *state);
+
 
 #ifndef SDL_PI_D
 #define SDL_PI_D   3.141592653589793238462643383279502884       /**< pi (double) */
@@ -2067,6 +2276,62 @@ extern SDL_DECLSPEC double SDLCALL SDL_fmod(double x, double y);
 extern SDL_DECLSPEC float SDLCALL SDL_fmodf(float x, float y);
 
 /**
+ * Return whether the value is infinity.
+ *
+ * \param x double-precision floating point value.
+ * \returns non-zero if the value is infinity, 0 otherwise.
+ *
+ * \threadsafety It is safe to call this function from any thread.
+ *
+ * \since This function is available since SDL 3.0.0.
+ *
+ * \sa SDL_isinff
+ */
+extern SDL_DECLSPEC int SDLCALL SDL_isinf(double x);
+
+/**
+ * Return whether the value is infinity.
+ *
+ * \param x floating point value.
+ * \returns non-zero if the value is infinity, 0 otherwise.
+ *
+ * \threadsafety It is safe to call this function from any thread.
+ *
+ * \since This function is available since SDL 3.0.0.
+ *
+ * \sa SDL_isinf
+ */
+extern SDL_DECLSPEC int SDLCALL SDL_isinff(float x);
+
+/**
+ * Return whether the value is NaN.
+ *
+ * \param x double-precision floating point value.
+ * \returns non-zero if the value is NaN, 0 otherwise.
+ *
+ * \threadsafety It is safe to call this function from any thread.
+ *
+ * \since This function is available since SDL 3.0.0.
+ *
+ * \sa SDL_isnanf
+ */
+extern SDL_DECLSPEC int SDLCALL SDL_isnan(double x);
+
+/**
+ * Return whether the value is NaN.
+ *
+ * \param x floating point value.
+ * \returns non-zero if the value is NaN, 0 otherwise.
+ *
+ * \threadsafety It is safe to call this function from any thread.
+ *
+ * \since This function is available since SDL 3.0.0.
+ *
+ * \sa SDL_isnan
+ */
+extern SDL_DECLSPEC int SDLCALL SDL_isnanf(float x);
+
+/**
  * Compute the natural logarithm of `x`.
  *
  * Domain: `0 < x <= INF`
@@ -2659,7 +2924,7 @@ extern SDL_DECLSPEC size_t SDLCALL SDL_iconv(SDL_iconv_t cd, const char **inbuf,
  *
  * \since This function is available since SDL 3.0.0.
  */
-extern SDL_DECLSPEC char *SDLCALL SDL_iconv_string(const char *tocode,
+extern SDL_DECLSPEC char * SDLCALL SDL_iconv_string(const char *tocode,
                                                const char *fromcode,
                                                const char *inbuf,
                                                size_t inbytesleft);
@@ -2676,12 +2941,12 @@ extern SDL_DECLSPEC char *SDLCALL SDL_iconv_string(const char *tocode,
 
 /* The analyzer knows about strlcpy even when the system doesn't provide it */
 #if !defined(HAVE_STRLCPY) && !defined(strlcpy)
-size_t strlcpy(char* dst, const char* src, size_t size);
+size_t strlcpy(char *dst, const char *src, size_t size);
 #endif
 
 /* The analyzer knows about strlcat even when the system doesn't provide it */
 #if !defined(HAVE_STRLCAT) && !defined(strlcat)
-size_t strlcat(char* dst, const char* src, size_t size);
+size_t strlcat(char *dst, const char *src, size_t size);
 #endif
 
 #if !defined(HAVE_WCSLCPY) && !defined(wcslcpy)

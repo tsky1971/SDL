@@ -20,6 +20,8 @@
 */
 
 #include "SDL_internal.h"
+
+#include "SDL_filesystem_c.h"
 #include "SDL_sysfilesystem.h"
 #include "../stdlib/SDL_sysstdlib.h"
 
@@ -185,7 +187,7 @@ static char *CaseFoldUtf8String(const char *fname)
     Uint32 codepoint;
     char *ptr = retval;
     size_t remaining = allocation;
-    while ((codepoint = SDL_StepUTF8(&fname, 4)) != 0) {
+    while ((codepoint = SDL_StepUTF8(&fname, NULL)) != 0) {
         Uint32 folded[3];
         const int num_folded = SDL_CaseFoldUnicode(codepoint, folded);
         SDL_assert(num_folded > 0);
@@ -286,7 +288,7 @@ static int SDLCALL GlobDirectoryCallback(void *userdata, const char *dirname, co
     return retval;
 }
 
-char **SDL_InternalGlobDirectory(const char *path, const char *pattern, SDL_GlobFlags flags, int *count, SDL_GlobEnumeratorFunc enumerator, SDL_GlobGetPathInfoFunc getpathinfo, void *userdata)
+const char * const *SDL_InternalGlobDirectory(const char *path, const char *pattern, SDL_GlobFlags flags, int *count, SDL_GlobEnumeratorFunc enumerator, SDL_GlobGetPathInfoFunc getpathinfo, void *userdata)
 {
     int dummycount;
     if (!count) {
@@ -381,7 +383,7 @@ char **SDL_InternalGlobDirectory(const char *path, const char *pattern, SDL_Glob
     SDL_free(folded);
     SDL_free(pathcpy);
 
-    return retval;
+    return SDL_FreeLater(retval);
 }
 
 static int GlobDirectoryGetPathInfo(const char *path, SDL_PathInfo *info, void *userdata)
@@ -394,9 +396,61 @@ static int GlobDirectoryEnumerator(const char *path, SDL_EnumerateDirectoryCallb
     return SDL_EnumerateDirectory(path, cb, cbuserdata);
 }
 
-char **SDL_GlobDirectory(const char *path, const char *pattern, SDL_GlobFlags flags, int *count)
+const char * const *SDL_GlobDirectory(const char *path, const char *pattern, SDL_GlobFlags flags, int *count)
 {
     //SDL_Log("SDL_GlobDirectory('%s', '%s') ...", path, pattern);
     return SDL_InternalGlobDirectory(path, pattern, flags, count, GlobDirectoryEnumerator, GlobDirectoryGetPathInfo, NULL);
+}
+
+
+static char *CachedBasePath = NULL;
+
+const char *SDL_GetBasePath(void)
+{
+    if (!CachedBasePath) {
+        CachedBasePath = SDL_SYS_GetBasePath();
+    }
+    return CachedBasePath;
+}
+
+
+static char *CachedUserFolders[SDL_FOLDER_TOTAL];
+
+const char *SDL_GetUserFolder(SDL_Folder folder)
+{
+    const int idx = (int) folder;
+    if ((idx < 0) || (idx >= SDL_arraysize(CachedUserFolders))) {
+        SDL_InvalidParamError("folder");
+        return NULL;
+    }
+
+    if (!CachedUserFolders[idx]) {
+        CachedUserFolders[idx] = SDL_SYS_GetUserFolder(folder);
+    }
+    return CachedUserFolders[idx];
+}
+
+
+const char *SDL_GetPrefPath(const char *org, const char *app)
+{
+    char *path = SDL_SYS_GetPrefPath(org, app);
+    return SDL_FreeLater(path);
+}
+
+
+void SDL_InitFilesystem(void)
+{
+    CachedBasePath = NULL;  // just in case.
+    SDL_zeroa(CachedUserFolders);
+}
+
+void SDL_QuitFilesystem(void)
+{
+    SDL_free(CachedBasePath);
+    CachedBasePath = NULL;
+    for (int i = 0; i < SDL_arraysize(CachedUserFolders); i++) {
+        SDL_free(CachedUserFolders[i]);
+        CachedUserFolders[i] = NULL;
+    }
 }
 

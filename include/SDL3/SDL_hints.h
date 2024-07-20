@@ -943,37 +943,27 @@ extern "C" {
 #define SDL_HINT_HIDAPI_IGNORE_DEVICES "SDL_HIDAPI_IGNORE_DEVICES"
 
 /**
- * A variable to control whether certain IMEs should handle text editing
- * internally instead of sending SDL_EVENT_TEXT_EDITING events.
+ * A variable describing what IME UI elements the application can display.
  *
- * The variable can be set to the following values:
+ * By default IME UI is handled using native components by the OS where
+ * possible, however this can interfere with or not be visible when exclusive
+ * fullscreen mode is used.
  *
- * - "0": SDL_EVENT_TEXT_EDITING events are sent, and it is the application's
- *   responsibility to render the text from these events and differentiate it
- *   somehow from committed text. (default)
- * - "1": If supported by the IME then SDL_EVENT_TEXT_EDITING events are not
- *   sent, and text that is being composed will be rendered in its own UI.
+ * The variable can be set to a comma separated list containing the following
+ * items:
  *
- * This hint can be set anytime.
- *
- * \since This hint is available since SDL 3.0.0.
- */
-#define SDL_HINT_IME_INTERNAL_EDITING "SDL_IME_INTERNAL_EDITING"
-
-/**
- * A variable to control whether certain IMEs should show native UI components
- * (such as the Candidate List) instead of suppressing them.
- *
- * The variable can be set to the following values:
- *
- * - "0": Native UI components are not display. (default)
- * - "1": Native UI components are displayed.
+ * - "none" or "0": The application can't render any IME elements, and native
+ *   UI should be used. (default)
+ * - "composition": The application handles SDL_EVENT_TEXT_EDITING events and
+ *   can render the composition text.
+ * - "candidates": The application handles SDL_EVENT_TEXT_EDITING_CANDIDATES
+ *   and can render the candidate list.
  *
  * This hint should be set before SDL is initialized.
  *
  * \since This hint is available since SDL 3.0.0.
  */
-#define SDL_HINT_IME_SHOW_UI "SDL_IME_SHOW_UI"
+#define SDL_HINT_IME_IMPLEMENTED_UI "SDL_IME_IMPLEMENTED_UI"
 
 /**
  * A variable controlling whether the home indicator bar on iPhone X should be
@@ -2004,6 +1994,40 @@ extern "C" {
 #define SDL_HINT_JOYSTICK_ZERO_CENTERED_DEVICES "SDL_JOYSTICK_ZERO_CENTERED_DEVICES"
 
 /**
+ * A variable that controls keycode representation in keyboard events.
+ *
+ * This variable is a comma separated set of options for translating keycodes
+ * in events:
+ *
+ * - "none": Keycode options are cleared, this overrides other options.
+ * - "hide_numpad": The numpad keysyms will be translated into their
+ *   non-numpad versions based on the current NumLock state. For example,
+ *   SDLK_KP_4 would become SDLK_4 if SDL_KMOD_NUM is set in the event
+ *   modifiers, and SDLK_LEFT if it is unset.
+ * - "french_numbers": The number row on French keyboards is inverted, so
+ *   pressing the 1 key would yield the keycode SDLK_1, or '1', instead of
+ *   SDLK_AMPERSAND, or '&'
+ * - "latin_letters": For keyboards using non-Latin letters, such as Russian
+ *   or Thai, the letter keys generate keycodes as though it had an en_US
+ *   layout. e.g. pressing the key associated with SDL_SCANCODE_A on a Russian
+ *   keyboard would yield 'a' instead of 'ф'.
+ *
+ * The default value for this hint is "french_numbers"
+ *
+ * Some platforms like Emscripten only provide modified keycodes and the
+ * options are not used.
+ *
+ * These options do not affect the return value of SDL_GetKeyFromScancode() or
+ * SDL_GetScancodeFromKey(), they just apply to the keycode included in key
+ * events.
+ *
+ * This hint can be set anytime.
+ *
+ * \since This hint is available since SDL 3.0.0.
+ */
+#define SDL_HINT_KEYCODE_OPTIONS "SDL_KEYCODE_OPTIONS"
+
+/**
  * A variable that controls what KMSDRM device to use.
  *
  * SDL might open something like "/dev/dri/cardNN" to access KMSDRM
@@ -2300,8 +2324,29 @@ extern "C" {
  * Note that for systems without raw hardware inputs, relative mode is
  * implemented using warping, so the hardware cursor will visibly warp between
  * frames if this is enabled on those systems.
+ *
+ * This hint can be set anytime.
+ *
+ * \since This hint is available since SDL 3.0.0.
  */
 #define SDL_HINT_MOUSE_RELATIVE_CURSOR_VISIBLE  "SDL_MOUSE_RELATIVE_CURSOR_VISIBLE"
+
+/**
+ * Controls how often SDL issues cursor confinement commands to the operating
+ * system while relative mode is active, in case the desired confinement state
+ * became out-of-sync due to interference from other running programs.
+ *
+ * The variable can be integers representing miliseconds between each refresh.
+ * A value of zero means SDL will not automatically refresh the confinement.
+ * The default value varies depending on the operating system, this variable
+ * might not have any effects on inapplicable platforms such as those without
+ * a cursor.
+ *
+ * This hint can be set anytime.
+ *
+ * \since This hint is available since SDL 3.0.0.
+ */
+#define SDL_HINT_MOUSE_RELATIVE_CLIP_INTERVAL  "SDL_MOUSE_RELATIVE_CLIP_INTERVAL"
 
 /**
  * A variable controlling whether mouse events should generate synthetic touch
@@ -2709,7 +2754,7 @@ extern "C" {
  *
  * This is useful as a debug tool to validate memory leaks, but shouldn't ever
  * be set in production applications, as other libraries used by the
- * application might use dbus under the hood and this cause cause crashes if
+ * application might use dbus under the hood and this can cause crashes if
  * they continue after SDL_Quit().
  *
  * The variable can be set to the following values:
@@ -2903,6 +2948,7 @@ extern "C" {
  * This hint is currently supported on the following drivers:
  *
  * - Raspberry Pi (raspberrypi)
+ * - Wayland (wayland)
  *
  * This hint should be set before SDL is initialized.
  *
@@ -3669,7 +3715,7 @@ extern "C" {
  * A variable specifying the URL to a WinRT app's privacy policy.
  *
  * All network-enabled WinRT apps must make a privacy policy available to its
- * users. On Windows 8, 8.1, and RT, Microsoft mandates that this policy be be
+ * users. On Windows 8, 8.1, and RT, Microsoft mandates that this policy be
  * available in the Windows Settings charm, as accessed from within the app.
  * SDL provides code to add a URL-based link there, which can point to the
  * app's privacy policy.
@@ -3837,7 +3883,8 @@ extern SDL_DECLSPEC void SDLCALL SDL_ResetHints(void);
 /**
  * Get the value of a hint.
  *
- * The returned string follows the SDL_GetStringRule.
+ * This returns temporary memory which will be automatically freed later, and
+ * can be claimed with SDL_ClaimTemporaryMemory().
  *
  * \param name the hint to query.
  * \returns the string value of a hint or NULL if the hint isn't set.

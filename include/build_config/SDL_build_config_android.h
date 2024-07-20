@@ -109,6 +109,10 @@
 #define HAVE_FLOORF 1
 #define HAVE_FMOD   1
 #define HAVE_FMODF  1
+#define HAVE_ISINF  1
+#define HAVE_ISINF_FLOAT_MACRO 1
+#define HAVE_ISNAN  1
+#define HAVE_ISNAN_FLOAT_MACRO 1
 #define HAVE_LOG    1
 #define HAVE_LOGF   1
 #define HAVE_LOG10  1
@@ -189,6 +193,9 @@
 #define SDL_VIDEO_VULKAN 0
 #else
 #define SDL_VIDEO_VULKAN 1
+#ifndef SDL_VIDEO_RENDER_VULKAN
+#define SDL_VIDEO_RENDER_VULKAN    1
+#endif
 #endif
 
 /* Enable system power support */

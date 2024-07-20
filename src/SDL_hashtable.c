@@ -32,6 +32,7 @@ struct SDL_HashTable
 {
     SDL_HashItem **table;
     Uint32 table_len;
+    int hash_shift;
     SDL_bool stackable;
     void *data;
     SDL_HashTable_HashFn hash;
@@ -46,8 +47,9 @@ SDL_HashTable *SDL_CreateHashTable(void *data, const Uint32 num_buckets, const S
 {
     SDL_HashTable *table;
 
-    // num_buckets must be a power of two so we get a solid block of bits to mask hash values against.
-    if ((num_buckets == 0) || ((num_buckets & (num_buckets - 1)) != 0)) {
+    // num_buckets must be a power of two so we can derive the bucket index with just a bitshift.
+    // Need at least two buckets, otherwise hash_shift would be 32, which is UB!
+    if ((num_buckets < 2) || !SDL_HasExactlyOneBitSet32(num_buckets)) {
         SDL_SetError("num_buckets must be a power of two");
         return NULL;
     }
@@ -64,6 +66,7 @@ SDL_HashTable *SDL_CreateHashTable(void *data, const Uint32 num_buckets, const S
     }
 
     table->table_len = num_buckets;
+    table->hash_shift = 32 - SDL_MostSignificantBitIndex32(num_buckets);
     table->stackable = stackable;
     table->data = data;
     table->hash = hashfn;
@@ -74,7 +77,9 @@ SDL_HashTable *SDL_CreateHashTable(void *data, const Uint32 num_buckets, const S
 
 static SDL_INLINE Uint32 calc_hash(const SDL_HashTable *table, const void *key)
 {
-    return table->hash(key, table->data) & (table->table_len - 1);
+    // Mix the bits together, and use the highest bits as the bucket index.
+    const Uint32 BitMixer = 0x9E3779B1u;
+    return (table->hash(key, table->data) * BitMixer) >> table->hash_shift;
 }
 
 
@@ -241,7 +246,7 @@ SDL_bool SDL_HashTableEmpty(SDL_HashTable *table)
     return SDL_TRUE;
 }
 
-void SDL_DestroyHashTable(SDL_HashTable *table)
+void SDL_EmptyHashTable(SDL_HashTable *table)
 {
     if (table) {
         void *data = table->data;
@@ -257,8 +262,15 @@ void SDL_DestroyHashTable(SDL_HashTable *table)
                 SDL_free(item);
                 item = next;
             }
+            table->table[i] = NULL;
         }
+    }
+}
 
+void SDL_DestroyHashTable(SDL_HashTable *table)
+{
+    if (table) {
+        SDL_EmptyHashTable(table);
         SDL_free(table->table);
         SDL_free(table);
     }
@@ -304,4 +316,9 @@ SDL_bool SDL_KeyMatchID(const void *a, const void *b, void *unused)
         return SDL_TRUE;
     }
     return SDL_FALSE;
+}
+
+void SDL_NukeFreeValue(const void *key, const void *value, void *unused)
+{
+    SDL_free((void *)value);
 }

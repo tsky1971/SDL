@@ -4,9 +4,6 @@ if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_CURRENT_BINARY_DIR)
   message(FATAL_ERROR "Prevented in-tree build. Please create a build directory outside of the SDL source code and run \"cmake -S ${CMAKE_SOURCE_DIR} -B .\" from there")
 endif()
 
-# MSVC runtime library flags are selected by an abstraction.
-set(CMAKE_POLICY_DEFAULT_CMP0091 NEW)
-
 # See docs/release_checklist.md
 project(SDL3 LANGUAGES C VERSION "3.1.2")
 
@@ -159,20 +156,6 @@ if(WINDOWS OR MACOS OR IOS OR TVOS OR VISIONOS OR WATCHOS)
 endif()
 
 if(MSVC)
-  dep_option(SDL_STATIC_VCRT "Use /MT for static VC runtimes" ON "NOT WINDOWS_STORE" OFF)
-  if(SDL_STATIC_VCRT)
-    if(NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
-      set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-    endif()
-    foreach(flag_var
-        CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
-        CMAKE_C_FLAGS_MINSIZEREL CMAKE_C_FLAGS_RELWITHDEBINFO)
-      if(${flag_var} MATCHES "/MD")
-        string(REGEX REPLACE "/MD" "/MT" ${flag_var} "${${flag_var}}")
-      endif()
-    endforeach()
-  endif()
-
   if(NOT SDL_LIBC)
     # Make sure /RTC1 is disabled, otherwise it will use functions from the CRT
     foreach(flag_var
@@ -292,7 +275,6 @@ dep_option(SDL_MMX                 "Use MMX assembly routines" ON "SDL_ASSEMBLY;
 dep_option(SDL_ALTIVEC             "Use Altivec assembly routines" ON "SDL_ASSEMBLY;SDL_CPU_POWERPC32 OR SDL_CPU_POWERPC64" OFF)
 dep_option(SDL_ARMSIMD             "Use SIMD assembly blitters on ARM" OFF "SDL_ASSEMBLY;SDL_CPU_ARM32" OFF)
 dep_option(SDL_ARMNEON             "Use NEON assembly routines" ON "SDL_ASSEMBLY;SDL_CPU_ARM32 OR SDL_CPU_ARM64" OFF)
-dep_option(SDL_ARMNEON_BLITTERS    "Use NEON assembly blitters on ARM32" OFF "SDL_VIDEO;SDL_ASSEMBLY;SDL_ARMNEON;SDL_CPU_ARM32" OFF)
 dep_option(SDL_LSX                 "Use LSX assembly routines" ON "SDL_ASSEMBLY;SDL_CPU_LOONGARCH64" OFF)
 dep_option(SDL_LASX                "Use LASX assembly routines" ON "SDL_ASSEMBLY;SDL_CPU_LOONGARCH64" OFF)
 
@@ -306,7 +288,7 @@ dep_option(SDL_DUMMYAUDIO          "Support the dummy audio driver" ON "SDL_AUDI
 dep_option(SDL_DUMMYVIDEO          "Use dummy video driver" ON "SDL_VIDEO" OFF)
 dep_option(SDL_IBUS                "Enable IBus support" ON "${UNIX_SYS}" OFF)
 dep_option(SDL_OPENGL              "Include OpenGL support" ON "SDL_VIDEO;NOT IOS;NOT VISIONOS;NOT TVOS;NOT WATCHOS" OFF)
-dep_option(SDL_OPENGLES            "Include OpenGL ES support" ON "SDL_VIDEO;NOT IOS;NOT VISIONOS;NOT TVOS;NOT WATCHOS" OFF)
+dep_option(SDL_OPENGLES            "Include OpenGL ES support" ON "SDL_VIDEO;NOT VISIONOS;NOT TVOS;NOT WATCHOS" OFF)
 set_option(SDL_PTHREADS            "Use POSIX threads for multi-threading" ${SDL_PTHREADS_DEFAULT})
 dep_option(SDL_PTHREADS_SEM        "Use pthread semaphores" ON "SDL_PTHREADS" OFF)
 dep_option(SDL_OSS                 "Support the OSS audio API" ${SDL_OSS_DEFAULT} "UNIX_SYS OR RISCOS;SDL_AUDIO" OFF)
@@ -429,8 +411,8 @@ if (LIBC_IS_GLIBC AND CMAKE_SIZEOF_VOID_P EQUAL 4)
 endif()
 
 if(WINDOWS_STORE)
-  sdl_compile_definitions(PRIVATE "SDL_BUILDING_WINRT=1")
-  sdl_compile_options(PRIVATE "-ZW")
+  sdl_compile_definitions(PRIVATE "SDL_BUILDING_WINRT=1" "WINAPI_FAMILY=WINAPI_FAMILY_APP")
+  sdl_compile_options(PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/ZW>" "$<$<COMPILE_LANGUAGE:CXX>:-EHsc>")
 endif()
 
 check_linker_supports_version_file(HAVE_WL_VERSION_SCRIPT)
@@ -883,67 +865,6 @@ if(SDL_ASSEMBLY)
       endif()
     endif()
 
-    if(SDL_ARMSIMD)
-      cmake_push_check_state()
-      string(APPEND CMAKE_REQUIRED_FLAGS " -x assembler-with-cpp")
-      list(APPEND CMAKE_REQUIRED_LINK_OPTIONS -x none)
-      check_c_source_compiles("
-        .text
-        .arch armv6
-        .object_arch armv4
-        .arm
-        .altmacro
-        #ifndef __ARM_EABI__
-        #error EABI is required (to be sure that calling conventions are compatible)
-        #endif
-        main:
-        .global main
-        pld [r0]
-        uqadd8 r0, r0, r0
-      " ARMSIMD_FOUND)
-      cmake_pop_check_state()
-
-      if(ARMSIMD_FOUND)
-        set(HAVE_ARMSIMD TRUE)
-        set(SDL_ARM_SIMD_BLITTERS 1)
-        enable_language(ASM)
-        sdl_glob_sources("${SDL3_SOURCE_DIR}/src/video/arm/pixman-arm-simd*.S")
-        set_property(SOURCE ${ARMSIMD_SOURCES} APPEND PROPERTY COMPILE_OPTIONS -x assembler-with-cpp)
-        set(WARN_ABOUT_ARM_SIMD_ASM_MIT TRUE)
-      endif()
-    endif()
-
-    if(SDL_ARMNEON_BLITTERS)
-      cmake_push_check_state()
-      string(APPEND CMAKE_REQUIRED_FLAGS " -x assembler-with-cpp")
-      list(APPEND CMAKE_REQUIRED_LINK_OPTIONS -x none)
-      check_c_source_compiles("
-        .text
-        .fpu neon
-        .arch armv7a
-        .object_arch armv4
-        .eabi_attribute 10, 0
-        .arm
-        .altmacro
-        #ifndef __ARM_EABI__
-        #error EABI is required (to be sure that calling conventions are compatible)
-        #endif
-        main:
-        .global main
-        pld [r0]
-        vmovn.u16 d0, q0
-      " COMPILER_SUPPORTS_ARMNEON_ASSEMBLY)
-      cmake_pop_check_state()
-      if(COMPILER_SUPPORTS_ARMNEON_ASSEMBLY)
-        set(HAVE_ARMNEON_BLITTERS TRUE)
-        set(SDL_ARM_NEON_BLITTERS 1)
-        enable_language(ASM)
-        sdl_glob_sources("${SDL3_SOURCE_DIR}/src/video/arm/pixman-arm-neon*.S")
-        set_property(SOURCE ${ARMNEON_SOURCES} APPEND PROPERTY COMPILE_OPTIONS -x assembler-with-cpp)
-        set(WARN_ABOUT_ARM_NEON_ASM_MIT TRUE)
-      endif()
-    endif()
-
     if(SDL_ARMNEON)
       check_c_source_compiles("
         #include <arm_neon.h>
@@ -1097,6 +1018,43 @@ if(SDL_LIBC)
     set(LIBC_HAS_VAR "LIBC_HAS_${_UPPER}")
     check_symbol_exists("${_FN}" "${available_headers}" ${LIBC_HAS_VAR})
     set(HAVE_${_UPPER} ${${LIBC_HAS_VAR}})
+  endforeach()
+  cmake_pop_check_state()
+
+  cmake_push_check_state()
+  if(MSVC)
+    string(APPEND CMAKE_REQUIRED_FLAGS " -we4244 -WX")  # 'conversion' conversion from 'type1' to 'type2', possible loss of data
+  else()
+    string(APPEND CMAKE_REQUIRED_FLAGS " -Wfloat-conversion -Werror")
+  endif()
+  foreach(math_fn isinf isnan)
+    string(TOUPPER "${math_fn}" MATH_FN)
+    check_c_source_compiles("
+        #include <math.h>
+        int main() {
+          double d = 3.14159;
+          return ${math_fn}(d);
+        }
+      " LIBC_HAS_${MATH_FN})
+    set(HAVE_${MATH_FN} ${LIBC_HAS_${MATH_FN}})
+
+    check_c_source_compiles("
+      #include <math.h>
+      int main() {
+        float f = 3.14159f;
+        return ${math_fn}(f);
+      }
+    " LIBC_${MATH_FN}_HANDLES_FLOAT)
+    set(HAVE_${MATH_FN}_FLOAT_MACRO ${LIBC_${MATH_FN}_HANDLES_FLOAT})
+
+    check_c_source_compiles("
+      #include <math.h>
+      int main() {
+        float f = 3.14159f;
+        return ${math_fn}f(f);
+      }
+    " LIBC_HAS_${MATH_FN}F)
+    set(HAVE_${MATH_FN}F "${LIBC_HAS_${MATH_FN}}")
   endforeach()
   cmake_pop_check_state()
 
@@ -1381,6 +1339,10 @@ if(ANDROID)
       if(VULKAN_PASSED_ANDROID_CHECKS)
         set(SDL_VIDEO_VULKAN 1)
         set(HAVE_VULKAN TRUE)
+        if(SDL_RENDER_VULKAN)
+          set(SDL_VIDEO_RENDER_VULKAN 1)
+          set(HAVE_RENDER_VULKAN TRUE)
+        endif()
       endif()
     endif()
   endif()
@@ -1732,7 +1694,7 @@ elseif(UNIX AND NOT APPLE AND NOT RISCOS AND NOT HAIKU)
     if(FREEBSD OR NETBSD OR OPENBSD OR BSDI)
       CheckUSBHID()
     endif()
-    if(LINUX AND HAVE_LINUX_INPUT_H AND NOT ANDROID)
+    if((LINUX OR FREEBSD) AND HAVE_LINUX_INPUT_H AND NOT ANDROID)
       set(SDL_JOYSTICK_LINUX 1)
       sdl_glob_sources(
         "${SDL3_SOURCE_DIR}/src/joystick/linux/*.c"
@@ -1827,12 +1789,14 @@ elseif(WINDOWS)
     int main(int argc, char **argv) { return 0; }" HAVE_WIN32_CC)
 
   sdl_glob_sources("${SDL3_SOURCE_DIR}/src/core/windows/*.c")
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/main/windows/*.c")
 
   if(WINDOWS_STORE)
     enable_language(CXX)
     sdl_glob_sources(
       "${SDL3_SOURCE_DIR}/src/core/winrt/*.c"
       "${SDL3_SOURCE_DIR}/src/core/winrt/*.cpp"
+      "${SDL3_SOURCE_DIR}/src/main/winrt/*.cpp"
     )
   endif()
 
@@ -1973,16 +1937,27 @@ elseif(WINDOWS)
   set(SDL_THREAD_GENERIC_COND_SUFFIX 1)
   set(SDL_THREAD_GENERIC_RWLOCK_SUFFIX 1)
   set(SDL_THREAD_WINDOWS 1)
-  sdl_sources(
-    "${SDL3_SOURCE_DIR}/src/thread/generic/SDL_syscond.c"
-    "${SDL3_SOURCE_DIR}/src/thread/generic/SDL_sysrwlock.c"
-    "${SDL3_SOURCE_DIR}/src/thread/windows/SDL_syscond_cv.c"
-    "${SDL3_SOURCE_DIR}/src/thread/windows/SDL_sysmutex.c"
-    "${SDL3_SOURCE_DIR}/src/thread/windows/SDL_sysrwlock_srw.c"
-    "${SDL3_SOURCE_DIR}/src/thread/windows/SDL_syssem.c"
-    "${SDL3_SOURCE_DIR}/src/thread/windows/SDL_systhread.c"
-    "${SDL3_SOURCE_DIR}/src/thread/windows/SDL_systls.c"
-  )
+  if(WINDOWS_STORE)
+    sdl_sources(
+      "${SDL3_SOURCE_DIR}/src/thread/stdcpp/SDL_syscond.cpp"
+      "${SDL3_SOURCE_DIR}/src/thread/stdcpp/SDL_sysmutex.cpp"
+      "${SDL3_SOURCE_DIR}/src/thread/stdcpp/SDL_sysrwlock.cpp"
+      "${SDL3_SOURCE_DIR}/src/thread/stdcpp/SDL_systhread.cpp"
+      "${SDL3_SOURCE_DIR}/src/thread/generic/SDL_syssem.c"
+    )
+  else()
+    sdl_sources(
+      "${SDL3_SOURCE_DIR}/src/thread/generic/SDL_syscond.c"
+      "${SDL3_SOURCE_DIR}/src/thread/generic/SDL_sysrwlock.c"
+      "${SDL3_SOURCE_DIR}/src/thread/windows/SDL_syscond_cv.c"
+      "${SDL3_SOURCE_DIR}/src/thread/windows/SDL_sysmutex.c"
+      "${SDL3_SOURCE_DIR}/src/thread/windows/SDL_sysrwlock_srw.c"
+      "${SDL3_SOURCE_DIR}/src/thread/windows/SDL_syssem.c"
+      "${SDL3_SOURCE_DIR}/src/thread/windows/SDL_systhread.c"
+      "${SDL3_SOURCE_DIR}/src/thread/windows/SDL_systls.c"
+    )
+  endif()
+
   set(HAVE_SDL_THREADS TRUE)
 
   if(SDL_SENSOR AND HAVE_SENSORSAPI_H AND NOT WINDOWS_STORE)
@@ -2126,6 +2101,7 @@ elseif(WINDOWS)
     endif()
   endif()
 
+  enable_language(RC)
   sdl_glob_sources(SHARED "${SDL3_SOURCE_DIR}/src/core/windows/*.rc")
   if(MINGW OR CYGWIN)
     sdl_pc_link_options("-mwindows")
@@ -2688,7 +2664,7 @@ elseif(VITA)
   sdl_compile_definitions(PRIVATE "__VITA__")
 
 elseif(PSP)
-  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/core/psp/*.c")
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/main/psp/*.c")
 
   if(SDL_AUDIO)
     set(SDL_AUDIO_DRIVER_PSP 1)
@@ -2757,7 +2733,7 @@ elseif(PS2)
   sdl_compile_definitions(PRIVATE "PS2" "__PS2__")
   sdl_include_directories(PRIVATE SYSTEM "$ENV{PS2SDK}/ports/include" "$ENV{PS2DEV}/gsKit/include")
 
-  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/core/ps2/*.c")
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/main/ps2/*.c")
 
   if(SDL_AUDIO)
     set(SDL_AUDIO_DRIVER_PS2 1)
@@ -2814,7 +2790,7 @@ elseif(PS2)
       ps2_drivers
   )
 elseif(N3DS)
-  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/core/n3ds/*.c")
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/main/n3ds/*.c")
 
   if(SDL_AUDIO)
     set(SDL_AUDIO_DRIVER_N3DS 1)
