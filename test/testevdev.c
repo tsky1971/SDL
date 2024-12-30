@@ -21,7 +21,7 @@
 #endif
 #define SDL_DYNAMIC_API 0
 
-#ifndef NO_BUILD_CONFIG
+#ifdef HAVE_BUILD_CONFIG
 #include "../src/SDL_internal.h"
 #endif
 
@@ -2243,6 +2243,7 @@ int main(int argc, char *argv[])
 
     result = run_test() ? 0 : 1;
 
+    SDL_Quit();
     SDLTest_CommonDestroyState(state);
     return result;
 }

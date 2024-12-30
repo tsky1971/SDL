@@ -43,17 +43,17 @@ static const char *cursorNames[] = {
     "window bottom left",
     "window left"
 };
-SDL_COMPILE_TIME_ASSERT(cursorNames, SDL_arraysize(cursorNames) == SDL_NUM_SYSTEM_CURSORS);
+SDL_COMPILE_TIME_ASSERT(cursorNames, SDL_arraysize(cursorNames) == SDL_SYSTEM_CURSOR_COUNT);
 
 static int system_cursor = -1;
 static SDL_Cursor *cursor = NULL;
-static const SDL_DisplayMode *highlighted_mode = NULL;
+static SDL_DisplayMode highlighted_mode;
 
 /* Draws the modes menu, and stores the mode index under the mouse in highlighted_mode */
 static void
 draw_modes_menu(SDL_Window *window, SDL_Renderer *renderer, SDL_FRect viewport)
 {
-    const SDL_DisplayMode * const *modes;
+    SDL_DisplayMode **modes;
     char text[1024];
     const int lineHeight = 10;
     int i, j;
@@ -62,7 +62,7 @@ draw_modes_menu(SDL_Window *window, SDL_Renderer *renderer, SDL_FRect viewport)
     float x, y;
     float table_top;
     SDL_FPoint mouse_pos = { -1.0f, -1.0f };
-    const SDL_DisplayID *displays;
+    SDL_DisplayID *displays;
 
     /* Get mouse position */
     if (SDL_GetMouseFocus() == window) {
@@ -95,11 +95,10 @@ draw_modes_menu(SDL_Window *window, SDL_Renderer *renderer, SDL_FRect viewport)
 
     /* Clear the cached mode under the mouse */
     if (window == SDL_GetMouseFocus()) {
-        highlighted_mode = NULL;
+        SDL_zero(highlighted_mode);
     }
 
     displays = SDL_GetDisplays(NULL);
-
     if (displays) {
         for (i = 0; displays[i]; ++i) {
             SDL_DisplayID display = displays[i];
@@ -127,7 +126,7 @@ draw_modes_menu(SDL_Window *window, SDL_Renderer *renderer, SDL_FRect viewport)
 
                     /* Update cached mode under the mouse */
                     if (window == SDL_GetMouseFocus()) {
-                        highlighted_mode = mode;
+                        SDL_copyp(&highlighted_mode, mode);
                     }
                 } else {
                     SDL_SetRenderDrawColor(renderer, 170, 170, 170, 255);
@@ -143,7 +142,9 @@ draw_modes_menu(SDL_Window *window, SDL_Renderer *renderer, SDL_FRect viewport)
                     column_chars = 0;
                 }
             }
+            SDL_free(modes);
         }
+        SDL_free(displays);
     }
 }
 
@@ -164,9 +165,10 @@ static void loop(void)
 
     while (SDL_PollEvent(&event)) {
         SDLTest_CommonEvent(state, &event, &done);
+        SDL_ConvertEventToRenderCoordinates(SDL_GetRenderer(SDL_GetWindowFromEvent(&event)), &event);
 
         if (event.type == SDL_EVENT_WINDOW_RESIZED) {
-            SDL_Window *window = SDL_GetWindowFromID(event.window.windowID);
+            SDL_Window *window = SDL_GetWindowFromEvent(&event);
             if (window) {
                 SDL_Log("Window %" SDL_PRIu32 " resized to %" SDL_PRIs32 "x%" SDL_PRIs32 "\n",
                         event.window.windowID,
@@ -175,7 +177,7 @@ static void loop(void)
             }
         }
         if (event.type == SDL_EVENT_WINDOW_MOVED) {
-            SDL_Window *window = SDL_GetWindowFromID(event.window.windowID);
+            SDL_Window *window = SDL_GetWindowFromEvent(&event);
             if (window) {
                 SDL_Log("Window %" SDL_PRIu32 " moved to %" SDL_PRIs32 ",%" SDL_PRIs32 " (display %s)\n",
                         event.window.windowID,
@@ -185,22 +187,22 @@ static void loop(void)
             }
         }
         if (event.type == SDL_EVENT_KEY_UP) {
-            SDL_bool updateCursor = SDL_FALSE;
+            bool updateCursor = false;
 
             if (event.key.key == SDLK_A) {
                 SDL_assert(!"Keyboard generated assert");
             } else if (event.key.key == SDLK_LEFT) {
                 --system_cursor;
                 if (system_cursor < 0) {
-                    system_cursor = SDL_NUM_SYSTEM_CURSORS - 1;
+                    system_cursor = SDL_SYSTEM_CURSOR_COUNT - 1;
                 }
-                updateCursor = SDL_TRUE;
+                updateCursor = true;
             } else if (event.key.key == SDLK_RIGHT) {
                 ++system_cursor;
-                if (system_cursor >= SDL_NUM_SYSTEM_CURSORS) {
+                if (system_cursor >= SDL_SYSTEM_CURSOR_COUNT) {
                     system_cursor = 0;
                 }
-                updateCursor = SDL_TRUE;
+                updateCursor = true;
             }
             if (updateCursor) {
                 SDL_Log("Changing cursor to \"%s\"", cursorNames[system_cursor]);
@@ -211,9 +213,9 @@ static void loop(void)
         }
         if (event.type == SDL_EVENT_MOUSE_BUTTON_UP) {
             SDL_Window *window = SDL_GetMouseFocus();
-            if (highlighted_mode && window) {
-                SDL_memcpy(&state->fullscreen_mode, highlighted_mode, sizeof(state->fullscreen_mode));
-                SDL_SetWindowFullscreenMode(window, highlighted_mode);
+            if (highlighted_mode.w && window) {
+                SDL_copyp(&state->fullscreen_mode, &highlighted_mode);
+                SDL_SetWindowFullscreenMode(window, &highlighted_mode);
             }
         }
     }
@@ -226,7 +228,9 @@ static void loop(void)
             SDL_Rect viewport;
             SDL_FRect menurect;
 
-            SDL_GetRenderViewport(renderer, &viewport);
+            SDL_SetRenderViewport(renderer, NULL);
+            SDL_GetRenderSafeArea(renderer, &viewport);
+            SDL_SetRenderViewport(renderer, &viewport);
 
             SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
             SDL_RenderClear(renderer);
@@ -261,9 +265,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    /* Enable standard application logging */
-    SDL_SetLogPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
-
+    /* Parse commandline */
     if (!SDLTest_CommonDefaultArgs(state, argc, argv) || !SDLTest_CommonInit(state)) {
         SDLTest_CommonQuit(state);
         return 1;
@@ -275,6 +277,8 @@ int main(int argc, char *argv[])
         SDL_RenderClear(renderer);
     }
 
+SDL_StopTextInput(state->windows[0]);
+SDL_StopTextInput(state->windows[0]);
     /* Main render loop */
     done = 0;
 #ifdef SDL_PLATFORM_EMSCRIPTEN

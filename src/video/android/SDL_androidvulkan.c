@@ -36,27 +36,27 @@
 #include "SDL_androidvulkan.h"
 
 
-int Android_Vulkan_LoadLibrary(SDL_VideoDevice *_this, const char *path)
+bool Android_Vulkan_LoadLibrary(SDL_VideoDevice *_this, const char *path)
 {
     VkExtensionProperties *extensions = NULL;
     Uint32 i, extensionCount = 0;
-    SDL_bool hasSurfaceExtension = SDL_FALSE;
-    SDL_bool hasAndroidSurfaceExtension = SDL_FALSE;
+    bool hasSurfaceExtension = false;
+    bool hasAndroidSurfaceExtension = false;
     PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = NULL;
     if (_this->vulkan_config.loader_handle) {
         return SDL_SetError("Vulkan already loaded");
     }
 
-    /* Load the Vulkan loader library */
+    // Load the Vulkan loader library
     if (!path) {
-        path = SDL_getenv("SDL_VULKAN_LIBRARY");
+        path = SDL_GetHint(SDL_HINT_VULKAN_LIBRARY);
     }
     if (!path) {
         path = "libvulkan.so";
     }
     _this->vulkan_config.loader_handle = SDL_LoadObject(path);
     if (!_this->vulkan_config.loader_handle) {
-        return -1;
+        return false;
     }
     SDL_strlcpy(_this->vulkan_config.loader_path, path,
                 SDL_arraysize(_this->vulkan_config.loader_path));
@@ -81,9 +81,9 @@ int Android_Vulkan_LoadLibrary(SDL_VideoDevice *_this, const char *path)
     }
     for (i = 0; i < extensionCount; i++) {
         if (SDL_strcmp(VK_KHR_SURFACE_EXTENSION_NAME, extensions[i].extensionName) == 0) {
-            hasSurfaceExtension = SDL_TRUE;
+            hasSurfaceExtension = true;
         } else if (SDL_strcmp(VK_KHR_ANDROID_SURFACE_EXTENSION_NAME, extensions[i].extensionName) == 0) {
-            hasAndroidSurfaceExtension = SDL_TRUE;
+            hasAndroidSurfaceExtension = true;
         }
     }
     SDL_free(extensions);
@@ -94,12 +94,12 @@ int Android_Vulkan_LoadLibrary(SDL_VideoDevice *_this, const char *path)
         SDL_SetError("Installed Vulkan doesn't implement the " VK_KHR_ANDROID_SURFACE_EXTENSION_NAME "extension");
         goto fail;
     }
-    return 0;
+    return true;
 
 fail:
     SDL_UnloadObject(_this->vulkan_config.loader_handle);
     _this->vulkan_config.loader_handle = NULL;
-    return -1;
+    return false;
 }
 
 void Android_Vulkan_UnloadLibrary(SDL_VideoDevice *_this)
@@ -116,13 +116,13 @@ char const* const* Android_Vulkan_GetInstanceExtensions(SDL_VideoDevice *_this,
     static const char *const extensionsForAndroid[] = {
         VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_ANDROID_SURFACE_EXTENSION_NAME
     };
-    if(count) {
+    if (count) {
         *count = SDL_arraysize(extensionsForAndroid);
     }
     return extensionsForAndroid;
 }
 
-int Android_Vulkan_CreateSurface(SDL_VideoDevice *_this,
+bool Android_Vulkan_CreateSurface(SDL_VideoDevice *_this,
                                  SDL_Window *window,
                                  VkInstance instance,
                                  const struct VkAllocationCallbacks *allocator,
@@ -155,7 +155,7 @@ int Android_Vulkan_CreateSurface(SDL_VideoDevice *_this,
     if (result != VK_SUCCESS) {
         return SDL_SetError("vkCreateAndroidSurfaceKHR failed: %s", SDL_Vulkan_GetResultString(result));
     }
-    return 0;
+    return true;
 }
 
 void Android_Vulkan_DestroySurface(SDL_VideoDevice *_this,

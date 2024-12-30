@@ -70,7 +70,7 @@ static void iteration(void)
             }
         } else if (e.type == SDL_EVENT_AUDIO_DEVICE_ADDED) {
             const SDL_AudioDeviceID which = (SDL_AudioDeviceID) e.adevice.which;
-            const SDL_bool recording = e.adevice.recording ? SDL_TRUE : SDL_FALSE;
+            const bool recording = e.adevice.recording ? true : false;
             const char *name = SDL_GetAudioDeviceName(which);
             if (name) {
                 SDL_Log("New %s audio device at id %u: %s", devtypestr(recording), (unsigned int)which, name);
@@ -88,7 +88,7 @@ static void iteration(void)
                     /* !!! FIXME: laziness, this used to loop the audio, but we'll just play it once for now on each connect. */
                     SDL_PutAudioStreamData(stream, sound, soundlen);
                     SDL_FlushAudioStream(stream);
-                    SDL_ResumeAudioDevice(SDL_GetAudioStreamDevice(stream));
+                    SDL_ResumeAudioStreamDevice(stream);
                     /* !!! FIXME: this is leaking the stream for now. We'll wire it up to a dictionary or whatever later. */
                 }
             }
@@ -122,9 +122,6 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    /* Enable standard application logging */
-    SDL_SetLogPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
-
     /* Parse commandline */
     for (i = 1; i < argc;) {
         int consumed;
@@ -146,7 +143,7 @@ int main(int argc, char *argv[])
     }
 
     /* Load the SDL library */
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't initialize SDL: %s\n", SDL_GetError());
         return 1;
     }
@@ -167,7 +164,7 @@ int main(int argc, char *argv[])
     }
 
     /* Load the wave file into memory */
-    if (SDL_LoadWAV(filename, &spec, &sound, &soundlen) == -1) {
+    if (!SDL_LoadWAV(filename, &spec, &sound, &soundlen)) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't load %s: %s\n", filename, SDL_GetError());
         quit(1);
     }

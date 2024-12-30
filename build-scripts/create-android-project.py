@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 import os
 from argparse import ArgumentParser
 from pathlib import Path
@@ -10,7 +10,7 @@ import textwrap
 
 SDL_ROOT = Path(__file__).resolve().parents[1]
 
-def extract_sdl_version():
+def extract_sdl_version() -> str:
     """
     Extract SDL version from SDL3/SDL_version.h
     """
@@ -23,8 +23,8 @@ def extract_sdl_version():
     micro = int(next(re.finditer(r"#define\s+SDL_MICRO_VERSION\s+([0-9]+)", data)).group(1))
     return f"{major}.{minor}.{micro}"
 
-def replace_in_file(path, regex_what, replace_with):
-    with open(path, "r") as f:
+def replace_in_file(path: Path, regex_what: str, replace_with: str) -> None:
+    with path.open("r") as f:
         data = f.read()
 
     new_data, count = re.subn(regex_what, replace_with, data)
@@ -35,15 +35,18 @@ def replace_in_file(path, regex_what, replace_with):
         f.write(new_data)
 
 
-def android_mk_use_prefab(path):
+def android_mk_use_prefab(path: Path) -> None:
     """
     Replace relative SDL inclusion with dependency on prefab package
     """
 
-    with open(path) as f:
+    with path.open() as f:
         data = "".join(line for line in f.readlines() if "# SDL" not in line)
 
     data, _ = re.subn("[\n]{3,}", "\n\n", data)
+
+    data, count = re.subn(r"(LOCAL_SHARED_LIBRARIES\s*:=\s*SDL3)", "LOCAL_SHARED_LIBRARIES := SDL3 SDL3-Headers", data)
+    assert count == 1, f"Must have injected SDL3-Headers in {path} exactly once"
 
     newdata = data + textwrap.dedent("""
         # https://google.github.io/prefab/build-systems.html
@@ -55,18 +58,19 @@ def android_mk_use_prefab(path):
         $(call import-module,prefab/SDL3)
     """)
 
-    with open(path, "w") as f:
+    with path.open("w") as f:
         f.write(newdata)
 
-def cmake_mk_no_sdl(path):
+
+def cmake_mk_no_sdl(path: Path) -> None:
     """
     Don't add the source directories of SDL/SDL_image/SDL_mixer/...
     """
 
-    with open(path) as f:
+    with path.open() as f:
         lines = f.readlines()
 
-    newlines = []
+    newlines: list[str] = []
     for line in lines:
         if "add_subdirectory(SDL" in line:
             while newlines[-1].startswith("#"):
@@ -76,11 +80,12 @@ def cmake_mk_no_sdl(path):
 
     newdata, _ = re.subn("[\n]{3,}", "\n\n", "".join(newlines))
 
-    with open(path, "w") as f:
+    with path.open("w") as f:
         f.write(newdata)
 
-def gradle_add_prefab_and_aar(path, aar):
-    with open(path) as f:
+
+def gradle_add_prefab_and_aar(path: Path, aar: str) -> None:
+    with path.open() as f:
         data = f.read()
 
     data, count = re.subn("android {", textwrap.dedent("""
@@ -95,15 +100,30 @@ def gradle_add_prefab_and_aar(path, aar):
             implementation files('libs/{aar}')"""), data)
     assert count == 1
 
-    with open(path, "w") as f:
+    with path.open("w") as f:
         f.write(data)
 
 
-def main():
+def gradle_add_package_name(path: Path, package_name: str) -> None:
+    with path.open() as f:
+        data = f.read()
+
+    data, count = re.subn("org.libsdl.app", package_name, data)
+    assert count >= 1
+
+    with path.open("w") as f:
+        f.write(data)
+
+
+def main() -> int:
     description = "Create a simple Android gradle project from input sources."
-    epilog = "You need to manually copy a prebuilt SDL3 Android archive into the project tree when using the aar variant."
-    parser = ArgumentParser(description=description, allow_abbrev=False)
-    parser.add_argument("package_name", metavar="PACKAGENAME", help="Android package name e.g. com.yourcompany.yourapp")
+    epilog = textwrap.dedent("""\
+        You need to manually copy a prebuilt SDL3 Android archive into the project tree when using the aar variant.
+
+        Any changes you have done to the sources in the Android project will be lost
+    """)
+    parser = ArgumentParser(description=description, epilog=epilog, allow_abbrev=False)
+    parser.add_argument("package_name", metavar="PACKAGENAME", help="Android package name (e.g. com.yourcompany.yourapp)")
     parser.add_argument("sources", metavar="SOURCE", nargs="*", help="Source code of your application. The files are copied to the output directory.")
     parser.add_argument("--variant", choices=["copy", "symlink", "aar"], default="copy", help="Choose variant of SDL project (copy: copy SDL sources, symlink: symlink SDL sources, aar: use Android aar archive)")
     parser.add_argument("--output", "-o", default=SDL_ROOT / "build", type=Path, help="Location where to store the Android project")
@@ -190,6 +210,9 @@ def main():
 
         print(f"WARNING: copy { aar } to { aar_libs_folder }", file=sys.stderr)
 
+    # Add the package name to build.gradle
+    gradle_add_package_name(build_path / "app/build.gradle", args.package_name)
+
     # Create entry activity, subclassing SDLActivity
     activity = args.package_name[args.package_name.rfind(".") + 1:].capitalize() + "Activity"
     activity_path = build_path / "app/src/main/java" / args.package_name.replace(".", "/") / f"{activity}.java"
@@ -206,12 +229,13 @@ def main():
         """))
 
     # Add the just-generated activity to the Android manifest
-    replace_in_file(build_path / "app/src/main/AndroidManifest.xml", "SDLActivity", activity)
+    replace_in_file(build_path / "app/src/main/AndroidManifest.xml", 'name="SDLActivity"', f'name="{activity}"')
 
     # Update project and build
     print("To build and install to a device for testing, run the following:")
     print(f"cd {build_path}")
     print("./gradlew installDebug")
+    return 0
 
 if __name__ == "__main__":
     raise SystemExit(main())

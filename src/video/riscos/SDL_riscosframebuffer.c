@@ -30,7 +30,7 @@
 #include <kernel.h>
 #include <swis.h>
 
-int RISCOS_CreateWindowFramebuffer(SDL_VideoDevice *_this, SDL_Window *window, SDL_PixelFormat *format, void **pixels, int *pitch)
+bool RISCOS_CreateWindowFramebuffer(SDL_VideoDevice *_this, SDL_Window *window, SDL_PixelFormat *format, void **pixels, int *pitch)
 {
     SDL_WindowData *internal = window->internal;
     const char *sprite_name = "display";
@@ -43,10 +43,10 @@ int RISCOS_CreateWindowFramebuffer(SDL_VideoDevice *_this, SDL_Window *window, S
 
     SDL_GetWindowSizeInPixels(window, &w, &h);
 
-    /* Free the old framebuffer surface */
+    // Free the old framebuffer surface
     RISCOS_DestroyWindowFramebuffer(_this, window);
 
-    /* Create a new one */
+    // Create a new one
     mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window));
     if ((SDL_ISPIXELFORMAT_PACKED(mode->format) || SDL_ISPIXELFORMAT_ARRAY(mode->format))) {
         *format = mode->format;
@@ -56,14 +56,14 @@ int RISCOS_CreateWindowFramebuffer(SDL_VideoDevice *_this, SDL_Window *window, S
         sprite_mode = (1 | (90 << 1) | (90 << 14) | (6 << 27));
     }
 
-    /* Calculate pitch */
+    // Calculate pitch
     *pitch = (((w * SDL_BYTESPERPIXEL(*format)) + 3) & ~3);
 
-    /* Allocate the sprite area */
+    // Allocate the sprite area
     size = sizeof(sprite_area) + sizeof(sprite_header) + ((*pitch) * h);
     internal->fb_area = SDL_malloc(size);
     if (!internal->fb_area) {
-        return -1;
+        return false;
     }
 
     internal->fb_area->size = size;
@@ -71,7 +71,7 @@ int RISCOS_CreateWindowFramebuffer(SDL_VideoDevice *_this, SDL_Window *window, S
     internal->fb_area->start = 16;
     internal->fb_area->end = 16;
 
-    /* Create the actual image */
+    // Create the actual image
     regs.r[0] = 256 + 15;
     regs.r[1] = (int)internal->fb_area;
     regs.r[2] = (int)sprite_name;
@@ -88,10 +88,10 @@ int RISCOS_CreateWindowFramebuffer(SDL_VideoDevice *_this, SDL_Window *window, S
     internal->fb_sprite = (sprite_header *)(((Uint8 *)internal->fb_area) + internal->fb_area->start);
     *pixels = ((Uint8 *)internal->fb_sprite) + internal->fb_sprite->image_offset;
 
-    return 0;
+    return true;
 }
 
-int RISCOS_UpdateWindowFramebuffer(SDL_VideoDevice *_this, SDL_Window *window, const SDL_Rect *rects, int numrects)
+bool RISCOS_UpdateWindowFramebuffer(SDL_VideoDevice *_this, SDL_Window *window, const SDL_Rect *rects, int numrects)
 {
     SDL_WindowData *internal = window->internal;
     _kernel_swi_regs regs;
@@ -100,8 +100,8 @@ int RISCOS_UpdateWindowFramebuffer(SDL_VideoDevice *_this, SDL_Window *window, c
     regs.r[0] = 512 + 52;
     regs.r[1] = (int)internal->fb_area;
     regs.r[2] = (int)internal->fb_sprite;
-    regs.r[3] = 0; /* window->x << 1; */
-    regs.r[4] = 0; /* window->y << 1; */
+    regs.r[3] = 0; // window->x << 1;
+    regs.r[4] = 0; // window->y << 1;
     regs.r[5] = 0x50;
     regs.r[6] = 0;
     regs.r[7] = 0;
@@ -110,7 +110,7 @@ int RISCOS_UpdateWindowFramebuffer(SDL_VideoDevice *_this, SDL_Window *window, c
         return SDL_SetError("OS_SpriteOp 52 failed: %s (%i)", error->errmess, error->errnum);
     }
 
-    return 0;
+    return true;
 }
 
 void RISCOS_DestroyWindowFramebuffer(SDL_VideoDevice *_this, SDL_Window *window)
@@ -124,4 +124,4 @@ void RISCOS_DestroyWindowFramebuffer(SDL_VideoDevice *_this, SDL_Window *window)
     internal->fb_sprite = NULL;
 }
 
-#endif /* SDL_VIDEO_DRIVER_RISCOS */
+#endif // SDL_VIDEO_DRIVER_RISCOS

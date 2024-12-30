@@ -29,17 +29,24 @@
 
 // just turn off clang-format for this whole file, this INDENT_OFF stuff on
 //  each EM_ASM section is ugly.
-/* *INDENT-OFF* */ /* clang-format off */
+/* *INDENT-OFF* */ // clang-format off
 
 static Uint8 *EMSCRIPTENAUDIO_GetDeviceBuf(SDL_AudioDevice *device, int *buffer_size)
 {
     return device->hidden->mixbuf;
 }
 
-static int EMSCRIPTENAUDIO_PlayDevice(SDL_AudioDevice *device, const Uint8 *buffer, int buffer_size)
+static bool EMSCRIPTENAUDIO_PlayDevice(SDL_AudioDevice *device, const Uint8 *buffer, int buffer_size)
 {
     const int framelen = SDL_AUDIO_FRAMESIZE(device->spec);
     MAIN_THREAD_EM_ASM({
+        /* Convert incoming buf pointer to a HEAPF32 offset. */
+        #ifdef __wasm64__
+        var buf = $0 / 4;
+        #else
+        var buf = $0 >>> 2;
+        #endif
+
         var SDL3 = Module['SDL3'];
         var numChannels = SDL3.audio_playback.currentPlaybackBuffer['numberOfChannels'];
         for (var c = 0; c < numChannels; ++c) {
@@ -49,11 +56,11 @@ static int EMSCRIPTENAUDIO_PlayDevice(SDL_AudioDevice *device, const Uint8 *buff
             }
 
             for (var j = 0; j < $1; ++j) {
-                channelData[j] = HEAPF32[$0 + ((j*numChannels + c) << 2) >> 2];  // !!! FIXME: why are these shifts here?
+                channelData[j] = HEAPF32[buf + (j*numChannels + c)];
             }
         }
     }, buffer, buffer_size / framelen);
-    return 0;
+    return true;
 }
 
 
@@ -138,12 +145,12 @@ static void EMSCRIPTENAUDIO_CloseDevice(SDL_AudioDevice *device)
 
 EM_JS_DEPS(sdlaudio, "$autoResumeAudioContext,$dynCall");
 
-static int EMSCRIPTENAUDIO_OpenDevice(SDL_AudioDevice *device)
+static bool EMSCRIPTENAUDIO_OpenDevice(SDL_AudioDevice *device)
 {
     // based on parts of library_sdl.js
 
     // create context
-    const int result = MAIN_THREAD_EM_ASM_INT({
+    const bool result = MAIN_THREAD_EM_ASM_INT({
         if (typeof(Module['SDL3']) === 'undefined') {
             Module['SDL3'] = {};
         }
@@ -161,15 +168,15 @@ static int EMSCRIPTENAUDIO_OpenDevice(SDL_AudioDevice *device)
                 SDL3.audioContext = new webkitAudioContext();
             }
             if (SDL3.audioContext) {
-                if ((typeof navigator.userActivation) === 'undefined') {  // Firefox doesn't have this (as of August 2023), use autoResumeAudioContext instead.
+                if ((typeof navigator.userActivation) === 'undefined') {
                     autoResumeAudioContext(SDL3.audioContext);
                 }
             }
         }
-        return SDL3.audioContext === undefined ? -1 : 0;
+        return (SDL3.audioContext !== undefined);
     }, device->recording);
 
-    if (result < 0) {
+    if (!result) {
         return SDL_SetError("Web Audio API is not available!");
     }
 
@@ -178,18 +185,19 @@ static int EMSCRIPTENAUDIO_OpenDevice(SDL_AudioDevice *device)
     // Initialize all variables that we clean on shutdown
     device->hidden = (struct SDL_PrivateAudioData *)SDL_calloc(1, sizeof(*device->hidden));
     if (!device->hidden) {
-        return -1;
+        return false;
     }
 
     // limit to native freq
     device->spec.freq = EM_ASM_INT({ return Module['SDL3'].audioContext.sampleRate; });
+    device->sample_frames = SDL_GetDefaultSampleFramesFromFreq(device->spec.freq);
 
     SDL_UpdatedAudioDeviceFormat(device);
 
     if (!device->recording) {
         device->hidden->mixbuf = (Uint8 *)SDL_malloc(device->buffer_size);
         if (!device->hidden->mixbuf) {
-            return -1;
+            return false;
         }
         SDL_memset(device->hidden->mixbuf, device->silence_value, device->buffer_size);
     }
@@ -226,7 +234,7 @@ static int EMSCRIPTENAUDIO_OpenDevice(SDL_AudioDevice *device)
                     if ((SDL3 === undefined) || (SDL3.audio_recording === undefined)) { return; }
                     audioProcessingEvent.outputBuffer.getChannelData(0).fill(0.0);
                     SDL3.audio_recording.currentRecordingBuffer = audioProcessingEvent.inputBuffer;
-                    dynCall('vi', $2, [$3]);
+                    dynCall('ii', $2, [$3]);
                 };
                 SDL3.audio_recording.mediaStreamNode.connect(SDL3.audio_recording.scriptProcessorNode);
                 SDL3.audio_recording.scriptProcessorNode.connect(SDL3.audioContext.destination);
@@ -242,7 +250,7 @@ static int EMSCRIPTENAUDIO_OpenDevice(SDL_AudioDevice *device)
             SDL3.audio_recording.silenceBuffer.getChannelData(0).fill(0.0);
             var silence_callback = function() {
                 SDL3.audio_recording.currentRecordingBuffer = SDL3.audio_recording.silenceBuffer;
-                dynCall('vi', $2, [$3]);
+                dynCall('ii', $2, [$3]);
             };
 
             SDL3.audio_recording.silenceTimer = setInterval(silence_callback, ($1 / SDL3.audioContext.sampleRate) * 1000);
@@ -267,7 +275,7 @@ static int EMSCRIPTENAUDIO_OpenDevice(SDL_AudioDevice *device)
                     SDL3.audio_playback.silenceBuffer = undefined;
                 }
                 SDL3.audio_playback.currentPlaybackBuffer = e['outputBuffer'];
-                dynCall('vi', $2, [$3]);
+                dynCall('ii', $2, [$3]);
             };
 
             SDL3.audio_playback.scriptProcessorNode['connect'](SDL3.audioContext['destination']);
@@ -276,7 +284,7 @@ static int EMSCRIPTENAUDIO_OpenDevice(SDL_AudioDevice *device)
                 SDL3.audio_playback.silenceBuffer = SDL3.audioContext.createBuffer($0, $1, SDL3.audioContext.sampleRate);
                 SDL3.audio_playback.silenceBuffer.getChannelData(0).fill(0.0);
                 var silence_callback = function() {
-                    if ((typeof navigator.userActivation) !== 'undefined') {  // Almost everything modern except Firefox (as of August 2023)
+                    if ((typeof navigator.userActivation) !== 'undefined') {
                         if (navigator.userActivation.hasBeenActive) {
                             SDL3.audioContext.resume();
                         }
@@ -285,7 +293,7 @@ static int EMSCRIPTENAUDIO_OpenDevice(SDL_AudioDevice *device)
                     // the buffer that gets filled here just gets ignored, so the app can make progress
                     //  and/or avoid flooding audio queues until we can actually play audio.
                     SDL3.audio_playback.currentPlaybackBuffer = SDL3.audio_playback.silenceBuffer;
-                    dynCall('vi', $2, [$3]);
+                    dynCall('ii', $2, [$3]);
                     SDL3.audio_playback.currentPlaybackBuffer = undefined;
                 };
 
@@ -294,12 +302,12 @@ static int EMSCRIPTENAUDIO_OpenDevice(SDL_AudioDevice *device)
         }, device->spec.channels, device->sample_frames, SDL_PlaybackAudioThreadIterate, device);
     }
 
-    return 0;
+    return true;
 }
 
-static SDL_bool EMSCRIPTENAUDIO_Init(SDL_AudioDriverImpl *impl)
+static bool EMSCRIPTENAUDIO_Init(SDL_AudioDriverImpl *impl)
 {
-    SDL_bool available, recording_available;
+    bool available, recording_available;
 
     impl->OpenDevice = EMSCRIPTENAUDIO_OpenDevice;
     impl->CloseDevice = EMSCRIPTENAUDIO_CloseDevice;
@@ -308,10 +316,10 @@ static SDL_bool EMSCRIPTENAUDIO_Init(SDL_AudioDriverImpl *impl)
     impl->FlushRecording = EMSCRIPTENAUDIO_FlushRecording;
     impl->RecordDevice = EMSCRIPTENAUDIO_RecordDevice;
 
-    impl->OnlyHasDefaultPlaybackDevice = SDL_TRUE;
+    impl->OnlyHasDefaultPlaybackDevice = true;
 
     // technically, this is just runs in idle time in the main thread, but it's close enough to a "thread" for our purposes.
-    impl->ProvidesOwnCallbackThread = SDL_TRUE;
+    impl->ProvidesOwnCallbackThread = true;
 
     // check availability
     available = MAIN_THREAD_EM_ASM_INT({
@@ -343,9 +351,9 @@ static SDL_bool EMSCRIPTENAUDIO_Init(SDL_AudioDriverImpl *impl)
 }
 
 AudioBootStrap EMSCRIPTENAUDIO_bootstrap = {
-    "emscripten", "SDL emscripten audio driver", EMSCRIPTENAUDIO_Init, SDL_FALSE
+    "emscripten", "SDL emscripten audio driver", EMSCRIPTENAUDIO_Init, false
 };
 
-/* *INDENT-ON* */ /* clang-format on */
+/* *INDENT-ON* */ // clang-format on
 
 #endif // SDL_AUDIO_DRIVER_EMSCRIPTEN

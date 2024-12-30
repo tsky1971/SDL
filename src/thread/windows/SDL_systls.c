@@ -27,20 +27,8 @@
 
 #include "../SDL_thread_c.h"
 
-#if WINAPI_FAMILY_WINRT
-#include <fibersapi.h>
-
-#ifndef TLS_OUT_OF_INDEXES
-#define TLS_OUT_OF_INDEXES FLS_OUT_OF_INDEXES
-#endif
-
-#define TlsAlloc()  FlsAlloc(NULL)
-#define TlsSetValue FlsSetValue
-#define TlsGetValue FlsGetValue
-#endif
-
 static DWORD thread_local_storage = TLS_OUT_OF_INDEXES;
-static SDL_bool generic_local_storage = SDL_FALSE;
+static bool generic_local_storage = false;
 
 void SDL_SYS_InitTLSData(void)
 {
@@ -48,7 +36,7 @@ void SDL_SYS_InitTLSData(void)
         thread_local_storage = TlsAlloc();
         if (thread_local_storage == TLS_OUT_OF_INDEXES) {
             SDL_Generic_InitTLSData();
-            generic_local_storage = SDL_TRUE;
+            generic_local_storage = true;
         }
     }
 }
@@ -65,7 +53,7 @@ SDL_TLSData *SDL_SYS_GetTLSData(void)
     return NULL;
 }
 
-int SDL_SYS_SetTLSData(SDL_TLSData *data)
+bool SDL_SYS_SetTLSData(SDL_TLSData *data)
 {
     if (generic_local_storage) {
         return SDL_Generic_SetTLSData(data);
@@ -74,14 +62,14 @@ int SDL_SYS_SetTLSData(SDL_TLSData *data)
     if (!TlsSetValue(thread_local_storage, data)) {
         return WIN_SetError("TlsSetValue()");
     }
-    return 0;
+    return true;
 }
 
 void SDL_SYS_QuitTLSData(void)
 {
     if (generic_local_storage) {
         SDL_Generic_QuitTLSData();
-        generic_local_storage = SDL_FALSE;
+        generic_local_storage = false;
     } else {
         if (thread_local_storage != TLS_OUT_OF_INDEXES) {
             TlsFree(thread_local_storage);
@@ -90,4 +78,4 @@ void SDL_SYS_QuitTLSData(void)
     }
 }
 
-#endif /* SDL_THREAD_WINDOWS */
+#endif // SDL_THREAD_WINDOWS

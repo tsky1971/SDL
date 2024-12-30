@@ -20,23 +20,34 @@
 */
 #include "SDL_internal.h"
 
-/* Simple error handling in SDL */
+// Simple error handling in SDL
 
 #include "SDL_error_c.h"
 
-int SDL_SetError(SDL_PRINTF_FORMAT_STRING const char *fmt, ...)
+bool SDL_SetError(SDL_PRINTF_FORMAT_STRING const char *fmt, ...)
 {
-    /* Ignore call if invalid format pointer was passed */
+    va_list ap;
+    bool result;
+
+    va_start(ap, fmt);
+    result = SDL_SetErrorV(fmt, ap);
+    va_end(ap);
+    return result;
+}
+
+bool SDL_SetErrorV(SDL_PRINTF_FORMAT_STRING const char *fmt, va_list ap)
+{
+    // Ignore call if invalid format pointer was passed
     if (fmt) {
-        va_list ap;
         int result;
-        SDL_error *error = SDL_GetErrBuf(SDL_TRUE);
+        SDL_error *error = SDL_GetErrBuf(true);
+        va_list ap2;
 
         error->error = SDL_ErrorCodeGeneric;
 
-        va_start(ap, fmt);
-        result = SDL_vsnprintf(error->str, error->len, fmt, ap);
-        va_end(ap);
+        va_copy(ap2, ap);
+        result = SDL_vsnprintf(error->str, error->len, fmt, ap2);
+        va_end(ap2);
 
         if (result >= 0 && (size_t)result >= error->len && error->realloc_func) {
             size_t len = (size_t)result + 1;
@@ -44,24 +55,24 @@ int SDL_SetError(SDL_PRINTF_FORMAT_STRING const char *fmt, ...)
             if (str) {
                 error->str = str;
                 error->len = len;
-                va_start(ap, fmt);
-                (void)SDL_vsnprintf(error->str, error->len, fmt, ap);
-                va_end(ap);
+                va_copy(ap2, ap);
+                (void)SDL_vsnprintf(error->str, error->len, fmt, ap2);
+                va_end(ap2);
             }
         }
 
         if (SDL_GetLogPriority(SDL_LOG_CATEGORY_ERROR) <= SDL_LOG_PRIORITY_DEBUG) {
-            /* If we are in debug mode, print out the error message */
+            // If we are in debug mode, print out the error message
             SDL_LogDebug(SDL_LOG_CATEGORY_ERROR, "%s", error->str);
         }
     }
 
-    return -1;
+    return false;
 }
 
 const char *SDL_GetError(void)
 {
-    const SDL_error *error = SDL_GetErrBuf(SDL_FALSE);
+    const SDL_error *error = SDL_GetErrBuf(false);
 
     if (!error) {
         return "";
@@ -77,23 +88,23 @@ const char *SDL_GetError(void)
     }
 }
 
-int SDL_ClearError(void)
+bool SDL_ClearError(void)
 {
-    SDL_error *error = SDL_GetErrBuf(SDL_FALSE);
+    SDL_error *error = SDL_GetErrBuf(false);
 
     if (error) {
         error->error = SDL_ErrorCodeNone;
     }
-    return 0;
+    return true;
 }
 
-int SDL_OutOfMemory(void)
+bool SDL_OutOfMemory(void)
 {
-    SDL_error *error = SDL_GetErrBuf(SDL_TRUE);
+    SDL_error *error = SDL_GetErrBuf(true);
 
     if (error) {
         error->error = SDL_ErrorCodeOutOfMemory;
     }
-    return -1;
+    return false;
 }
 

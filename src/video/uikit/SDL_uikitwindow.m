@@ -64,7 +64,7 @@
 - (void)layoutSubviews
 {
 #ifndef SDL_PLATFORM_VISIONOS
-    /* Workaround to fix window orientation issues in iOS 8. */
+    // Workaround to fix window orientation issues in iOS 8.
     /* As of July 1 2019, I haven't been able to reproduce any orientation
      * issues with this disabled on iOS 12. The issue this is meant to fix might
      * only happen on iOS 8, or it might have been fixed another way with other
@@ -79,7 +79,7 @@
 
 @end
 
-static int SetupWindowData(SDL_VideoDevice *_this, SDL_Window *window, UIWindow *uiwindow, SDL_bool created)
+static bool SetupWindowData(SDL_VideoDevice *_this, SDL_Window *window, UIWindow *uiwindow, bool created)
 {
     SDL_VideoDisplay *display = SDL_GetVideoDisplayForWindow(window);
     SDL_UIKitDisplayData *displaydata = (__bridge SDL_UIKitDisplayData *)display->internal;
@@ -105,9 +105,9 @@ static int SetupWindowData(SDL_VideoDevice *_this, SDL_Window *window, UIWindow 
 
 #ifndef SDL_PLATFORM_VISIONOS
     if (displaydata.uiscreen != [UIScreen mainScreen]) {
-        window->flags &= ~SDL_WINDOW_RESIZABLE;   /* window is NEVER resizable */
-        window->flags &= ~SDL_WINDOW_INPUT_FOCUS; /* never has input focus */
-        window->flags |= SDL_WINDOW_BORDERLESS;   /* never has a status bar. */
+        window->flags &= ~SDL_WINDOW_RESIZABLE;   // window is NEVER resizable
+        window->flags &= ~SDL_WINDOW_INPUT_FOCUS; // never has input focus
+        window->flags |= SDL_WINDOW_BORDERLESS;   // never has a status bar.
     }
 #endif
 
@@ -117,16 +117,16 @@ static int SetupWindowData(SDL_VideoDevice *_this, SDL_Window *window, UIWindow 
         BOOL supportsLandscape = (orients & UIInterfaceOrientationMaskLandscape) != 0;
         BOOL supportsPortrait = (orients & (UIInterfaceOrientationMaskPortrait | UIInterfaceOrientationMaskPortraitUpsideDown)) != 0;
 
-        /* Make sure the width/height are oriented correctly */
+        // Make sure the width/height are oriented correctly
         if ((width > height && !supportsLandscape) || (height > width && !supportsPortrait)) {
             int temp = width;
             width = height;
             height = temp;
         }
     }
-#endif /* !SDL_PLATFORM_TVOS */
+#endif // !SDL_PLATFORM_TVOS
 
-#if 0 /* Don't set the x/y position, it's already placed on a display */
+#if 0 // Don't set the x/y position, it's already placed on a display
     window->x = 0;
     window->y = 0;
 #endif
@@ -149,17 +149,17 @@ static int SetupWindowData(SDL_VideoDevice *_this, SDL_Window *window, UIWindow 
     SDL_SetPointerProperty(props, SDL_PROP_WINDOW_UIKIT_WINDOW_POINTER, (__bridge void *)data.uiwindow);
     SDL_SetNumberProperty(props, SDL_PROP_WINDOW_UIKIT_METAL_VIEW_TAG_NUMBER, SDL_METALVIEW_TAG);
 
-    return 0;
+    return true;
 }
 
-int UIKit_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_PropertiesID create_props)
+bool UIKit_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_PropertiesID create_props)
 {
     @autoreleasepool {
         SDL_VideoDisplay *display = SDL_GetVideoDisplayForWindow(window);
         SDL_UIKitDisplayData *data = (__bridge SDL_UIKitDisplayData *)display->internal;
         SDL_Window *other;
 
-        /* We currently only handle a single window per display on iOS */
+        // We currently only handle a single window per display on iOS
         for (other = _this->windows; other; other = other->next) {
             if (other != window && SDL_GetVideoDisplayForWindow(other) == display) {
                 return SDL_SetError("Only one window allowed per display.");
@@ -172,20 +172,19 @@ int UIKit_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_Propertie
 #if !defined(SDL_PLATFORM_TVOS) && !defined(SDL_PLATFORM_VISIONOS)
         const CGSize origsize = data.uiscreen.currentMode.size;
         if ((origsize.width == 0.0f) && (origsize.height == 0.0f)) {
-            const SDL_DisplayMode *bestmode;
-            SDL_bool include_high_density_modes = SDL_FALSE;
+            SDL_DisplayMode bestmode;
+            bool include_high_density_modes = false;
             if (window->flags & SDL_WINDOW_HIGH_PIXEL_DENSITY) {
-                include_high_density_modes = SDL_TRUE;
+                include_high_density_modes = true;
             }
-            bestmode = SDL_GetClosestFullscreenDisplayMode(display->id, window->w, window->h, 0.0f, include_high_density_modes);
-            if (bestmode) {
-                SDL_UIKitDisplayModeData *modedata = (__bridge SDL_UIKitDisplayModeData *)bestmode->internal;
+            if (SDL_GetClosestFullscreenDisplayMode(display->id, window->w, window->h, 0.0f, include_high_density_modes, &bestmode)) {
+                SDL_UIKitDisplayModeData *modedata = (__bridge SDL_UIKitDisplayModeData *)bestmode.internal;
                 [data.uiscreen setCurrentMode:modedata.uiscreenmode];
 
                 /* desktop_mode doesn't change here (the higher level will
                  * use it to set all the screens back to their defaults
                  * upon window destruction, SDL_Quit(), etc. */
-                SDL_SetCurrentDisplayMode(display, bestmode);
+                SDL_SetCurrentDisplayMode(display, &bestmode);
             }
         }
 
@@ -196,29 +195,29 @@ int UIKit_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_Propertie
                 [UIApplication sharedApplication].statusBarHidden = NO;
             }
         }
-#endif /* !SDL_PLATFORM_TVOS */
+#endif // !SDL_PLATFORM_TVOS
 
-        /* ignore the size user requested, and make a fullscreen window */
-        /* !!! FIXME: can we have a smaller view? */
+        // ignore the size user requested, and make a fullscreen window
+        // !!! FIXME: can we have a smaller view?
 #ifdef SDL_PLATFORM_VISIONOS
         UIWindow *uiwindow = [[SDL_uikitwindow alloc] initWithFrame:CGRectMake(window->x, window->y, window->w, window->h)];
 #else
         UIWindow *uiwindow = [[SDL_uikitwindow alloc] initWithFrame:data.uiscreen.bounds];
 #endif
 
-        /* put the window on an external display if appropriate. */
+        // put the window on an external display if appropriate.
 #ifndef SDL_PLATFORM_VISIONOS
         if (data.uiscreen != [UIScreen mainScreen]) {
             [uiwindow setScreen:data.uiscreen];
         }
 #endif
 
-        if (SetupWindowData(_this, window, uiwindow, SDL_TRUE) < 0) {
-            return -1;
+        if (!SetupWindowData(_this, window, uiwindow, true)) {
+            return false;
         }
     }
 
-    return 1;
+    return true;
 }
 
 void UIKit_SetWindowTitle(SDL_VideoDevice *_this, SDL_Window *window)
@@ -235,7 +234,7 @@ void UIKit_ShowWindow(SDL_VideoDevice *_this, SDL_Window *window)
         SDL_UIKitWindowData *data = (__bridge SDL_UIKitWindowData *)window->internal;
         [data.uiwindow makeKeyAndVisible];
 
-        /* Make this window the current mouse focus for touch input */
+        // Make this window the current mouse focus for touch input
         SDL_VideoDisplay *display = SDL_GetVideoDisplayForWindow(window);
         SDL_UIKitDisplayData *displaydata = (__bridge SDL_UIKitDisplayData *)display->internal;
 #ifndef SDL_PLATFORM_VISIONOS
@@ -258,11 +257,13 @@ void UIKit_HideWindow(SDL_VideoDevice *_this, SDL_Window *window)
 
 void UIKit_RaiseWindow(SDL_VideoDevice *_this, SDL_Window *window)
 {
+#if defined(SDL_VIDEO_OPENGL_ES) || defined(SDL_VIDEO_OPENGL_ES2)
     /* We don't currently offer a concept of "raising" the SDL window, since
      * we only allow one per display, in the iOS fashion.
      * However, we use this entry point to rebind the context to the view
      * during OnWindowRestored processing. */
     _this->GL_MakeCurrent(_this, _this->current_glwin, _this->current_glctx);
+#endif
 }
 
 static void UIKit_UpdateWindowBorder(SDL_VideoDevice *_this, SDL_Window *window)
@@ -281,12 +282,12 @@ static void UIKit_UpdateWindowBorder(SDL_VideoDevice *_this, SDL_Window *window)
         [viewcontroller setNeedsStatusBarAppearanceUpdate];
     }
 
-    /* Update the view's frame to account for the status bar change. */
+    // Update the view's frame to account for the status bar change.
     viewcontroller.view.frame = UIKit_ComputeViewFrame(window, data.uiwindow.screen);
-#endif /* !SDL_PLATFORM_TVOS */
+#endif // !SDL_PLATFORM_TVOS
 
 #ifdef SDL_IPHONE_KEYBOARD
-    /* Make sure the view is offset correctly when the keyboard is visible. */
+    // Make sure the view is offset correctly when the keyboard is visible.
     [viewcontroller updateKeyboard];
 #endif
 
@@ -294,7 +295,7 @@ static void UIKit_UpdateWindowBorder(SDL_VideoDevice *_this, SDL_Window *window)
     [viewcontroller.view layoutIfNeeded];
 }
 
-void UIKit_SetWindowBordered(SDL_VideoDevice *_this, SDL_Window *window, SDL_bool bordered)
+void UIKit_SetWindowBordered(SDL_VideoDevice *_this, SDL_Window *window, bool bordered)
 {
     @autoreleasepool {
         if (bordered) {
@@ -306,13 +307,13 @@ void UIKit_SetWindowBordered(SDL_VideoDevice *_this, SDL_Window *window, SDL_boo
     }
 }
 
-int UIKit_SetWindowFullscreen(SDL_VideoDevice *_this, SDL_Window *window, SDL_VideoDisplay *display, SDL_FullscreenOp fullscreen)
+SDL_FullscreenResult UIKit_SetWindowFullscreen(SDL_VideoDevice *_this, SDL_Window *window, SDL_VideoDisplay *display, SDL_FullscreenOp fullscreen)
 {
     @autoreleasepool {
         SDL_SendWindowEvent(window, fullscreen ? SDL_EVENT_WINDOW_ENTER_FULLSCREEN : SDL_EVENT_WINDOW_LEAVE_FULLSCREEN, 0, 0);
         UIKit_UpdateWindowBorder(_this, window);
     }
-    return 0;
+    return SDL_FULLSCREEN_SUCCEEDED;
 }
 
 void UIKit_UpdatePointerLock(SDL_VideoDevice *_this, SDL_Window *window)
@@ -326,8 +327,8 @@ void UIKit_UpdatePointerLock(SDL_VideoDevice *_this, SDL_Window *window)
             [viewcontroller setNeedsUpdateOfPrefersPointerLocked];
         }
     }
-#endif /* defined(__IPHONE_14_0) && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_14_0 */
-#endif /* !SDL_PLATFORM_TVOS */
+#endif // defined(__IPHONE_14_0) && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_14_0
+#endif // !SDL_PLATFORM_TVOS
 }
 
 void UIKit_DestroyWindow(SDL_VideoDevice *_this, SDL_Window *window)
@@ -423,7 +424,7 @@ UIKit_GetSupportedOrientations(SDL_Window *window)
         }
 
         if (orientationMask == 0 && (window->flags & SDL_WINDOW_RESIZABLE)) {
-            /* any orientation is okay. */
+            // any orientation is okay.
             orientationMask = UIInterfaceOrientationMaskAll;
         }
 
@@ -436,7 +437,7 @@ UIKit_GetSupportedOrientations(SDL_Window *window)
             }
         }
 
-        /* Don't allow upside-down orientation on phones, so answering calls is in the natural orientation */
+        // Don't allow upside-down orientation on phones, so answering calls is in the natural orientation
         if ([UIDevice currentDevice].userInterfaceIdiom == UIUserInterfaceIdiomPhone) {
             orientationMask &= ~UIInterfaceOrientationMaskPortraitUpsideDown;
         }
@@ -451,9 +452,9 @@ UIKit_GetSupportedOrientations(SDL_Window *window)
 
     return orientationMask;
 }
-#endif /* !SDL_PLATFORM_TVOS */
+#endif // !SDL_PLATFORM_TVOS
 
-int SDL_SetiOSAnimationCallback(SDL_Window *window, int interval, SDL_iOSAnimationCallback callback, void *callbackParam)
+bool SDL_SetiOSAnimationCallback(SDL_Window *window, int interval, SDL_iOSAnimationCallback callback, void *callbackParam)
 {
     if (!window || !window->internal) {
         return SDL_SetError("Invalid window");
@@ -466,7 +467,7 @@ int SDL_SetiOSAnimationCallback(SDL_Window *window, int interval, SDL_iOSAnimati
                                     callbackParam:callbackParam];
     }
 
-    return 0;
+    return true;
 }
 
-#endif /* SDL_VIDEO_DRIVER_UIKIT */
+#endif // SDL_VIDEO_DRIVER_UIKIT

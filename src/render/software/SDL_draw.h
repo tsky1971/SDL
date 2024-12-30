@@ -20,7 +20,7 @@
 */
 #include "SDL_internal.h"
 
-#include "../../video/SDL_blit.h"
+#include "../../video/SDL_surface_c.h"
 
 /* This code assumes that r, g, b, a are the source color,
  * and in the blend and add case, the RGB values are premultiplied by a.
@@ -424,11 +424,11 @@
 
 #define ABS(_x) ((_x) < 0 ? -(_x) : (_x))
 
-/* Horizontal line */
+// Horizontal line
 #define HLINE(type, op, draw_end)                              \
     {                                                          \
         int length;                                            \
-        int pitch = (dst->pitch / dst->internal->format->bytes_per_pixel); \
+        int pitch = (dst->pitch / dst->fmt->bytes_per_pixel); \
         type *pixel;                                           \
         if (x1 <= x2) {                                        \
             pixel = (type *)dst->pixels + y1 * pitch + x1;     \
@@ -446,11 +446,11 @@
         }                                                      \
     }
 
-/* Vertical line */
+// Vertical line
 #define VLINE(type, op, draw_end)                              \
     {                                                          \
         int length;                                            \
-        int pitch = (dst->pitch / dst->internal->format->bytes_per_pixel); \
+        int pitch = (dst->pitch / dst->fmt->bytes_per_pixel); \
         type *pixel;                                           \
         if (y1 <= y2) {                                        \
             pixel = (type *)dst->pixels + y1 * pitch + x1;     \
@@ -468,11 +468,11 @@
         }                                                      \
     }
 
-/* Diagonal line */
+// Diagonal line
 #define DLINE(type, op, draw_end)                              \
     {                                                          \
         int length;                                            \
-        int pitch = (dst->pitch / dst->internal->format->bytes_per_pixel); \
+        int pitch = (dst->pitch / dst->fmt->bytes_per_pixel); \
         type *pixel;                                           \
         if (y1 <= y2) {                                        \
             pixel = (type *)dst->pixels + y1 * pitch + x1;     \
@@ -503,7 +503,7 @@
         }                                                      \
     }
 
-/* Bresenham's line algorithm */
+// Bresenham's line algorithm
 #define BLINE(x1, y1, x2, y2, op, draw_end) \
     {                                       \
         int i, deltax, deltay, numpixels;   \
@@ -563,7 +563,7 @@
         }                                   \
     }
 
-/* Xiaolin Wu's line algorithm, based on Michael Abrash's implementation */
+// Xiaolin Wu's line algorithm, based on Michael Abrash's implementation
 #define WULINE(x1, y1, x2, y2, opaque_op, blend_op, draw_end)                       \
     {                                                                               \
         Uint16 ErrorAdj, ErrorAcc;                                                  \
@@ -692,7 +692,7 @@
     do {                                                               \
         int width = rect->w;                                           \
         int height = rect->h;                                          \
-        int pitch = (dst->pitch / dst->internal->format->bytes_per_pixel); \
+        int pitch = (dst->pitch / dst->fmt->bytes_per_pixel); \
         int skip = pitch - width;                                      \
         type *pixel = (type *)dst->pixels + rect->y * pitch + rect->x; \
         while (height--) {                                             \

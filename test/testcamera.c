@@ -19,16 +19,20 @@ static SDL_Window *window = NULL;
 static SDL_Renderer *renderer = NULL;
 static SDLTest_CommonState *state = NULL;
 static SDL_Camera *camera = NULL;
-static SDL_CameraSpec spec;
 static SDL_Texture *texture = NULL;
-static SDL_bool texture_updated = SDL_FALSE;
+static bool texture_updated = false;
 static SDL_Surface *frame_current = NULL;
 static SDL_CameraID front_camera = 0;
 static SDL_CameraID back_camera = 0;
 
+/* For frequency logging */
+static Uint64 last_log_time = 0;
+static int iterate_count = 0;
+static int frame_count = 0;
+
 static void PrintCameraSpecs(SDL_CameraID camera_id)
 {
-    const SDL_CameraSpec *const *specs = SDL_GetCameraSupportedFormats(camera_id, NULL);
+    SDL_CameraSpec **specs = SDL_GetCameraSupportedFormats(camera_id, NULL);
     if (specs) {
         int i;
 
@@ -37,24 +41,44 @@ static void PrintCameraSpecs(SDL_CameraID camera_id)
             const SDL_CameraSpec *s = specs[i];
             SDL_Log("    %dx%d %.2f FPS %s\n", s->width, s->height, (float)s->framerate_numerator / s->framerate_denominator, SDL_GetPixelFormatName(s->format));
         }
+        SDL_free(specs);
     }
 }
 
-int SDL_AppInit(void **appstate, int argc, char *argv[])
+static void PickCameraSpec(SDL_CameraID camera_id, SDL_CameraSpec *spec)
+{
+    SDL_CameraSpec **specs = SDL_GetCameraSupportedFormats(camera_id, NULL);
+
+    SDL_zerop(spec);
+
+    if (specs) {
+        int i;
+
+        int max_size = (int)SDL_GetNumberProperty(SDL_GetRendererProperties(state->renderers[0]), SDL_PROP_RENDERER_MAX_TEXTURE_SIZE_NUMBER, 0);
+        for (i = 0; specs[i]; ++i) {
+            const SDL_CameraSpec *s = specs[i];
+            if (s->width <= max_size && s->height <= max_size) {
+                SDL_copyp(spec, s);
+                break;
+            }
+        }
+        SDL_free(specs);
+    }
+}
+
+SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
     char window_title[128];
     int devcount = 0;
     int i;
     const char *camera_name = NULL;
+    SDL_CameraSpec spec;
 
     /* Initialize test framework */
     state = SDLTest_CommonCreateState(argv, SDL_INIT_VIDEO | SDL_INIT_CAMERA);
     if (!state) {
         return SDL_APP_FAILURE;
     }
-
-    /* Enable standard application logging */
-    SDL_SetLogPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
 
     /* Parse commandline */
     for (i = 1; i < argc;) {
@@ -73,6 +97,7 @@ int SDL_AppInit(void **appstate, int argc, char *argv[])
                 NULL,
             };
             SDLTest_CommonLogUsage(state, argv[0], options);
+            SDL_Quit();
             SDLTest_CommonDestroyState(state);
             return 1;
         }
@@ -93,15 +118,13 @@ int SDL_AppInit(void **appstate, int argc, char *argv[])
         return SDL_APP_FAILURE;
     }
 
-    SDL_SetLogPriorities(SDL_LOG_PRIORITY_VERBOSE);
-
     renderer = state->renderers[0];
     if (!renderer) {
         /* SDL_Log("Couldn't create renderer: %s", SDL_GetError()); */
         return SDL_APP_FAILURE;
     }
 
-    const SDL_CameraID *devices = SDL_GetCameras(&devcount);
+    SDL_CameraID *devices = SDL_GetCameras(&devcount);
     if (!devices) {
         SDL_Log("SDL_GetCameras failed: %s", SDL_GetError());
         return SDL_APP_FAILURE;
@@ -116,16 +139,22 @@ int SDL_AppInit(void **appstate, int argc, char *argv[])
         const SDL_CameraPosition position = SDL_GetCameraPosition(device);
         const char *posstr = "";
         if (position == SDL_CAMERA_POSITION_FRONT_FACING) {
-            front_camera = device;
+            if (!front_camera) {
+                front_camera = device;
+            }
             posstr = "[front-facing] ";
         } else if (position == SDL_CAMERA_POSITION_BACK_FACING) {
-            back_camera = device;
+            if (!back_camera) {
+                back_camera = device;
+            }
             posstr = "[back-facing] ";
         }
         if (camera_name && SDL_strcasecmp(name, camera_name) == 0) {
             camera_id = device;
         }
         SDL_Log("  - Camera #%d: %s %s", i, posstr, name);
+
+        PrintCameraSpecs(device);
     }
 
     if (!camera_id) {
@@ -139,19 +168,15 @@ int SDL_AppInit(void **appstate, int argc, char *argv[])
             camera_id = devices[0];
         }
     }
+    SDL_free(devices);
 
     if (!camera_id) {
         SDL_Log("No cameras available?");
         return SDL_APP_FAILURE;
     }
 
-    PrintCameraSpecs(camera_id);
-
-    SDL_CameraSpec *pspec = &spec;
-    spec.framerate_numerator = 1000;
-    spec.framerate_denominator = 1;
-
-    camera = SDL_OpenCamera(camera_id, pspec);
+    PickCameraSpec(camera_id, &spec);
+    camera = SDL_OpenCamera(camera_id, &spec);
     if (!camera) {
         SDL_Log("Failed to open camera device: %s", SDL_GetError());
         return SDL_APP_FAILURE;
@@ -181,6 +206,8 @@ static int FlipCamera(void)
         }
 
         if (nextcam) {
+            SDL_CameraSpec spec;
+
             SDL_Log("Flip camera!");
 
             if (frame_current) {
@@ -195,7 +222,8 @@ static int FlipCamera(void)
                 texture = NULL;  /* will rebuild when new camera is approved. */
             }
 
-            camera = SDL_OpenCamera(nextcam, NULL);
+            PickCameraSpec(nextcam, &spec);
+            camera = SDL_OpenCamera(nextcam, &spec);
             if (!camera) {
                 SDL_Log("Failed to open camera device: %s", SDL_GetError());
                 return SDL_APP_FAILURE;
@@ -208,7 +236,7 @@ static int FlipCamera(void)
     return SDL_APP_CONTINUE;
 }
 
-int SDL_AppEvent(void *appstate, const SDL_Event *event)
+SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 {
     switch (event->type) {
         case SDL_EVENT_KEY_DOWN: {
@@ -233,6 +261,14 @@ int SDL_AppEvent(void *appstate, const SDL_Event *event)
 
         case SDL_EVENT_CAMERA_DEVICE_APPROVED:
             SDL_Log("Camera approved!");
+            SDL_CameraSpec camera_spec;
+            SDL_GetCameraFormat(camera, &camera_spec);
+            float fps = 0;
+            if (camera_spec.framerate_denominator != 0) {
+                fps = (float)camera_spec.framerate_numerator / (float)camera_spec.framerate_denominator;
+            }
+            SDL_Log("Camera Spec: %dx%d %.2f FPS %s",
+                    camera_spec.width, camera_spec.height, fps, SDL_GetPixelFormatName(camera_spec.format));
             break;
 
         case SDL_EVENT_CAMERA_DEVICE_DENIED:
@@ -246,41 +282,54 @@ int SDL_AppEvent(void *appstate, const SDL_Event *event)
     return SDLTest_CommonEventMainCallbacks(state, event);
 }
 
-int SDL_AppIterate(void *appstate)
+SDL_AppResult SDL_AppIterate(void *appstate)
 {
+    iterate_count++;
+
+    Uint64 current_time = SDL_GetTicks();
+
+    /* If a minute has passed, log the frequencies and reset the counters */
+    if (current_time - last_log_time >= 60000) {
+        SDL_Log("SDL_AppIterate() called %d times in the last minute", iterate_count);
+        float fps = (float)frame_count / 60.0f;
+        SDL_Log("SDL_AcquireCameraFrame() FPS: %.2f", fps);
+
+        iterate_count = 0;
+        frame_count = 0;
+        last_log_time = current_time;
+    }
+
     SDL_SetRenderDrawColor(renderer, 0x99, 0x99, 0x99, 255);
     SDL_RenderClear(renderer);
 
     int win_w, win_h;
-    float tw, th;
     SDL_FRect d;
     Uint64 timestampNS = 0;
     SDL_Surface *frame_next = camera ? SDL_AcquireCameraFrame(camera, &timestampNS) : NULL;
 
     #if 0
     if (frame_next) {
-        SDL_Log("frame: %p  at %" SDL_PRIu64, (void*)frame_next->pixels, timestampNS);
+        SDL_Log("frame: %p  at %" SDL_PRIu64, frame_next->pixels, timestampNS);
     }
     #endif
 
     if (frame_next) {
+        frame_count++;
+
         if (frame_current) {
-            if (SDL_ReleaseCameraFrame(camera, frame_current) < 0) {
-                SDL_Log("err SDL_ReleaseCameraFrame: %s", SDL_GetError());
-            }
+            SDL_ReleaseCameraFrame(camera, frame_current);
         }
 
         /* It's not needed to keep the frame once updated the texture is updated.
          * But in case of 0-copy, it's needed to have the frame while using the texture.
          */
          frame_current = frame_next;
-         texture_updated = SDL_FALSE;
+         texture_updated = false;
     }
 
     if (frame_current) {
         if (!texture ||
-            SDL_GetTextureSize(texture, &tw, &th) < 0 ||
-            (int)tw != frame_current->w || (int)th != frame_current->h) {
+            texture->w != frame_current->w || texture->h != frame_current->h) {
             /* Resize the window to match */
             SDL_SetWindowSize(window, frame_current->w, frame_current->h);
 
@@ -308,15 +357,14 @@ int SDL_AppIterate(void *appstate)
         /* Update SDL_Texture with last video frame (only once per new frame) */
         if (frame_current && !texture_updated) {
             SDL_UpdateTexture(texture, NULL, frame_current->pixels, frame_current->pitch);
-            texture_updated = SDL_TRUE;
+            texture_updated = true;
         }
 
-        SDL_GetTextureSize(texture, &tw, &th);
         SDL_GetRenderOutputSize(renderer, &win_w, &win_h);
-        d.x = ((win_w - tw) / 2);
-        d.y = ((win_h - th) / 2);
-        d.w = tw;
-        d.h = th;
+        d.x = ((win_w - texture->w) / 2.0f);
+        d.y = ((win_h - texture->h) / 2.0f);
+        d.w = (float)texture->w;
+        d.h = (float)texture->h;
         SDL_RenderTexture(renderer, texture, NULL, &d);
     }
 
@@ -327,7 +375,7 @@ int SDL_AppIterate(void *appstate)
     return SDL_APP_CONTINUE;
 }
 
-void SDL_AppQuit(void *appstate)
+void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
     SDL_ReleaseCameraFrame(camera, frame_current);
     SDL_CloseCamera(camera);

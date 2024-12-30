@@ -26,9 +26,9 @@ int main(int argc, char *argv[])
     SDL_Joystick *joystick = NULL;
     SDL_Haptic *haptic = NULL;
     SDL_JoystickID instance = 0;
-    SDL_bool keepGoing = SDL_TRUE;
+    bool keepGoing = true;
     int i;
-    SDL_bool enable_haptic = SDL_TRUE;
+    bool enable_haptic = true;
     Uint32 init_subsystems = SDL_INIT_VIDEO | SDL_INIT_JOYSTICK;
     SDLTest_CommonState *state;
 
@@ -38,9 +38,6 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    /* Enable standard application logging */
-    SDL_SetLogPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
-
     /* Parse commandline */
     for (i = 1; i < argc;) {
         int consumed;
@@ -48,7 +45,7 @@ int main(int argc, char *argv[])
         consumed = SDLTest_CommonArg(state, i);
         if (!consumed) {
             if (SDL_strcasecmp(argv[i], "--nohaptic") == 0) {
-                enable_haptic = SDL_FALSE;
+                enable_haptic = false;
                 consumed = 1;
             }
         }
@@ -65,13 +62,10 @@ int main(int argc, char *argv[])
         init_subsystems |= SDL_INIT_HAPTIC;
     }
 
-    /* Enable standard application logging */
-    SDL_SetLogPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
-
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
 
     /* Initialize SDL (Note: video is required to start event loop) */
-    if (SDL_Init(init_subsystems) < 0) {
+    if (!SDL_Init(init_subsystems)) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't initialize SDL: %s\n", SDL_GetError());
         exit(1);
     }
@@ -80,18 +74,18 @@ int main(int argc, char *argv[])
     //SDL_CreateWindow("Dummy", 128, 128, 0);
     */
 
-    SDL_GetKeyboards(&num_keyboards);
+    SDL_free(SDL_GetKeyboards(&num_keyboards));
     SDL_Log("There are %d keyboards at startup\n", num_keyboards);
 
-    SDL_GetMice(&num_mice);
+    SDL_free(SDL_GetMice(&num_mice));
     SDL_Log("There are %d mice at startup\n", num_mice);
 
-    SDL_GetJoysticks(&num_joysticks);
+    SDL_free(SDL_GetJoysticks(&num_joysticks));
     SDL_Log("There are %d joysticks at startup\n", num_joysticks);
 
     if (enable_haptic) {
         int num_haptics;
-        SDL_GetHaptics(&num_haptics);
+        SDL_free(SDL_GetHaptics(&num_haptics));
         SDL_Log("There are %d haptic devices at startup\n", num_haptics);
     }
 
@@ -100,7 +94,7 @@ int main(int argc, char *argv[])
         while (SDL_PollEvent(&event)) {
             switch (event.type) {
             case SDL_EVENT_QUIT:
-                keepGoing = SDL_FALSE;
+                keepGoing = false;
                 break;
             case SDL_EVENT_KEYBOARD_ADDED:
                 SDL_Log("Keyboard '%s' added  : %" SDL_PRIu32 "\n", SDL_GetKeyboardNameForID(event.kdevice.which), event.kdevice.which);
@@ -126,7 +120,7 @@ int main(int argc, char *argv[])
                             haptic = SDL_OpenHapticFromJoystick(joystick);
                             if (haptic) {
                                 SDL_Log("Joy Haptic Opened\n");
-                                if (SDL_InitHapticRumble(haptic) != 0) {
+                                if (!SDL_InitHapticRumble(haptic)) {
                                     SDL_Log("Could not init Rumble!: %s\n", SDL_GetError());
                                     SDL_CloseHaptic(haptic);
                                     haptic = NULL;
@@ -169,7 +163,7 @@ int main(int argc, char *argv[])
                 }
                 if (event.jbutton.button == 0) {
                     SDL_Log("Exiting due to button press of button 0\n");
-                    keepGoing = SDL_FALSE;
+                    keepGoing = false;
                 }
                 break;
             case SDL_EVENT_JOYSTICK_BUTTON_UP:

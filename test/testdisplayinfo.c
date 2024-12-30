@@ -33,8 +33,8 @@ print_mode(const char *prefix, const SDL_DisplayMode *mode)
 
 int main(int argc, char *argv[])
 {
-    const SDL_DisplayID *displays;
-    const SDL_DisplayMode * const *modes;
+    SDL_DisplayID *displays;
+    SDL_DisplayMode **modes;
     const SDL_DisplayMode *mode;
     int num_displays, i;
     SDLTest_CommonState *state;
@@ -45,16 +45,13 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    /* Enable standard application logging */
-    SDL_SetLogPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
-
     /* Parse commandline */
     if (!SDLTest_CommonDefaultArgs(state, argc, argv)) {
         return 1;
     }
 
     /* Load the SDL library */
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't initialize SDL: %s\n", SDL_GetError());
         return 1;
     }
@@ -69,7 +66,7 @@ int main(int argc, char *argv[])
         SDL_PropertiesID props = SDL_GetDisplayProperties(dpy);
         SDL_Rect rect = { 0, 0, 0, 0 };
         int m, num_modes = 0;
-        const SDL_bool has_HDR = SDL_GetBooleanProperty(props, SDL_PROP_DISPLAY_HDR_ENABLED_BOOLEAN, SDL_FALSE);
+        const bool has_HDR = SDL_GetBooleanProperty(props, SDL_PROP_DISPLAY_HDR_ENABLED_BOOLEAN, false);
 
         SDL_GetDisplayBounds(dpy, &rect);
         modes = SDL_GetFullscreenDisplayModes(dpy, &num_modes);
@@ -94,9 +91,11 @@ int main(int argc, char *argv[])
             (void)SDL_snprintf(prefix, sizeof(prefix), "    MODE %d", m);
             print_mode(prefix, modes[m]);
         }
+        SDL_free(modes);
 
         SDL_Log("\n");
     }
+    SDL_free(displays);
 
     SDL_Quit();
     SDLTest_CommonDestroyState(state);

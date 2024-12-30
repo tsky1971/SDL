@@ -23,7 +23,7 @@
 #if defined(SDL_FILESYSTEM_DUMMY) || defined(SDL_FILESYSTEM_DISABLED)
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-/* System dependent filesystem routines                                */
+// System dependent filesystem routines
 
 #include "../SDL_sysfilesystem.h"
 
@@ -45,4 +45,10 @@ char *SDL_SYS_GetUserFolder(SDL_Folder folder)
     return NULL;
 }
 
-#endif /* SDL_FILESYSTEM_DUMMY || SDL_FILESYSTEM_DISABLED */
+char *SDL_SYS_GetCurrentDirectory(void)
+{
+    SDL_Unsupported();
+    return NULL;
+}
+
+#endif // SDL_FILESYSTEM_DUMMY || SDL_FILESYSTEM_DISABLED

@@ -20,10 +20,10 @@
 */
 #include "SDL_internal.h"
 
-/* This file contains portable random functions for SDL */
+// This file contains portable random functions for SDL
 
 static Uint64 SDL_rand_state;
-static SDL_bool SDL_rand_initialized = SDL_FALSE;
+static bool SDL_rand_initialized = false;
 
 void SDL_srand(Uint64 seed)
 {
@@ -31,7 +31,7 @@ void SDL_srand(Uint64 seed)
         seed = SDL_GetPerformanceCounter();
     }
     SDL_rand_state = seed;
-    SDL_rand_initialized = SDL_TRUE;
+    SDL_rand_initialized = true;
 }
 
 Sint32 SDL_rand(Sint32 n)
@@ -96,7 +96,7 @@ Sint32 SDL_rand_r(Uint64 *state, Sint32 n)
 
     if (n < 0) {
         // The algorithm looks like it works for numbers < 0 but it has an
-        // infintesimal chance of returning a value out of range.
+        // infinitesimal chance of returning a value out of range.
         // Returning -SDL_rand(abs(n)) blows up at INT_MIN instead.
         // It's easier to just say no.
         return 0;

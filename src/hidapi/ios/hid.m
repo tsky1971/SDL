@@ -241,7 +241,7 @@ typedef enum
 
         // Bluetooth is currently only used for Steam Controllers, so check that hint
         // before initializing Bluetooth, which will prompt the user for permission.
-		if ( SDL_GetHintBoolean( SDL_HINT_JOYSTICK_HIDAPI_STEAM, SDL_FALSE ) )
+		if ( SDL_GetHintBoolean( SDL_HINT_JOYSTICK_HIDAPI_STEAM, false ) )
 		{
 			[[NSNotificationCenter defaultCenter] addObserver:sharedInstance selector:@selector(appWillResignActiveNotification:) name: UIApplicationWillResignActiveNotification object:nil];
 			[[NSNotificationCenter defaultCenter] addObserver:sharedInstance selector:@selector(appDidBecomeActiveNotification:) name:UIApplicationDidBecomeActiveNotification object:nil];
@@ -853,6 +853,7 @@ static struct hid_device_info *create_device_info_for_hid_device(HIDBLEDevice *d
     device_info->product_id = D0G_BLE2_PID;
     device_info->product_string = wcsdup( L"Steam Controller" );
     device_info->manufacturer_string = wcsdup( L"Valve Corporation" );
+    device_info->bus_type = HID_API_BUS_BLUETOOTH;
     return device_info;
 }
 

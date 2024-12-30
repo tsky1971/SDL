@@ -80,7 +80,7 @@ int main(int argc, char *argv[])
     Uint64 start, now;
     Uint64 start_perf, now_perf;
     SDLTest_CommonState  *state;
-    SDL_bool run_interactive_tests = SDL_TRUE;
+    bool run_interactive_tests = true;
     int return_code = 0;
 
     /* Initialize test framework */
@@ -89,9 +89,6 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    /* Enable standard application logging */
-    SDL_SetLogPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
-
     /* Parse commandline */
     for (i = 1; i < argc;) {
         int consumed;
@@ -99,7 +96,7 @@ int main(int argc, char *argv[])
         consumed = SDLTest_CommonArg(state, i);
         if (!consumed) {
             if (SDL_strcmp(argv[i], "--no-interactive") == 0) {
-                run_interactive_tests = SDL_FALSE;
+                run_interactive_tests = false;
                 consumed = 1;
             } else if (desired < 0) {
                 char *endptr;
@@ -119,12 +116,7 @@ int main(int argc, char *argv[])
         i += consumed;
     }
 
-    if (SDL_Init(SDL_INIT_TIMER) < 0) {
-        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't initialize SDL: %s\n", SDL_GetError());
-        return 1;
-    }
-
-    if (SDL_getenv("SDL_TESTS_QUICK") != NULL) {
+    if (SDL_GetEnvironmentVariable(SDL_GetEnvironment(), "SDL_TESTS_QUICK") != NULL) {
         SDL_Log("Not running slower tests");
         SDL_Quit();
         return 0;
@@ -186,7 +178,7 @@ int main(int argc, char *argv[])
     /* Wait for the results to be seen */
     SDL_Delay(1 * 1000);
 
-    /* Check accuracy of precise delay */
+    /* Check accuracy of nanosecond delay */
     {
         Uint64 desired_delay = SDL_NS_PER_SECOND / 60;
         Uint64 actual_delay;
@@ -196,12 +188,40 @@ int main(int argc, char *argv[])
         SDL_DelayNS(1);
         now = SDL_GetTicksNS();
         actual_delay = (now - start);
-        SDL_Log("Minimum precise delay: %" SDL_PRIu64 " ns\n", actual_delay);
+        SDL_Log("Minimum nanosecond delay: %" SDL_PRIu64 " ns\n", actual_delay);
 
         SDL_Log("Timing 100 frames at 60 FPS\n");
         for (i = 0; i < 100; ++i) {
             start = SDL_GetTicksNS();
             SDL_DelayNS(desired_delay);
+            now = SDL_GetTicksNS();
+            actual_delay = (now - start);
+            if (actual_delay > desired_delay) {
+                total_overslept += (actual_delay - desired_delay);
+            }
+        }
+        SDL_Log("Overslept %.2f ms\n", (double)total_overslept / SDL_NS_PER_MS);
+    }
+
+    /* Wait for the results to be seen */
+    SDL_Delay(1 * 1000);
+
+    /* Check accuracy of precise delay */
+    {
+        Uint64 desired_delay = SDL_NS_PER_SECOND / 60;
+        Uint64 actual_delay;
+        Uint64 total_overslept = 0;
+
+        start = SDL_GetTicksNS();
+        SDL_DelayPrecise(1);
+        now = SDL_GetTicksNS();
+        actual_delay = (now - start);
+        SDL_Log("Minimum precise delay: %" SDL_PRIu64 " ns\n", actual_delay);
+
+        SDL_Log("Timing 100 frames at 60 FPS\n");
+        for (i = 0; i < 100; ++i) {
+            start = SDL_GetTicksNS();
+            SDL_DelayPrecise(desired_delay);
             now = SDL_GetTicksNS();
             actual_delay = (now - start);
             if (actual_delay > desired_delay) {
@@ -261,7 +281,7 @@ int main(int argc, char *argv[])
         return_code = test_sdl_delay_within_bounds();
     }
 
-    SDLTest_CommonDestroyState(state);
     SDL_Quit();
+    SDLTest_CommonDestroyState(state);
     return return_code;
 }

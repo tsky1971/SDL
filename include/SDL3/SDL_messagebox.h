@@ -39,11 +39,11 @@ extern "C" {
 #endif
 
 /**
- * SDL_MessageBox flags.
+ * Message box flags.
  *
  * If supported will display warning icon, etc.
  *
- * \since This datatype is available since SDL 3.0.0.
+ * \since This datatype is available since SDL 3.1.3.
  */
 typedef Uint32 SDL_MessageBoxFlags;
 
@@ -56,7 +56,7 @@ typedef Uint32 SDL_MessageBoxFlags;
 /**
  * SDL_MessageBoxButtonData flags.
  *
- * \since This datatype is available since SDL 3.0.0.
+ * \since This datatype is available since SDL 3.1.3.
  */
 typedef Uint32 SDL_MessageBoxButtonFlags;
 
@@ -66,7 +66,7 @@ typedef Uint32 SDL_MessageBoxButtonFlags;
 /**
  * Individual button data.
  *
- * \since This struct is available since SDL 3.0.0.
+ * \since This struct is available since SDL 3.1.3.
  */
 typedef struct SDL_MessageBoxButtonData
 {
@@ -78,7 +78,7 @@ typedef struct SDL_MessageBoxButtonData
 /**
  * RGB value used in a message box color scheme
  *
- * \since This struct is available since SDL 3.0.0.
+ * \since This struct is available since SDL 3.1.3.
  */
 typedef struct SDL_MessageBoxColor
 {
@@ -96,23 +96,23 @@ typedef enum SDL_MessageBoxColorType
     SDL_MESSAGEBOX_COLOR_BUTTON_BORDER,
     SDL_MESSAGEBOX_COLOR_BUTTON_BACKGROUND,
     SDL_MESSAGEBOX_COLOR_BUTTON_SELECTED,
-    SDL_MESSAGEBOX_COLOR_MAX                    /**< Size of the colors array of SDL_MessageBoxColorScheme. */
+    SDL_MESSAGEBOX_COLOR_COUNT                    /**< Size of the colors array of SDL_MessageBoxColorScheme. */
 } SDL_MessageBoxColorType;
 
 /**
  * A set of colors to use for message box dialogs
  *
- * \since This struct is available since SDL 3.0.0.
+ * \since This struct is available since SDL 3.1.3.
  */
 typedef struct SDL_MessageBoxColorScheme
 {
-    SDL_MessageBoxColor colors[SDL_MESSAGEBOX_COLOR_MAX];
+    SDL_MessageBoxColor colors[SDL_MESSAGEBOX_COLOR_COUNT];
 } SDL_MessageBoxColorScheme;
 
 /**
  * MessageBox structure containing title, text, window, etc.
  *
- * \since This struct is available since SDL 3.0.0.
+ * \since This struct is available since SDL 3.1.3.
  */
 typedef struct SDL_MessageBoxData
 {
@@ -154,14 +154,14 @@ typedef struct SDL_MessageBoxData
  *                       other options.
  * \param buttonid the pointer to which user id of hit button should be
  *                 copied.
- * \returns 0 on success or a negative error code on failure; call
- *          SDL_GetError() for more information.
+ * \returns true on success or false on failure; call SDL_GetError() for more
+ *          information.
  *
- * \since This function is available since SDL 3.0.0.
+ * \since This function is available since SDL 3.1.3.
  *
  * \sa SDL_ShowSimpleMessageBox
  */
-extern SDL_DECLSPEC int SDLCALL SDL_ShowMessageBox(const SDL_MessageBoxData *messageboxdata, int *buttonid);
+extern SDL_DECLSPEC bool SDLCALL SDL_ShowMessageBox(const SDL_MessageBoxData *messageboxdata, int *buttonid);
 
 /**
  * Display a simple modal message box.
@@ -193,17 +193,17 @@ extern SDL_DECLSPEC int SDLCALL SDL_ShowMessageBox(const SDL_MessageBoxData *mes
  * to stderr if you can.
  *
  * \param flags an SDL_MessageBoxFlags value.
- * \param title uTF-8 title text.
- * \param message uTF-8 message text.
+ * \param title UTF-8 title text.
+ * \param message UTF-8 message text.
  * \param window the parent window, or NULL for no parent.
- * \returns 0 on success or a negative error code on failure; call
- *          SDL_GetError() for more information.
+ * \returns true on success or false on failure; call SDL_GetError() for more
+ *          information.
  *
- * \since This function is available since SDL 3.0.0.
+ * \since This function is available since SDL 3.1.3.
  *
  * \sa SDL_ShowMessageBox
  */
-extern SDL_DECLSPEC int SDLCALL SDL_ShowSimpleMessageBox(SDL_MessageBoxFlags flags, const char *title, const char *message, SDL_Window *window);
+extern SDL_DECLSPEC bool SDLCALL SDL_ShowSimpleMessageBox(SDL_MessageBoxFlags flags, const char *title, const char *message, SDL_Window *window);
 
 
 /* Ends C function definitions when using C++ */

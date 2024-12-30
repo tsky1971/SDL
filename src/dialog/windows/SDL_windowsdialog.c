@@ -19,6 +19,7 @@
   3. This notice may not be removed or altered from any source distribution.
 */
 #include "SDL_internal.h"
+#include "../SDL_dialog.h"
 #include "../SDL_dialog_utils.h"
 
 #include <windows.h>
@@ -27,12 +28,12 @@
 #include "../../core/windows/SDL_windows.h"
 #include "../../thread/SDL_systhread.h"
 
-/* If this number is too small, selecting too many files will give an error */
+// If this number is too small, selecting too many files will give an error
 #define SELECTLIST_SIZE 65536
 
 typedef struct
 {
-    int is_save;
+    bool is_save;
     const SDL_DialogFileFilter *filters;
     int nfilters;
     const char* default_file;
@@ -40,6 +41,9 @@ typedef struct
     DWORD flags;
     SDL_DialogFileCallback callback;
     void* userdata;
+    const char* title;
+    const char* accept;
+    const char* cancel;
 } winArgs;
 
 typedef struct
@@ -48,6 +52,9 @@ typedef struct
     SDL_DialogFileCallback callback;
     const char* default_folder;
     void* userdata;
+    const char* title;
+    const char* accept;
+    const char* cancel;
 } winFArgs;
 
 /** Converts dialog.nFilterIndex to SDL-compatible value */
@@ -56,11 +63,29 @@ int getFilterIndex(int as_reported_by_windows)
     return as_reported_by_windows - 1;
 }
 
-/* TODO: The new version of file dialogs */
+char *clear_filt_names(const char *filt)
+{
+    char *cleared = SDL_strdup(filt);
+
+    for (char *c = cleared; *c; c++) {
+        /* 0x01 bytes are used as temporary replacement for the various 0x00
+           bytes required by Win32 (one null byte between each filter, two at
+           the end of the filters). Filter out these bytes from the filter names
+           to avoid early-ending the filters if someone puts two consecutive
+           0x01 bytes in their filter names. */
+        if (*c == '\x01') {
+            *c = ' ';
+        }
+    }
+
+    return cleared;
+}
+
+// TODO: The new version of file dialogs
 void windows_ShowFileDialog(void *ptr)
 {
     winArgs *args = (winArgs *) ptr;
-    int is_save = args->is_save;
+    bool is_save = args->is_save;
     const SDL_DialogFileFilter *filters = args->filters;
     int nfilters = args->nfilters;
     const char* default_file = args->default_file;
@@ -68,6 +93,7 @@ void windows_ShowFileDialog(void *ptr)
     DWORD flags = args->flags;
     SDL_DialogFileCallback callback = args->callback;
     void* userdata = args->userdata;
+    const char *title = args->title;
 
     /* GetOpenFileName and GetSaveFileName have the same signature
        (yes, LPOPENFILENAMEW even for the save dialog) */
@@ -104,14 +130,14 @@ void windows_ShowFileDialog(void *ptr)
         window = (HWND) SDL_GetPointerProperty(SDL_GetWindowProperties(parent), SDL_PROP_WINDOW_WIN32_HWND_POINTER, NULL);
     }
 
-    wchar_t *filebuffer; /* lpstrFile */
-    wchar_t initfolder[MAX_PATH] = L""; /* lpstrInitialDir */
+    wchar_t *filebuffer; // lpstrFile
+    wchar_t initfolder[MAX_PATH] = L""; // lpstrInitialDir
 
     /* If SELECTLIST_SIZE is too large, putting filebuffer on the stack might
        cause an overflow */
     filebuffer = (wchar_t *) SDL_malloc(SELECTLIST_SIZE * sizeof(wchar_t));
 
-    /* Necessary for the return code below */
+    // Necessary for the return code below
     SDL_memset(filebuffer, 0, SELECTLIST_SIZE * sizeof(wchar_t));
 
     if (default_file) {
@@ -151,9 +177,9 @@ void windows_ShowFileDialog(void *ptr)
     wchar_t *filter_wchar = NULL;
 
     if (filters) {
-        /* '\x01' is used in place of a null byte */
-        /* suffix needs two null bytes in case the filter list is empty */
-        char *filterlist = convert_filters(filters, nfilters, NULL, "", "",
+        // '\x01' is used in place of a null byte
+        // suffix needs two null bytes in case the filter list is empty
+        char *filterlist = convert_filters(filters, nfilters, clear_filt_names, "", "",
                                            "\x01\x01", "", "\x01", "\x01",
                                            "*.", ";*.", "");
 
@@ -172,8 +198,7 @@ void windows_ShowFileDialog(void *ptr)
         }
 
         int filter_wlen = MultiByteToWideChar(CP_UTF8, 0, filterlist, filter_len, NULL, 0);
-        filter_wchar = SDL_malloc(filter_wlen * sizeof(wchar_t));
-
+        filter_wchar = (wchar_t *)SDL_malloc(filter_wlen * sizeof(wchar_t));
         if (!filter_wchar) {
             SDL_free(filterlist);
             callback(userdata, NULL, -1);
@@ -184,6 +209,34 @@ void windows_ShowFileDialog(void *ptr)
         MultiByteToWideChar(CP_UTF8, 0, filterlist, filter_len, filter_wchar, filter_wlen);
 
         SDL_free(filterlist);
+    }
+
+    wchar_t *title_w = NULL;
+
+    if (title) {
+        int title_len = (int) SDL_strlen(title);
+
+        /* If the title is longer than 2GB, it might be exploitable. */
+        if (title_len < 0) {
+            title_len = 0;
+        }
+
+        int title_wlen = MultiByteToWideChar(CP_UTF8, 0, title, -1, NULL, 0);
+
+        if (title_wlen < 0) {
+            title_wlen = 0;
+        }
+
+        title_w = (wchar_t *)SDL_malloc(title_wlen * sizeof(wchar_t));
+
+        if (!title_w) {
+            SDL_free(filter_wchar);
+            SDL_free(filebuffer);
+            callback(userdata, NULL, -1);
+            return;
+        }
+
+        MultiByteToWideChar(CP_UTF8, 0, title, -1, title_w, title_wlen);
     }
 
     OPENFILENAMEW dialog;
@@ -198,7 +251,7 @@ void windows_ShowFileDialog(void *ptr)
     dialog.nMaxFile = SELECTLIST_SIZE;
     dialog.lpstrFileTitle = NULL;
     dialog.lpstrInitialDir = *initfolder ? initfolder : NULL;
-    dialog.lpstrTitle = NULL;
+    dialog.lpstrTitle = title_w;
     dialog.Flags = flags | OFN_EXPLORER | OFN_HIDEREADONLY | OFN_NOCHANGEDIR;
     dialog.nFileOffset = 0;
     dialog.nFileExtension = 0;
@@ -206,16 +259,17 @@ void windows_ShowFileDialog(void *ptr)
     dialog.lCustData = 0;
     dialog.lpfnHook = NULL;
     dialog.lpTemplateName = NULL;
-    /* Skipped many mac-exclusive and reserved members */
+    // Skipped many mac-exclusive and reserved members
     dialog.FlagsEx = 0;
 
     BOOL result = pGetAnyFileName(&dialog);
 
     SDL_free(filter_wchar);
+    SDL_free(title_w);
 
     if (result) {
         if (!(flags & OFN_ALLOWMULTISELECT)) {
-            /* File is a C string stored in dialog.lpstrFile */
+            // File is a C string stored in dialog.lpstrFile
             char *chosen_file = WIN_StringToUTF8W(dialog.lpstrFile);
             const char* opts[2] = { chosen_file, NULL };
             callback(userdata, opts, getFilterIndex(dialog.nFilterIndex));
@@ -306,7 +360,7 @@ void windows_ShowFileDialog(void *ptr)
                 }
             }
 
-            /* If the user chose only one file, it's all just one string */
+            // If the user chose only one file, it's all just one string
             if (nfiles == 0) {
                 nfiles++;
                 char **new_cfl = (char **) SDL_realloc(chosen_files_list, sizeof(char*) * (nfiles + 1));
@@ -340,7 +394,7 @@ void windows_ShowFileDialog(void *ptr)
         }
     } else {
         DWORD error = pCommDlgExtendedError();
-        /* Error code 0 means the user clicked the cancel button. */
+        // Error code 0 means the user clicked the cancel button.
         if (error == 0) {
             /* Unlike SDL's handling of errors, Windows does reset the error
                code to 0 after calling GetOpenFileName if another Windows
@@ -389,9 +443,36 @@ void windows_ShowFolderDialog(void* ptr)
     SDL_DialogFileCallback callback = args->callback;
     void *userdata = args->userdata;
     HWND parent = NULL;
+    const char *title = args->title;
 
     if (window) {
         parent = (HWND) SDL_GetPointerProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_WIN32_HWND_POINTER, NULL);
+    }
+
+    wchar_t *title_w = NULL;
+
+    if (title) {
+        int title_len = (int) SDL_strlen(title);
+
+        /* If the title is longer than 2GB, it might be exploitable. */
+        if (title_len < 0) {
+            title_len = 0;
+        }
+
+        int title_wlen = MultiByteToWideChar(CP_UTF8, 0, title, title_len, NULL, 0);
+
+        if (title_wlen < 0) {
+            title_wlen = 0;
+        }
+
+        title_w = (wchar_t *)SDL_malloc(title_wlen * sizeof(wchar_t));
+
+        if (!title_w) {
+            callback(userdata, NULL, -1);
+            return;
+        }
+
+        MultiByteToWideChar(CP_UTF8, 0, title, title_len, title_w, title_wlen);
     }
 
     wchar_t buffer[MAX_PATH];
@@ -399,15 +480,17 @@ void windows_ShowFolderDialog(void* ptr)
     BROWSEINFOW dialog;
     dialog.hwndOwner = parent;
     dialog.pidlRoot = NULL;
-    /* Windows docs say this is `LPTSTR` - apparently it's actually `LPWSTR`*/
     dialog.pszDisplayName = buffer;
-    dialog.lpszTitle = NULL;
+    dialog.lpszTitle = title_w;
     dialog.ulFlags = BIF_USENEWUI;
     dialog.lpfn = browse_callback_proc;
     dialog.lParam = (LPARAM)args->default_folder;
     dialog.iImage = 0;
 
     LPITEMIDLIST lpItem = SHBrowseForFolderW(&dialog);
+
+    SDL_free(title_w);
+
     if (lpItem != NULL) {
         SHGetPathFromIDListW(lpItem, buffer);
         char *chosen_file = WIN_StringToUTF8W(buffer);
@@ -427,45 +510,7 @@ int windows_folder_dialog_thread(void* ptr)
     return 0;
 }
 
-void SDL_ShowOpenFileDialog(SDL_DialogFileCallback callback, void* userdata, SDL_Window* window, const SDL_DialogFileFilter *filters, int nfilters, const char* default_location, SDL_bool allow_many)
-{
-    winArgs *args;
-    SDL_Thread *thread;
-
-    if (SDL_GetHint(SDL_HINT_FILE_DIALOG_DRIVER) != NULL) {
-        SDL_Log("%s", SDL_GetHint(SDL_HINT_FILE_DIALOG_DRIVER));
-        SDL_SetError("File dialog driver unsupported");
-        callback(userdata, NULL, -1);
-        return;
-    }
-
-    args = SDL_malloc(sizeof(winArgs));
-    if (args == NULL) {
-        callback(userdata, NULL, -1);
-        return;
-    }
-
-    args->is_save = 0;
-    args->filters = filters;
-    args->nfilters = nfilters;
-    args->default_file = default_location;
-    args->parent = window;
-    args->flags = (allow_many == SDL_TRUE) ? OFN_ALLOWMULTISELECT : 0;
-    args->callback = callback;
-    args->userdata = userdata;
-
-    thread = SDL_CreateThread(windows_file_dialog_thread, "SDL_ShowOpenFileDialog", (void *) args);
-
-    if (thread == NULL) {
-        callback(userdata, NULL, -1);
-        SDL_free(args);
-        return;
-    }
-
-    SDL_DetachThread(thread);
-}
-
-void SDL_ShowSaveFileDialog(SDL_DialogFileCallback callback, void* userdata, SDL_Window* window, const SDL_DialogFileFilter *filters, int nfilters, const char* default_location)
+static void ShowFileDialog(SDL_DialogFileCallback callback, void* userdata, SDL_Window* window, const SDL_DialogFileFilter *filters, int nfilters, const char* default_location, bool allow_many, bool is_save, const char* title, const char* accept, const char* cancel)
 {
     winArgs *args;
     SDL_Thread *thread;
@@ -476,22 +521,25 @@ void SDL_ShowSaveFileDialog(SDL_DialogFileCallback callback, void* userdata, SDL
         return;
     }
 
-    args = SDL_malloc(sizeof(winArgs));
+    args = (winArgs *)SDL_malloc(sizeof(*args));
     if (args == NULL) {
         callback(userdata, NULL, -1);
         return;
     }
 
-    args->is_save = 1;
+    args->is_save = is_save;
     args->filters = filters;
     args->nfilters = nfilters;
     args->default_file = default_location;
     args->parent = window;
-    args->flags = 0;
+    args->flags = allow_many ? OFN_ALLOWMULTISELECT : 0;
     args->callback = callback;
     args->userdata = userdata;
+    args->title = title;
+    args->accept = accept;
+    args->cancel = cancel;
 
-    thread = SDL_CreateThread(windows_file_dialog_thread, "SDL_ShowSaveFileDialog", (void *) args);
+    thread = SDL_CreateThread(windows_file_dialog_thread, "SDL_Windows_ShowFileDialog", (void *) args);
 
     if (thread == NULL) {
         callback(userdata, NULL, -1);
@@ -502,7 +550,7 @@ void SDL_ShowSaveFileDialog(SDL_DialogFileCallback callback, void* userdata, SDL
     SDL_DetachThread(thread);
 }
 
-void SDL_ShowOpenFolderDialog(SDL_DialogFileCallback callback, void* userdata, SDL_Window* window, const char* default_location, SDL_bool allow_many)
+void ShowFolderDialog(SDL_DialogFileCallback callback, void* userdata, SDL_Window* window, const char* default_location, bool allow_many, const char* title, const char* accept, const char* cancel)
 {
     winFArgs *args;
     SDL_Thread *thread;
@@ -513,7 +561,7 @@ void SDL_ShowOpenFolderDialog(SDL_DialogFileCallback callback, void* userdata, S
         return;
     }
 
-    args = SDL_malloc(sizeof(winFArgs));
+    args = (winFArgs *)SDL_malloc(sizeof(*args));
     if (args == NULL) {
         callback(userdata, NULL, -1);
         return;
@@ -523,8 +571,11 @@ void SDL_ShowOpenFolderDialog(SDL_DialogFileCallback callback, void* userdata, S
     args->callback = callback;
     args->default_folder = default_location;
     args->userdata = userdata;
+    args->title = title;
+    args->accept = accept;
+    args->cancel = cancel;
 
-    thread = SDL_CreateThread(windows_folder_dialog_thread, "SDL_ShowOpenFolderDialog", (void *) args);
+    thread = SDL_CreateThread(windows_folder_dialog_thread, "SDL_Windows_ShowFolderDialog", (void *) args);
 
     if (thread == NULL) {
         callback(userdata, NULL, -1);
@@ -533,4 +584,32 @@ void SDL_ShowOpenFolderDialog(SDL_DialogFileCallback callback, void* userdata, S
     }
 
     SDL_DetachThread(thread);
+}
+
+void SDL_SYS_ShowFileDialogWithProperties(SDL_FileDialogType type, SDL_DialogFileCallback callback, void *userdata, SDL_PropertiesID props)
+{
+    /* The internal functions will start threads, and the properties may be freed as soon as this function returns.
+       Save a copy of what we need before invoking the functions and starting the threads. */
+    SDL_Window* window = SDL_GetPointerProperty(props, SDL_PROP_FILE_DIALOG_WINDOW_POINTER, NULL);
+    SDL_DialogFileFilter *filters = SDL_GetPointerProperty(props, SDL_PROP_FILE_DIALOG_FILTERS_POINTER, NULL);
+    int nfilters = (int) SDL_GetNumberProperty(props, SDL_PROP_FILE_DIALOG_NFILTERS_NUMBER, 0);
+    bool allow_many = SDL_GetBooleanProperty(props, SDL_PROP_FILE_DIALOG_MANY_BOOLEAN, false);
+    const char* default_location = SDL_GetStringProperty(props, SDL_PROP_FILE_DIALOG_LOCATION_STRING, NULL);
+    const char* title = SDL_GetStringProperty(props, SDL_PROP_FILE_DIALOG_TITLE_STRING, NULL);
+    const char* accept = SDL_GetStringProperty(props, SDL_PROP_FILE_DIALOG_ACCEPT_STRING, NULL);
+    const char* cancel = SDL_GetStringProperty(props, SDL_PROP_FILE_DIALOG_CANCEL_STRING, NULL);
+    bool is_save = false;
+
+    switch (type) {
+    case SDL_FILEDIALOG_SAVEFILE:
+        is_save = true;
+        SDL_FALLTHROUGH;
+    case SDL_FILEDIALOG_OPENFILE:
+        ShowFileDialog(callback, userdata, window, filters, nfilters, default_location, allow_many, is_save, title, accept, cancel);
+        break;
+
+    case SDL_FILEDIALOG_OPENFOLDER:
+        ShowFolderDialog(callback, userdata, window, default_location, allow_many, title, accept, cancel);
+        break;
+    };
 }

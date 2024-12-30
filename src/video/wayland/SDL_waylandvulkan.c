@@ -41,27 +41,27 @@
 #define DEFAULT_VULKAN "libvulkan.so.1"
 #endif
 
-int Wayland_Vulkan_LoadLibrary(SDL_VideoDevice *_this, const char *path)
+bool Wayland_Vulkan_LoadLibrary(SDL_VideoDevice *_this, const char *path)
 {
     VkExtensionProperties *extensions = NULL;
     Uint32 i, extensionCount = 0;
-    SDL_bool hasSurfaceExtension = SDL_FALSE;
-    SDL_bool hasWaylandSurfaceExtension = SDL_FALSE;
+    bool hasSurfaceExtension = false;
+    bool hasWaylandSurfaceExtension = false;
     PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = NULL;
     if (_this->vulkan_config.loader_handle) {
         return SDL_SetError("Vulkan already loaded");
     }
 
-    /* Load the Vulkan loader library */
+    // Load the Vulkan loader library
     if (!path) {
-        path = SDL_getenv("SDL_VULKAN_LIBRARY");
+        path = SDL_GetHint(SDL_HINT_VULKAN_LIBRARY);
     }
     if (!path) {
         path = DEFAULT_VULKAN;
     }
     _this->vulkan_config.loader_handle = SDL_LoadObject(path);
     if (!_this->vulkan_config.loader_handle) {
-        return -1;
+        return false;
     }
     SDL_strlcpy(_this->vulkan_config.loader_path, path,
                 SDL_arraysize(_this->vulkan_config.loader_path));
@@ -86,9 +86,9 @@ int Wayland_Vulkan_LoadLibrary(SDL_VideoDevice *_this, const char *path)
     }
     for (i = 0; i < extensionCount; i++) {
         if (SDL_strcmp(VK_KHR_SURFACE_EXTENSION_NAME, extensions[i].extensionName) == 0) {
-            hasSurfaceExtension = SDL_TRUE;
+            hasSurfaceExtension = true;
         } else if (SDL_strcmp(VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME, extensions[i].extensionName) == 0) {
-            hasWaylandSurfaceExtension = SDL_TRUE;
+            hasWaylandSurfaceExtension = true;
         }
     }
     SDL_free(extensions);
@@ -99,12 +99,12 @@ int Wayland_Vulkan_LoadLibrary(SDL_VideoDevice *_this, const char *path)
         SDL_SetError("Installed Vulkan doesn't implement the " VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME "extension");
         goto fail;
     }
-    return 0;
+    return true;
 
 fail:
     SDL_UnloadObject(_this->vulkan_config.loader_handle);
     _this->vulkan_config.loader_handle = NULL;
-    return -1;
+    return false;
 }
 
 void Wayland_Vulkan_UnloadLibrary(SDL_VideoDevice *_this)
@@ -128,7 +128,7 @@ char const* const* Wayland_Vulkan_GetInstanceExtensions(SDL_VideoDevice *_this, 
     return extensionsForWayland;
 }
 
-int Wayland_Vulkan_CreateSurface(SDL_VideoDevice *_this,
+bool Wayland_Vulkan_CreateSurface(SDL_VideoDevice *_this,
                                  SDL_Window *window,
                                  VkInstance instance,
                                  const struct VkAllocationCallbacks *allocator,
@@ -162,7 +162,7 @@ int Wayland_Vulkan_CreateSurface(SDL_VideoDevice *_this,
     if (result != VK_SUCCESS) {
         return SDL_SetError("vkCreateWaylandSurfaceKHR failed: %s", SDL_Vulkan_GetResultString(result));
     }
-    return 0;
+    return true;
 }
 
 void Wayland_Vulkan_DestroySurface(SDL_VideoDevice *_this,
@@ -175,7 +175,7 @@ void Wayland_Vulkan_DestroySurface(SDL_VideoDevice *_this,
     }
 }
 
-SDL_bool Wayland_Vulkan_GetPresentationSupport(SDL_VideoDevice *_this,
+bool Wayland_Vulkan_GetPresentationSupport(SDL_VideoDevice *_this,
                                                VkInstance instance,
                                                VkPhysicalDevice physicalDevice,
                                                Uint32 queueFamilyIndex)
@@ -188,14 +188,11 @@ SDL_bool Wayland_Vulkan_GetPresentationSupport(SDL_VideoDevice *_this,
             "vkGetPhysicalDeviceWaylandPresentationSupportKHR");
 
     if (!_this->vulkan_config.loader_handle) {
-        SDL_SetError("Vulkan is not loaded");
-        return SDL_FALSE;
+        return SDL_SetError("Vulkan is not loaded");
     }
 
     if (!vkGetPhysicalDeviceWaylandPresentationSupportKHR) {
-        SDL_SetError(VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME
-                     " extension is not enabled in the Vulkan instance.");
-        return SDL_FALSE;
+        return SDL_SetError(VK_KHR_WAYLAND_SURFACE_EXTENSION_NAME " extension is not enabled in the Vulkan instance.");
     }
 
     return vkGetPhysicalDeviceWaylandPresentationSupportKHR(physicalDevice,

@@ -25,26 +25,27 @@
 #include "../SDL_syscamera.h"
 #include "../SDL_camera_c.h"
 #include "../../video/SDL_pixels_c.h"
+#include "../../video/SDL_surface_c.h"
 
 #include <emscripten/emscripten.h>
 
 // just turn off clang-format for this whole file, this INDENT_OFF stuff on
 //  each EM_ASM section is ugly.
-/* *INDENT-OFF* */ /* clang-format off */
+/* *INDENT-OFF* */ // clang-format off
 
 EM_JS_DEPS(sdlcamera, "$dynCall");
 
-static int EMSCRIPTENCAMERA_WaitDevice(SDL_Camera *device)
+static bool EMSCRIPTENCAMERA_WaitDevice(SDL_Camera *device)
 {
     SDL_assert(!"This shouldn't be called");  // we aren't using SDL's internal thread.
-    return -1;
+    return false;
 }
 
-static int EMSCRIPTENCAMERA_AcquireFrame(SDL_Camera *device, SDL_Surface *frame, Uint64 *timestampNS)
+static SDL_CameraFrameResult EMSCRIPTENCAMERA_AcquireFrame(SDL_Camera *device, SDL_Surface *frame, Uint64 *timestampNS)
 {
     void *rgba = SDL_malloc(device->actual_spec.width * device->actual_spec.height * 4);
     if (!rgba) {
-        return -1;
+        return SDL_CAMERA_FRAME_ERROR;
     }
 
     *timestampNS = SDL_GetTicksNS();  // best we can do here.
@@ -67,13 +68,13 @@ static int EMSCRIPTENCAMERA_AcquireFrame(SDL_Camera *device, SDL_Surface *frame,
 
     if (!rc) {
         SDL_free(rgba);
-        return 0;  // something went wrong, maybe shutting down; just don't return a frame.
+        return SDL_CAMERA_FRAME_ERROR;  // something went wrong, maybe shutting down; just don't return a frame.
     }
 
     frame->pixels = rgba;
     frame->pitch = device->actual_spec.width * 4;
 
-    return 1;
+    return SDL_CAMERA_FRAME_READY;
 }
 
 static void EMSCRIPTENCAMERA_ReleaseFrame(SDL_Camera *device, SDL_Surface *frame)
@@ -90,7 +91,6 @@ static void EMSCRIPTENCAMERA_CloseDevice(SDL_Camera *device)
                 return;  // camera was closed and/or subsystem was shut down, we're already done.
             }
             SDL3.camera.stream.getTracks().forEach(track => track.stop());  // stop all recording.
-            _SDL_free(SDL3.camera.rgba);
             SDL3.camera = {};  // dump our references to everything.
         });
         SDL_free(device->hidden);
@@ -104,10 +104,14 @@ static void SDLEmscriptenCameraPermissionOutcome(SDL_Camera *device, int approve
     device->spec.height = device->actual_spec.height = h;
     device->spec.framerate_numerator = device->actual_spec.framerate_numerator = fps;
     device->spec.framerate_denominator = device->actual_spec.framerate_denominator = 1;
-    SDL_CameraPermissionOutcome(device, approved ? SDL_TRUE : SDL_FALSE);
+    if (device->acquire_surface) {
+        device->acquire_surface->w = w;
+        device->acquire_surface->h = h;
+    }
+    SDL_CameraPermissionOutcome(device, approved ? true : false);
 }
 
-static int EMSCRIPTENCAMERA_OpenDevice(SDL_Camera *device, const SDL_CameraSpec *spec)
+static bool EMSCRIPTENCAMERA_OpenDevice(SDL_Camera *device, const SDL_CameraSpec *spec)
 {
     MAIN_THREAD_EM_ASM({
         // Since we can't get actual specs until we make a move that prompts the user for
@@ -187,7 +191,6 @@ static int EMSCRIPTENCAMERA_OpenDevice(SDL_Camera *device, const SDL_CameraSpec 
                 SDL3.camera.video = video;
                 SDL3.camera.canvas = canvas;
                 SDL3.camera.ctx2d = ctx2d;
-                SDL3.camera.rgba = 0;
                 SDL3.camera.next_frame_time = performance.now();
 
                 video.play();
@@ -201,7 +204,7 @@ static int EMSCRIPTENCAMERA_OpenDevice(SDL_Camera *device, const SDL_CameraSpec 
             });
     }, device, spec->width, spec->height, spec->framerate_numerator, spec->framerate_denominator, SDLEmscriptenCameraPermissionOutcome, SDL_CameraThreadIterate);
 
-    return 0;  // the real work waits until the user approves a camera.
+    return true;  // the real work waits until the user approves a camera.
 }
 
 static void EMSCRIPTENCAMERA_FreeDeviceHandle(SDL_Camera *device)
@@ -232,7 +235,7 @@ static void EMSCRIPTENCAMERA_DetectDevices(void)
     }
 }
 
-static SDL_bool EMSCRIPTENCAMERA_Init(SDL_CameraDriverImpl *impl)
+static bool EMSCRIPTENCAMERA_Init(SDL_CameraDriverImpl *impl)
 {
     MAIN_THREAD_EM_ASM({
         if (typeof(Module['SDL3']) === 'undefined') {
@@ -250,16 +253,16 @@ static SDL_bool EMSCRIPTENCAMERA_Init(SDL_CameraDriverImpl *impl)
     impl->FreeDeviceHandle = EMSCRIPTENCAMERA_FreeDeviceHandle;
     impl->Deinitialize = EMSCRIPTENCAMERA_Deinitialize;
 
-    impl->ProvidesOwnCallbackThread = SDL_TRUE;
+    impl->ProvidesOwnCallbackThread = true;
 
-    return SDL_TRUE;
+    return true;
 }
 
 CameraBootStrap EMSCRIPTENCAMERA_bootstrap = {
-    "emscripten", "SDL Emscripten MediaStream camera driver", EMSCRIPTENCAMERA_Init, SDL_FALSE
+    "emscripten", "SDL Emscripten MediaStream camera driver", EMSCRIPTENCAMERA_Init, false
 };
 
-/* *INDENT-ON* */ /* clang-format on */
+/* *INDENT-ON* */ // clang-format on
 
 #endif // SDL_CAMERA_DRIVER_EMSCRIPTEN
 

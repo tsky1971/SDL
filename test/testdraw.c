@@ -14,7 +14,7 @@
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
-#include <SDL3/SDL_test_common.h>
+#include <SDL3/SDL_test.h>
 
 #ifdef SDL_PLATFORM_EMSCRIPTEN
 #include <emscripten/emscripten.h>
@@ -24,8 +24,8 @@
 
 static SDLTest_CommonState *state;
 static int num_objects;
-static SDL_bool cycle_color;
-static SDL_bool cycle_alpha;
+static bool cycle_color;
+static bool cycle_alpha;
 static int cycle_direction = 1;
 static int current_alpha = 255;
 static int current_color = 255;
@@ -217,10 +217,6 @@ static void loop(void)
 int main(int argc, char *argv[])
 {
     int i;
-
-    /* Enable standard application logging */
-    SDL_SetLogPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
-
     /* Initialize parameters */
     num_objects = NUM_OBJECTS;
 
@@ -229,6 +225,7 @@ int main(int argc, char *argv[])
     if (!state) {
         return 1;
     }
+
     for (i = 1; i < argc;) {
         int consumed;
 
@@ -261,10 +258,10 @@ int main(int argc, char *argv[])
                     }
                 }
             } else if (SDL_strcasecmp(argv[i], "--cyclecolor") == 0) {
-                cycle_color = SDL_TRUE;
+                cycle_color = true;
                 consumed = 1;
             } else if (SDL_strcasecmp(argv[i], "--cyclealpha") == 0) {
-                cycle_alpha = SDL_TRUE;
+                cycle_alpha = true;
                 consumed = 1;
             } else if (SDL_isdigit(*argv[i])) {
                 num_objects = SDL_atoi(argv[i]);
@@ -309,6 +306,7 @@ int main(int argc, char *argv[])
     }
 #endif
 
+    SDLTest_CleanupTextDrawing();
     SDLTest_CommonQuit(state);
 
     return 0;

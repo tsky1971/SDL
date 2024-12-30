@@ -45,7 +45,7 @@ static const char *s_defaultPaths[] = {
 #if defined( SDL_PLATFORM_APPLE )
 #include <dlfcn.h>
 
-/* Since libSDL is most likely a .dylib, need RTLD_DEFAULT not RTLD_SELF. */
+// Since libSDL is most likely a .dylib, need RTLD_DEFAULT not RTLD_SELF.
 #define DEFAULT_HANDLE RTLD_DEFAULT
 #endif
 
@@ -56,12 +56,12 @@ static const char *s_defaultPaths[] = {
 #define HEADLESS_SURFACE_EXTENSION_REQUIRED_TO_LOAD 0
 
 
-int OFFSCREEN_Vulkan_LoadLibrary(SDL_VideoDevice *_this, const char *path)
+bool OFFSCREEN_Vulkan_LoadLibrary(SDL_VideoDevice *_this, const char *path)
 {
     VkExtensionProperties *extensions = NULL;
     Uint32 extensionCount = 0;
-    SDL_bool hasSurfaceExtension = SDL_FALSE;
-    SDL_bool hasHeadlessSurfaceExtension = SDL_FALSE;
+    bool hasSurfaceExtension = false;
+    bool hasHeadlessSurfaceExtension = false;
     PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = NULL;
     Uint32 i;
     const char **paths;
@@ -72,14 +72,14 @@ int OFFSCREEN_Vulkan_LoadLibrary(SDL_VideoDevice *_this, const char *path)
         return SDL_SetError("Vulkan already loaded");
     }
 
-    /* Load the Vulkan loader library */
+    // Load the Vulkan loader library
     if (!path) {
-        path = SDL_getenv("SDL_VULKAN_LIBRARY");
+        path = SDL_GetHint(SDL_HINT_VULKAN_LIBRARY);
     }
 
 #if defined(SDL_PLATFORM_APPLE)
     if (!path) {
-        /* Handle the case where Vulkan Portability is linked statically. */
+        // Handle the case where Vulkan Portability is linked statically.
         vkGetInstanceProcAddr =
             (PFN_vkGetInstanceProcAddr)dlsym(DEFAULT_HANDLE,
                                              "vkGetInstanceProcAddr");
@@ -118,9 +118,9 @@ int OFFSCREEN_Vulkan_LoadLibrary(SDL_VideoDevice *_this, const char *path)
         }
     }
 
-    _this->vulkan_config.vkGetInstanceProcAddr = (void *)vkGetInstanceProcAddr;
+    _this->vulkan_config.vkGetInstanceProcAddr = (SDL_FunctionPointer)vkGetInstanceProcAddr;
     _this->vulkan_config.vkEnumerateInstanceExtensionProperties =
-        (void *)((PFN_vkGetInstanceProcAddr)_this->vulkan_config.vkGetInstanceProcAddr)(
+        (SDL_FunctionPointer)((PFN_vkGetInstanceProcAddr)_this->vulkan_config.vkGetInstanceProcAddr)(
             VK_NULL_HANDLE, "vkEnumerateInstanceExtensionProperties");
     if (!_this->vulkan_config.vkEnumerateInstanceExtensionProperties) {
         goto fail;
@@ -134,9 +134,9 @@ int OFFSCREEN_Vulkan_LoadLibrary(SDL_VideoDevice *_this, const char *path)
     }
     for (i = 0; i < extensionCount; i++) {
         if (SDL_strcmp(VK_KHR_SURFACE_EXTENSION_NAME, extensions[i].extensionName) == 0) {
-            hasSurfaceExtension = SDL_TRUE;
+            hasSurfaceExtension = true;
         } else if (SDL_strcmp(VK_EXT_HEADLESS_SURFACE_EXTENSION_NAME, extensions[i].extensionName) == 0) {
-            hasHeadlessSurfaceExtension = SDL_TRUE;
+            hasHeadlessSurfaceExtension = true;
         }
     }
     SDL_free(extensions);
@@ -149,16 +149,16 @@ int OFFSCREEN_Vulkan_LoadLibrary(SDL_VideoDevice *_this, const char *path)
         SDL_SetError("Installed Vulkan doesn't implement the " VK_EXT_HEADLESS_SURFACE_EXTENSION_NAME " extension");
         goto fail;
 #else
-        /*Let's at least leave a breadcrumb for people to find if they have issues*/
+        // Let's at least leave a breadcrumb for people to find if they have issues
         SDL_Log("Installed Vulkan doesn't implement the " VK_EXT_HEADLESS_SURFACE_EXTENSION_NAME " extension");
 #endif
     }
-    return 0;
+    return true;
 
 fail:
     SDL_UnloadObject(_this->vulkan_config.loader_handle);
     _this->vulkan_config.loader_handle = NULL;
-    return -1;
+    return false;
 }
 
 void OFFSCREEN_Vulkan_UnloadLibrary(SDL_VideoDevice *_this)
@@ -175,7 +175,7 @@ char const *const *OFFSCREEN_Vulkan_GetInstanceExtensions(SDL_VideoDevice *_this
 #if (HEADLESS_SURFACE_EXTENSION_REQUIRED_TO_LOAD == 0)
     VkExtensionProperties *enumerateExtensions = NULL;
     Uint32 enumerateExtensionCount = 0;
-    SDL_bool hasHeadlessSurfaceExtension = SDL_FALSE;
+    bool hasHeadlessSurfaceExtension = false;
     Uint32 i;
 #endif
 
@@ -194,15 +194,15 @@ char const *const *OFFSCREEN_Vulkan_GetInstanceExtensions(SDL_VideoDevice *_this
                     &enumerateExtensionCount);
                 for (i = 0; i < enumerateExtensionCount; i++) {
                     if (SDL_strcmp(VK_EXT_HEADLESS_SURFACE_EXTENSION_NAME, enumerateExtensions[i].extensionName) == 0) {
-                        hasHeadlessSurfaceExtension = SDL_TRUE;
+                        hasHeadlessSurfaceExtension = true;
                     }
                 }
                 SDL_free(enumerateExtensions);
             }
-            if ( hasHeadlessSurfaceExtension == SDL_TRUE ) {
+            if ( hasHeadlessSurfaceExtension == true ) {
                 *count = SDL_arraysize(returnExtensions);
             } else {
-                *count = SDL_arraysize(returnExtensions) - 1; /*assumes VK_EXT_HEADLESS_SURFACE_EXTENSION_NAME is last*/
+                *count = SDL_arraysize(returnExtensions) - 1; // assumes VK_EXT_HEADLESS_SURFACE_EXTENSION_NAME is last
             }
         }
 #       else
@@ -214,13 +214,13 @@ char const *const *OFFSCREEN_Vulkan_GetInstanceExtensions(SDL_VideoDevice *_this
     return returnExtensions;
 }
 
-int OFFSCREEN_Vulkan_CreateSurface(SDL_VideoDevice *_this,
+bool OFFSCREEN_Vulkan_CreateSurface(SDL_VideoDevice *_this,
                                    SDL_Window *window,
                                    VkInstance instance,
                                    const struct VkAllocationCallbacks *allocator,
                                    VkSurfaceKHR *surface)
 {
-    surface = NULL;
+    *surface = VK_NULL_HANDLE;
 
     if (!_this->vulkan_config.loader_handle) {
         return SDL_SetError("Vulkan is not loaded");
@@ -245,7 +245,7 @@ int OFFSCREEN_Vulkan_CreateSurface(SDL_VideoDevice *_this,
     if (result != VK_SUCCESS) {
         return SDL_SetError("vkCreateHeadlessSurfaceEXT failed: %s", SDL_Vulkan_GetResultString(result));
     }
-    return 0;
+    return true;
 }
 
 void OFFSCREEN_Vulkan_DestroySurface(SDL_VideoDevice *_this,

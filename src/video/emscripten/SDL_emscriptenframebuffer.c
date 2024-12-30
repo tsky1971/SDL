@@ -27,34 +27,34 @@
 
 #include <emscripten/threading.h>
 
-int Emscripten_CreateWindowFramebuffer(SDL_VideoDevice *_this, SDL_Window *window, SDL_PixelFormat *format, void **pixels, int *pitch)
+bool Emscripten_CreateWindowFramebuffer(SDL_VideoDevice *_this, SDL_Window *window, SDL_PixelFormat *format, void **pixels, int *pitch)
 {
     SDL_Surface *surface;
     const SDL_PixelFormat surface_format = SDL_PIXELFORMAT_XBGR8888;
     int w, h;
 
-    /* Free the old framebuffer surface */
+    // Free the old framebuffer surface
     SDL_WindowData *data = window->internal;
     surface = data->surface;
     SDL_DestroySurface(surface);
 
-    /* Create a new one */
+    // Create a new one
     SDL_GetWindowSizeInPixels(window, &w, &h);
 
     surface = SDL_CreateSurface(w, h, surface_format);
     if (!surface) {
-        return -1;
+        return false;
     }
 
-    /* Save the info and return! */
+    // Save the info and return!
     data->surface = surface;
     *format = surface_format;
     *pixels = surface->pixels;
     *pitch = surface->pitch;
-    return 0;
+    return true;
 }
 
-int Emscripten_UpdateWindowFramebuffer(SDL_VideoDevice *_this, SDL_Window *window, const SDL_Rect *rects, int numrects)
+bool Emscripten_UpdateWindowFramebuffer(SDL_VideoDevice *_this, SDL_Window *window, const SDL_Rect *rects, int numrects)
 {
     SDL_Surface *surface;
 
@@ -64,9 +64,9 @@ int Emscripten_UpdateWindowFramebuffer(SDL_VideoDevice *_this, SDL_Window *windo
         return SDL_SetError("Couldn't find framebuffer surface for window");
     }
 
-    /* Send the data to the display */
+    // Send the data to the display
 
-    /* *INDENT-OFF* */ /* clang-format off */
+    /* *INDENT-OFF* */ // clang-format off
     MAIN_THREAD_EM_ASM({
         var w = $0;
         var h = $1;
@@ -88,7 +88,7 @@ int Emscripten_UpdateWindowFramebuffer(SDL_VideoDevice *_this, SDL_Window *windo
             SDL3.imageCtx = SDL3.ctx;
         }
         var data = SDL3.image.data;
-        var src = pixels >> 2;
+        var src = pixels / 4;
         var dst = 0;
         var num;
 
@@ -140,14 +140,14 @@ int Emscripten_UpdateWindowFramebuffer(SDL_VideoDevice *_this, SDL_Window *windo
 
         SDL3.ctx.putImageData(SDL3.image, 0, 0);
     }, surface->w, surface->h, surface->pixels, data->canvas_id);
-    /* *INDENT-ON* */ /* clang-format on */
+    /* *INDENT-ON* */ // clang-format on
 
-    if (emscripten_has_asyncify() && SDL_GetHintBoolean(SDL_HINT_EMSCRIPTEN_ASYNCIFY, SDL_TRUE)) {
-        /* give back control to browser for screen refresh */
+    if (emscripten_has_asyncify() && SDL_GetHintBoolean(SDL_HINT_EMSCRIPTEN_ASYNCIFY, true)) {
+        // give back control to browser for screen refresh
         emscripten_sleep(0);
     }
 
-    return 0;
+    return true;
 }
 
 void Emscripten_DestroyWindowFramebuffer(SDL_VideoDevice *_this, SDL_Window *window)
@@ -158,4 +158,4 @@ void Emscripten_DestroyWindowFramebuffer(SDL_VideoDevice *_this, SDL_Window *win
     data->surface = NULL;
 }
 
-#endif /* SDL_VIDEO_DRIVER_EMSCRIPTEN */
+#endif // SDL_VIDEO_DRIVER_EMSCRIPTEN

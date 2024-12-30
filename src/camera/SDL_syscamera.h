@@ -23,11 +23,9 @@
 #ifndef SDL_syscamera_h_
 #define SDL_syscamera_h_
 
-#include "../SDL_hashtable.h"
+#include "../video/SDL_surface_c.h"
 
 #define DEBUG_CAMERA 0
-
-typedef struct SDL_Camera SDL_Camera;
 
 /* Backends should call this as devices are added to the system (such as
    a USB camera being plugged in), and should also be called for
@@ -39,10 +37,10 @@ extern SDL_Camera *SDL_AddCamera(const char *name, SDL_CameraPosition position, 
 extern void SDL_CameraDisconnected(SDL_Camera *device);
 
 // Find an SDL_Camera, selected by a callback. NULL if not found. DOES NOT LOCK THE DEVICE.
-extern SDL_Camera *SDL_FindPhysicalCameraByCallback(SDL_bool (*callback)(SDL_Camera *device, void *userdata), void *userdata);
+extern SDL_Camera *SDL_FindPhysicalCameraByCallback(bool (*callback)(SDL_Camera *device, void *userdata), void *userdata);
 
 // Backends should call this when the user has approved/denied access to a camera.
-extern void SDL_CameraPermissionOutcome(SDL_Camera *device, SDL_bool approved);
+extern void SDL_CameraPermissionOutcome(SDL_Camera *device, bool approved);
 
 // Backends can call this to get a standardized name for a thread to power a specific camera device.
 extern char *SDL_GetCameraThreadName(SDL_Camera *device, char *buf, size_t buflen);
@@ -53,7 +51,7 @@ extern void UnrefPhysicalCamera(SDL_Camera *device);
 
 // These functions are the heart of the camera threads. Backends can call them directly if they aren't using the SDL-provided thread.
 extern void SDL_CameraThreadSetup(SDL_Camera *device);
-extern SDL_bool SDL_CameraThreadIterate(SDL_Camera *device);
+extern bool SDL_CameraThreadIterate(SDL_Camera *device);
 extern void SDL_CameraThreadShutdown(SDL_Camera *device);
 
 // common utility functionality to gather up camera specs. Not required!
@@ -64,7 +62,14 @@ typedef struct CameraFormatAddData
     int allocated_specs;
 } CameraFormatAddData;
 
-int SDL_AddCameraFormat(CameraFormatAddData *data, SDL_PixelFormat format, SDL_Colorspace colorspace, int w, int h, int framerate_numerator, int framerate_denominator);
+bool SDL_AddCameraFormat(CameraFormatAddData *data, SDL_PixelFormat format, SDL_Colorspace colorspace, int w, int h, int framerate_numerator, int framerate_denominator);
+
+typedef enum SDL_CameraFrameResult
+{
+    SDL_CAMERA_FRAME_ERROR,
+    SDL_CAMERA_FRAME_SKIP,
+    SDL_CAMERA_FRAME_READY
+} SDL_CameraFrameResult;
 
 typedef struct SurfaceList
 {
@@ -89,8 +94,8 @@ struct SDL_Camera
     SDL_AtomicInt refcount;
 
     // These are, initially, set from camera_driver, but we might swap them out with Zombie versions on disconnect/failure.
-    int (*WaitDevice)(SDL_Camera *device);
-    int (*AcquireFrame)(SDL_Camera *device, SDL_Surface *frame, Uint64 *timestampNS);
+    bool (*WaitDevice)(SDL_Camera *device);
+    SDL_CameraFrameResult (*AcquireFrame)(SDL_Camera *device, SDL_Surface *frame, Uint64 *timestampNS);
     void (*ReleaseFrame)(SDL_Camera *device, SDL_Surface *frame);
 
     // All supported formats/dimensions for this device.
@@ -138,8 +143,8 @@ struct SDL_Camera
     // non-zero if acquire_surface needs to be scaled for final output.
     int needs_scaling;  // -1: downscale, 0: no scaling, 1: upscale
 
-    // SDL_TRUE if acquire_surface needs to be converted for final output.
-    SDL_bool needs_conversion;
+    // true if acquire_surface needs to be converted for final output.
+    bool needs_conversion;
 
     // Current state flags
     SDL_AtomicInt shutdown;
@@ -161,15 +166,15 @@ struct SDL_Camera
 typedef struct SDL_CameraDriverImpl
 {
     void (*DetectDevices)(void);
-    int (*OpenDevice)(SDL_Camera *device, const SDL_CameraSpec *spec);
+    bool (*OpenDevice)(SDL_Camera *device, const SDL_CameraSpec *spec);
     void (*CloseDevice)(SDL_Camera *device);
-    int (*WaitDevice)(SDL_Camera *device);
-    int (*AcquireFrame)(SDL_Camera *device, SDL_Surface *frame, Uint64 *timestampNS); // set frame->pixels, frame->pitch, and *timestampNS!
+    bool (*WaitDevice)(SDL_Camera *device);
+    SDL_CameraFrameResult (*AcquireFrame)(SDL_Camera *device, SDL_Surface *frame, Uint64 *timestampNS); // set frame->pixels, frame->pitch, and *timestampNS!
     void (*ReleaseFrame)(SDL_Camera *device, SDL_Surface *frame); // Reclaim frame->pixels and frame->pitch!
     void (*FreeDeviceHandle)(SDL_Camera *device); // SDL is done with this device; free the handle from SDL_AddCamera()
     void (*Deinitialize)(void);
 
-    SDL_bool ProvidesOwnCallbackThread;
+    bool ProvidesOwnCallbackThread;
 } SDL_CameraDriverImpl;
 
 typedef struct SDL_PendingCameraEvent
@@ -198,8 +203,8 @@ typedef struct CameraBootStrap
 {
     const char *name;
     const char *desc;
-    SDL_bool (*init)(SDL_CameraDriverImpl *impl);
-    SDL_bool demand_only; // if SDL_TRUE: request explicitly, or it won't be available.
+    bool (*init)(SDL_CameraDriverImpl *impl);
+    bool demand_only; // if true: request explicitly, or it won't be available.
 } CameraBootStrap;
 
 // Not all of these are available in a given build. Use #ifdefs, etc.
@@ -210,5 +215,6 @@ extern CameraBootStrap COREMEDIA_bootstrap;
 extern CameraBootStrap ANDROIDCAMERA_bootstrap;
 extern CameraBootStrap EMSCRIPTENCAMERA_bootstrap;
 extern CameraBootStrap MEDIAFOUNDATION_bootstrap;
+extern CameraBootStrap VITACAMERA_bootstrap;
 
 #endif // SDL_syscamera_h_

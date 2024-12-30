@@ -68,15 +68,12 @@ extern "C" {
  * The returned path is guaranteed to end with a path separator ('\\' on
  * Windows, '/' on most other platforms).
  *
- * This returns temporary memory which will be automatically freed later, and
- * can be claimed with SDL_ClaimTemporaryMemory().
- *
  * \returns an absolute path in UTF-8 encoding to the application data
  *          directory. NULL will be returned on error or when the platform
  *          doesn't implement this functionality, call SDL_GetError() for more
  *          information.
  *
- * \since This function is available since SDL 3.0.0.
+ * \since This function is available since SDL 3.1.3.
  *
  * \sa SDL_GetPrefPath
  */
@@ -124,20 +121,18 @@ extern SDL_DECLSPEC const char * SDLCALL SDL_GetBasePath(void);
  * The returned path is guaranteed to end with a path separator ('\\' on
  * Windows, '/' on most other platforms).
  *
- * This returns temporary memory which will be automatically freed later, and
- * can be claimed with SDL_ClaimTemporaryMemory().
- *
  * \param org the name of your organization.
  * \param app the name of your application.
  * \returns a UTF-8 string of the user directory in platform-dependent
  *          notation. NULL if there's a problem (creating directory failed,
- *          etc.).
+ *          etc.). This should be freed with SDL_free() when it is no longer
+ *          needed.
  *
- * \since This function is available since SDL 3.0.0.
+ * \since This function is available since SDL 3.1.3.
  *
  * \sa SDL_GetBasePath
  */
-extern SDL_DECLSPEC const char * SDLCALL SDL_GetPrefPath(const char *org, const char *app);
+extern SDL_DECLSPEC char * SDLCALL SDL_GetPrefPath(const char *org, const char *app);
 
 /**
  * The type of the OS-provided default folder for a specific purpose.
@@ -148,66 +143,40 @@ extern SDL_DECLSPEC const char * SDLCALL SDL_GetPrefPath(const char *org, const 
  *
  * The folders supported per platform are:
  *
- * |             | Windows | WinRT/UWP |macOS/iOS | tvOS | Unix (XDG) | Haiku | Emscripten |
- * | ----------- | ------- | --------- |--------- | ---- | ---------- | ----- | ---------- |
- * | HOME        | X       | X         | X        |      | X          | X     | X          |
- * | DESKTOP     | X       | X         | X        |      | X          | X     |            |
- * | DOCUMENTS   | X       | X         | X        |      | X          |       |            |
- * | DOWNLOADS   | Vista+  | X         | X        |      | X          |       |            |
- * | MUSIC       | X       | X         | X        |      | X          |       |            |
- * | PICTURES    | X       | X         | X        |      | X          |       |            |
- * | PUBLICSHARE |         |           | X        |      | X          |       |            |
- * | SAVEDGAMES  | Vista+  |           |          |      |            |       |            |
- * | SCREENSHOTS | Vista+  | X         |          |      |            |       |            |
- * | TEMPLATES   | X       | X         | X        |      | X          |       |            |
- * | VIDEOS      | X       | X         | X*       |      | X          |       |            |
+ * |             | Windows | macOS/iOS | tvOS | Unix (XDG) | Haiku | Emscripten |
+ * | ----------- | ------- | --------- | ---- | ---------- | ----- | ---------- |
+ * | HOME        | X       | X         |      | X          | X     | X          |
+ * | DESKTOP     | X       | X         |      | X          | X     |            |
+ * | DOCUMENTS   | X       | X         |      | X          |       |            |
+ * | DOWNLOADS   | Vista+  | X         |      | X          |       |            |
+ * | MUSIC       | X       | X         |      | X          |       |            |
+ * | PICTURES    | X       | X         |      | X          |       |            |
+ * | PUBLICSHARE |         | X         |      | X          |       |            |
+ * | SAVEDGAMES  | Vista+  |           |      |            |       |            |
+ * | SCREENSHOTS | Vista+  |           |      |            |       |            |
+ * | TEMPLATES   | X       | X         |      | X          |       |            |
+ * | VIDEOS      | X       | X*        |      | X          |       |            |
  *
  * Note that on macOS/iOS, the Videos folder is called "Movies".
  *
- * \since This enum is available since SDL 3.0.0.
+ * \since This enum is available since SDL 3.1.3.
  *
  * \sa SDL_GetUserFolder
  */
 typedef enum SDL_Folder
 {
-    /** The folder which contains all of the current user's data, preferences,
-      and documents. It usually contains most of the other folders. If a
-      requested folder does not exist, the home folder can be considered a safe
-      fallback to store a user's documents. */
-    SDL_FOLDER_HOME,
-    /** The folder of files that are displayed on the desktop. Note that the
-      existence of a desktop folder does not guarantee that the system does
-      show icons on its desktop; certain GNU/Linux distros with a graphical
-      environment may not have desktop icons. */
-    SDL_FOLDER_DESKTOP,
-    /** User document files, possibly application-specific. This is a good
-      place to save a user's projects. */
-    SDL_FOLDER_DOCUMENTS,
-    /** Standard folder for user files downloaded from the internet. */
-    SDL_FOLDER_DOWNLOADS,
-    /** Music files that can be played using a standard music player (mp3,
-      ogg...). */
-    SDL_FOLDER_MUSIC,
-    /** Image files that can be displayed using a standard viewer (png,
-      jpg...). */
-    SDL_FOLDER_PICTURES,
-    /** Files that are meant to be shared with other users on the same
-      computer. */
-    SDL_FOLDER_PUBLICSHARE,
-    /** Save files for games. */
-    SDL_FOLDER_SAVEDGAMES,
-    /** Application screenshots. */
-    SDL_FOLDER_SCREENSHOTS,
-    /** Template files to be used when the user requests the desktop environment
-      to create a new file in a certain folder, such as "New Text File.txt".
-      Any file in the Templates folder can be used as a starting point for a
-      new file. */
-    SDL_FOLDER_TEMPLATES,
-    /** Video files that can be played using a standard video player (mp4,
-      webm...). */
-    SDL_FOLDER_VIDEOS,
-    /** total number of types in this enum, not a folder type by itself. */
-    SDL_FOLDER_TOTAL
+    SDL_FOLDER_HOME,        /**< The folder which contains all of the current user's data, preferences, and documents. It usually contains most of the other folders. If a requested folder does not exist, the home folder can be considered a safe fallback to store a user's documents. */
+    SDL_FOLDER_DESKTOP,     /**< The folder of files that are displayed on the desktop. Note that the existence of a desktop folder does not guarantee that the system does show icons on its desktop; certain GNU/Linux distros with a graphical environment may not have desktop icons. */
+    SDL_FOLDER_DOCUMENTS,   /**< User document files, possibly application-specific. This is a good place to save a user's projects. */
+    SDL_FOLDER_DOWNLOADS,   /**< Standard folder for user files downloaded from the internet. */
+    SDL_FOLDER_MUSIC,       /**< Music files that can be played using a standard music player (mp3, ogg...). */
+    SDL_FOLDER_PICTURES,    /**< Image files that can be displayed using a standard viewer (png, jpg...). */
+    SDL_FOLDER_PUBLICSHARE, /**< Files that are meant to be shared with other users on the same computer. */
+    SDL_FOLDER_SAVEDGAMES,  /**< Save files for games. */
+    SDL_FOLDER_SCREENSHOTS, /**< Application screenshots. */
+    SDL_FOLDER_TEMPLATES,   /**< Template files to be used when the user requests the desktop environment to create a new file in a certain folder, such as "New Text File.txt".  Any file in the Templates folder can be used as a starting point for a new file. */
+    SDL_FOLDER_VIDEOS,      /**< Video files that can be played using a standard video player (mp4, webm...). */
+    SDL_FOLDER_COUNT        /**< Total number of types in this enum, not a folder type by itself. */
 } SDL_Folder;
 
 /**
@@ -225,22 +194,30 @@ typedef enum SDL_Folder
  * The returned path is guaranteed to end with a path separator ('\\' on
  * Windows, '/' on most other platforms).
  *
- * This returns temporary memory which will be automatically freed later, and
- * can be claimed with SDL_ClaimTemporaryMemory().
- *
  * If NULL is returned, the error may be obtained with SDL_GetError().
  *
  * \param folder the type of folder to find.
  * \returns either a null-terminated C string containing the full path to the
  *          folder, or NULL if an error happened.
  *
- * \since This function is available since SDL 3.0.0.
+ * \since This function is available since SDL 3.1.3.
  */
 extern SDL_DECLSPEC const char * SDLCALL SDL_GetUserFolder(SDL_Folder folder);
 
 
 /* Abstract filesystem interface */
 
+/**
+ * Types of filesystem entries.
+ *
+ * Note that there may be other sorts of items on a filesystem: devices,
+ * symlinks, named pipes, etc. They are currently reported as
+ * SDL_PATHTYPE_OTHER.
+ *
+ * \since This enum is available since SDL 3.1.3.
+ *
+ * \sa SDL_PathInfo
+ */
 typedef enum SDL_PathType
 {
     SDL_PATHTYPE_NONE,      /**< path does not exist */
@@ -249,19 +226,27 @@ typedef enum SDL_PathType
     SDL_PATHTYPE_OTHER      /**< something completely different like a device node (not a symlink, those are always followed) */
 } SDL_PathType;
 
+/**
+ * Information about a path on the filesystem.
+ *
+ * \since This datatype is available since SDL 3.1.3.
+ *
+ * \sa SDL_GetPathInfo
+ * \sa SDL_GetStoragePathInfo
+ */
 typedef struct SDL_PathInfo
 {
-    SDL_PathType type;          /* the path type */
-    Uint64 size;                /* the file size in bytes */
-    SDL_Time create_time;   /* the time when the path was created */
-    SDL_Time modify_time;   /* the last time the path was modified */
-    SDL_Time access_time;   /* the last time the path was read */
+    SDL_PathType type;      /**< the path type */
+    Uint64 size;            /**< the file size in bytes */
+    SDL_Time create_time;   /**< the time when the path was created */
+    SDL_Time modify_time;   /**< the last time the path was modified */
+    SDL_Time access_time;   /**< the last time the path was read */
 } SDL_PathInfo;
 
 /**
- * Flags for path matching
+ * Flags for path matching.
  *
- * \since This datatype is available since SDL 3.0.0.
+ * \since This datatype is available since SDL 3.1.3.
  *
  * \sa SDL_GlobDirectory
  * \sa SDL_GlobStorageDirectory
@@ -271,61 +256,157 @@ typedef Uint32 SDL_GlobFlags;
 #define SDL_GLOB_CASEINSENSITIVE (1u << 0)
 
 /**
- * Create a directory.
+ * Create a directory, and any missing parent directories.
+ *
+ * This reports success if `path` already exists as a directory.
+ *
+ * If parent directories are missing, it will also create them. Note that if
+ * this fails, it will not remove any parent directories it already made.
  *
  * \param path the path of the directory to create.
- * \returns 0 on success or a negative error code on failure; call
- *          SDL_GetError() for more information.
+ * \returns true on success or false on failure; call SDL_GetError() for more
+ *          information.
  *
- * \since This function is available since SDL 3.0.0.
+ * \since This function is available since SDL 3.1.3.
  */
-extern SDL_DECLSPEC int SDLCALL SDL_CreateDirectory(const char *path);
+extern SDL_DECLSPEC bool SDLCALL SDL_CreateDirectory(const char *path);
 
-/* Callback for directory enumeration. Return 1 to keep enumerating,
-   0 to stop enumerating (no error), -1 to stop enumerating and
-   report an error. `dirname` is the directory being enumerated,
-   `fname` is the enumerated entry. */
-typedef int (SDLCALL *SDL_EnumerateDirectoryCallback)(void *userdata, const char *dirname, const char *fname);
+/**
+ * Possible results from an enumeration callback.
+ *
+ * \since This enum is available since SDL 3.1.3.
+ *
+ * \sa SDL_EnumerateDirectoryCallback
+ */
+typedef enum SDL_EnumerationResult
+{
+    SDL_ENUM_CONTINUE,   /**< Value that requests that enumeration continue. */
+    SDL_ENUM_SUCCESS,    /**< Value that requests that enumeration stop, successfully. */
+    SDL_ENUM_FAILURE     /**< Value that requests that enumeration stop, as a failure. */
+} SDL_EnumerationResult;
+
+/**
+ * Callback for directory enumeration.
+ *
+ * Enumeration of directory entries will continue until either all entries
+ * have been provided to the callback, or the callback has requested a stop
+ * through its return value.
+ *
+ * Returning SDL_ENUM_CONTINUE will let enumeration proceed, calling the
+ * callback with further entries. SDL_ENUM_SUCCESS and SDL_ENUM_FAILURE will
+ * terminate the enumeration early, and dictate the return value of the
+ * enumeration function itself.
+ *
+ * \param userdata an app-controlled pointer that is passed to the callback.
+ * \param dirname the directory that is being enumerated.
+ * \param fname the next entry in the enumeration.
+ * \returns how the enumeration should proceed.
+ *
+ * \since This datatype is available since SDL 3.1.3.
+ *
+ * \sa SDL_EnumerateDirectory
+ */
+typedef SDL_EnumerationResult (SDLCALL *SDL_EnumerateDirectoryCallback)(void *userdata, const char *dirname, const char *fname);
 
 /**
  * Enumerate a directory through a callback function.
  *
  * This function provides every directory entry through an app-provided
  * callback, called once for each directory entry, until all results have been
- * provided or the callback returns <= 0.
+ * provided or the callback returns either SDL_ENUM_SUCCESS or
+ * SDL_ENUM_FAILURE.
+ *
+ * This will return false if there was a system problem in general, or if a
+ * callback returns SDL_ENUM_FAILURE. A successful return means a callback
+ * returned SDL_ENUM_SUCCESS to halt enumeration, or all directory entries
+ * were enumerated.
  *
  * \param path the path of the directory to enumerate.
  * \param callback a function that is called for each entry in the directory.
  * \param userdata a pointer that is passed to `callback`.
- * \returns 0 on success or a negative error code on failure; call
- *          SDL_GetError() for more information.
+ * \returns true on success or false on failure; call SDL_GetError() for more
+ *          information.
  *
- * \since This function is available since SDL 3.0.0.
+ * \since This function is available since SDL 3.1.3.
  */
-extern SDL_DECLSPEC int SDLCALL SDL_EnumerateDirectory(const char *path, SDL_EnumerateDirectoryCallback callback, void *userdata);
+extern SDL_DECLSPEC bool SDLCALL SDL_EnumerateDirectory(const char *path, SDL_EnumerateDirectoryCallback callback, void *userdata);
 
 /**
  * Remove a file or an empty directory.
  *
- * \param path the path of the directory to enumerate.
- * \returns 0 on success or a negative error code on failure; call
- *          SDL_GetError() for more information.
+ * Directories that are not empty will fail; this function will not recursely
+ * delete directory trees.
  *
- * \since This function is available since SDL 3.0.0.
+ * \param path the path to remove from the filesystem.
+ * \returns true on success or false on failure; call SDL_GetError() for more
+ *          information.
+ *
+ * \since This function is available since SDL 3.1.3.
  */
-extern SDL_DECLSPEC int SDLCALL SDL_RemovePath(const char *path);
+extern SDL_DECLSPEC bool SDLCALL SDL_RemovePath(const char *path);
 
 /**
  * Rename a file or directory.
  *
+ * If the file at `newpath` already exists, it will replaced.
+ *
+ * Note that this will not copy files across filesystems/drives/volumes, as
+ * that is a much more complicated (and possibly time-consuming) operation.
+ *
+ * Which is to say, if this function fails, SDL_CopyFile() to a temporary file
+ * in the same directory as `newpath`, then SDL_RenamePath() from the
+ * temporary file to `newpath` and SDL_RemovePath() on `oldpath` might work
+ * for files. Renaming a non-empty directory across filesystems is
+ * dramatically more complex, however.
+ *
  * \param oldpath the old path.
  * \param newpath the new path.
- * \returns 0 on success or a negative error code on failure; call
- *          SDL_GetError() for more information.
+ * \returns true on success or false on failure; call SDL_GetError() for more
+ *          information.
  *
- * \since This function is available since SDL 3.0.0.
+ * \since This function is available since SDL 3.1.3.
  */
-extern SDL_DECLSPEC int SDLCALL SDL_RenamePath(const char *oldpath, const char *newpath);
+extern SDL_DECLSPEC bool SDLCALL SDL_RenamePath(const char *oldpath, const char *newpath);
+
+/**
+ * Copy a file.
+ *
+ * If the file at `newpath` already exists, it will be overwritten with the
+ * contents of the file at `oldpath`.
+ *
+ * This function will block until the copy is complete, which might be a
+ * significant time for large files on slow disks. On some platforms, the copy
+ * can be handed off to the OS itself, but on others SDL might just open both
+ * paths, and read from one and write to the other.
+ *
+ * Note that this is not an atomic operation! If something tries to read from
+ * `newpath` while the copy is in progress, it will see an incomplete copy of
+ * the data, and if the calling thread terminates (or the power goes out)
+ * during the copy, `newpath`'s previous contents will be gone, replaced with
+ * an incomplete copy of the data. To avoid this risk, it is recommended that
+ * the app copy to a temporary file in the same directory as `newpath`, and if
+ * the copy is successful, use SDL_RenamePath() to replace `newpath` with the
+ * temporary file. This will ensure that reads of `newpath` will either see a
+ * complete copy of the data, or it will see the pre-copy state of `newpath`.
+ *
+ * This function attempts to synchronize the newly-copied data to disk before
+ * returning, if the platform allows it, so that the renaming trick will not
+ * have a problem in a system crash or power failure, where the file could be
+ * renamed but the contents never made it from the system file cache to the
+ * physical disk.
+ *
+ * If the copy fails for any reason, the state of `newpath` is undefined. It
+ * might be half a copy, it might be the untouched data of what was already
+ * there, or it might be a zero-byte file, etc.
+ *
+ * \param oldpath the old path.
+ * \param newpath the new path.
+ * \returns true on success or false on failure; call SDL_GetError() for more
+ *          information.
+ *
+ * \since This function is available since SDL 3.1.3.
+ */
+extern SDL_DECLSPEC bool SDLCALL SDL_CopyFile(const char *oldpath, const char *newpath);
 
 /**
  * Get information about a filesystem path.
@@ -333,12 +414,12 @@ extern SDL_DECLSPEC int SDLCALL SDL_RenamePath(const char *oldpath, const char *
  * \param path the path to query.
  * \param info a pointer filled in with information about the path, or NULL to
  *             check for the existence of a file.
- * \returns 0 on success or a negative error code if the file doesn't exist,
- *          or another failure; call SDL_GetError() for more information.
+ * \returns true on success or false if the file doesn't exist, or another
+ *          failure; call SDL_GetError() for more information.
  *
- * \since This function is available since SDL 3.0.0.
+ * \since This function is available since SDL 3.1.3.
  */
-extern SDL_DECLSPEC int SDLCALL SDL_GetPathInfo(const char *path, SDL_PathInfo *info);
+extern SDL_DECLSPEC bool SDLCALL SDL_GetPathInfo(const char *path, SDL_PathInfo *info);
 
 /**
  * Enumerate a directory tree, filtered by pattern, and return a list.
@@ -357,9 +438,6 @@ extern SDL_DECLSPEC int SDLCALL SDL_GetPathInfo(const char *path, SDL_PathInfo *
  * convenience, but if `count` is non-NULL, on return it will contain the
  * number of items in the array, not counting the NULL terminator.
  *
- * This returns temporary memory which will be automatically freed later, and
- * can be claimed with SDL_ClaimTemporaryMemory().
- *
  * \param path the path of the directory to enumerate.
  * \param pattern the pattern that files in the directory must match. Can be
  *                NULL.
@@ -367,13 +445,32 @@ extern SDL_DECLSPEC int SDLCALL SDL_GetPathInfo(const char *path, SDL_PathInfo *
  * \param count on return, will be set to the number of items in the returned
  *              array. Can be NULL.
  * \returns an array of strings on success or NULL on failure; call
- *          SDL_GetError() for more information.
+ *          SDL_GetError() for more information. This is a single allocation
+ *          that should be freed with SDL_free() when it is no longer needed.
  *
  * \threadsafety It is safe to call this function from any thread.
  *
- * \since This function is available since SDL 3.0.0.
+ * \since This function is available since SDL 3.1.3.
  */
-extern SDL_DECLSPEC const char * const * SDLCALL SDL_GlobDirectory(const char *path, const char *pattern, SDL_GlobFlags flags, int *count);
+extern SDL_DECLSPEC char ** SDLCALL SDL_GlobDirectory(const char *path, const char *pattern, SDL_GlobFlags flags, int *count);
+
+/**
+ * Get what the system believes is the "current working directory."
+ *
+ * For systems without a concept of a current working directory, this will
+ * still attempt to provide something reasonable.
+ *
+ * SDL does not provide a means to _change_ the current working directory; for
+ * platforms without this concept, this would cause surprises with file access
+ * outside of SDL.
+ *
+ * \returns a UTF-8 string of the current working directory in
+ *          platform-dependent notation. NULL if there's a problem. This
+ *          should be freed with SDL_free() when it is no longer needed.
+ *
+ * \since This function is available since SDL 3.2.0.
+ */
+extern SDL_DECLSPEC char * SDLCALL SDL_GetCurrentDirectory(void);
 
 /* Ends C function definitions when using C++ */
 #ifdef __cplusplus

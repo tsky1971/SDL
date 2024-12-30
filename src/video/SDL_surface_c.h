@@ -23,31 +23,52 @@
 #ifndef SDL_surface_c_h_
 #define SDL_surface_c_h_
 
-/* Useful functions and variables from SDL_surface.c */
+// Useful functions and variables from SDL_surface.c
 
-#include "../SDL_list.h"
+#include "SDL_blit.h"
 
-/* Surface internal flags */
+// Surface internal flags
 typedef Uint32 SDL_SurfaceDataFlags;
 
 #define SDL_INTERNAL_SURFACE_DONTFREE   0x00000001u /**< Surface is referenced internally */
 #define SDL_INTERNAL_SURFACE_STACK      0x00000002u /**< Surface is allocated on the stack */
 #define SDL_INTERNAL_SURFACE_RLEACCEL   0x00000004u /**< Surface is RLE encoded */
 
-/* Surface internal data definition */
-struct SDL_SurfaceData
+// Surface internal data definition
+struct SDL_Surface
 {
+    // Public API definition
+    SDL_SurfaceFlags flags;     /**< The flags of the surface, read-only */
+    SDL_PixelFormat format;     /**< The format of the surface, read-only */
+    int w;                      /**< The width of the surface, read-only. */
+    int h;                      /**< The height of the surface, read-only. */
+    int pitch;                  /**< The distance in bytes between rows of pixels, read-only */
+    void *pixels;               /**< A pointer to the pixels of the surface, the pixels are writeable if non-NULL */
+
+    int refcount;               /**< Application reference count, used when freeing surface */
+
+    void *reserved;             /**< Reserved for internal use */
+
+    // Private API definition
+
     /** flags for this surface */
-    SDL_SurfaceDataFlags flags;
+    SDL_SurfaceDataFlags internal_flags;
 
     /** properties for this surface */
     SDL_PropertiesID props;
 
     /** detailed format for this surface */
-    const SDL_PixelFormatDetails *format;
+    const SDL_PixelFormatDetails *fmt;
+
+    /** Pixel colorspace */
+    SDL_Colorspace colorspace;
 
     /** palette for indexed surfaces */
     SDL_Palette *palette;
+
+    /** Alternate representation of images */
+    int num_images;
+    SDL_Surface **images;
 
     /** information needed for surfaces requiring locks */
     int locked;
@@ -57,24 +78,16 @@ struct SDL_SurfaceData
 
     /** info for fast blit mapping to other surfaces */
     SDL_BlitMap map;
-
-    /** list of BlitMap that hold a reference to this surface */
-    SDL_ListNode *list_blitmap;
 };
 
-typedef struct SDL_InternalSurface
-{
-    SDL_Surface surface;
-    SDL_SurfaceData internal;
-
-} SDL_InternalSurface;
-
-/* Surface functions */
-extern SDL_bool SDL_SurfaceValid(SDL_Surface *surface);
+// Surface functions
+extern bool SDL_SurfaceValid(SDL_Surface *surface);
 extern void SDL_UpdateSurfaceLockFlag(SDL_Surface *surface);
 extern float SDL_GetDefaultSDRWhitePoint(SDL_Colorspace colorspace);
 extern float SDL_GetSurfaceSDRWhitePoint(SDL_Surface *surface, SDL_Colorspace colorspace);
 extern float SDL_GetDefaultHDRHeadroom(SDL_Colorspace colorspace);
 extern float SDL_GetSurfaceHDRHeadroom(SDL_Surface *surface, SDL_Colorspace colorspace);
+extern SDL_Surface *SDL_GetSurfaceImage(SDL_Surface *surface, float display_scale);
+extern bool SDL_SoftStretch(SDL_Surface *src, const SDL_Rect *srcrect, SDL_Surface *dst, const SDL_Rect *dstrect, SDL_ScaleMode scaleMode);
 
-#endif /* SDL_surface_c_h_ */
+#endif // SDL_surface_c_h_

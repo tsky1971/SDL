@@ -28,12 +28,12 @@
 
 #include "SDL_offscreenwindow.h"
 
-int OFFSCREEN_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_PropertiesID create_props)
+bool OFFSCREEN_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_PropertiesID create_props)
 {
     SDL_WindowData *offscreen_window = (SDL_WindowData *)SDL_calloc(1, sizeof(SDL_WindowData));
 
     if (!offscreen_window) {
-        return -1;
+        return false;
     }
 
     window->internal = offscreen_window;
@@ -64,9 +64,9 @@ int OFFSCREEN_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_Prope
     } else {
         offscreen_window->egl_surface = EGL_NO_SURFACE;
     }
-#endif /* SDL_VIDEO_OPENGL_EGL */
+#endif // SDL_VIDEO_OPENGL_EGL
 
-    return 0;
+    return true;
 }
 
 void OFFSCREEN_DestroyWindow(SDL_VideoDevice *_this, SDL_Window *window)
@@ -85,6 +85,6 @@ void OFFSCREEN_DestroyWindow(SDL_VideoDevice *_this, SDL_Window *window)
 
 void OFFSCREEN_SetWindowSize(SDL_VideoDevice *_this, SDL_Window *window)
 {
-    SDL_SendWindowEvent(window, SDL_EVENT_WINDOW_RESIZED, window->floating.w, window->floating.h);
+    SDL_SendWindowEvent(window, SDL_EVENT_WINDOW_RESIZED, window->pending.w, window->pending.h);
 }
-#endif /* SDL_VIDEO_DRIVER_OFFSCREEN */
+#endif // SDL_VIDEO_DRIVER_OFFSCREEN

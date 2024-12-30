@@ -42,7 +42,7 @@ static int fillerup(void)
     return SDL_APP_CONTINUE;
 }
 
-int SDL_AppInit(void **appstate, int argc, char *argv[])
+SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
 {
     int i;
     char *filename = NULL;
@@ -55,9 +55,6 @@ int SDL_AppInit(void **appstate, int argc, char *argv[])
     if (!state) {
         return SDL_APP_SUCCESS;
     }
-
-    /* Enable standard application logging */
-    SDL_SetLogPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
 
     /* Parse commandline */
     for (i = 1; i < argc;) {
@@ -80,7 +77,7 @@ int SDL_AppInit(void **appstate, int argc, char *argv[])
     }
 
     /* Load the SDL library */
-    if (SDL_Init(SDL_INIT_AUDIO | SDL_INIT_EVENTS) < 0) {
+    if (!SDL_Init(SDL_INIT_AUDIO | SDL_INIT_EVENTS)) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't initialize SDL: %s\n", SDL_GetError());
         return SDL_APP_FAILURE;
     }
@@ -93,7 +90,7 @@ int SDL_AppInit(void **appstate, int argc, char *argv[])
     }
 
     /* Load the wave file into memory */
-    if (SDL_LoadWAV(filename, &wave.spec, &wave.sound, &wave.soundlen) == -1) {
+    if (!SDL_LoadWAV(filename, &wave.spec, &wave.sound, &wave.soundlen)) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't load %s: %s\n", filename, SDL_GetError());
         SDL_free(filename);
         return SDL_APP_FAILURE;
@@ -120,20 +117,21 @@ int SDL_AppInit(void **appstate, int argc, char *argv[])
     return SDL_APP_CONTINUE;
 }
 
-int SDL_AppEvent(void *appstate, const SDL_Event *event)
+SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 {
     return (event->type == SDL_EVENT_QUIT) ? SDL_APP_SUCCESS : SDL_APP_CONTINUE;
 }
 
-int SDL_AppIterate(void *appstate)
+SDL_AppResult SDL_AppIterate(void *appstate)
 {
     return fillerup();
 }
 
-void SDL_AppQuit(void *appstate)
+void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
     SDL_DestroyAudioStream(stream);
     SDL_free(wave.sound);
+    SDL_Quit();
     SDLTest_CommonDestroyState(state);
 }
 

@@ -28,7 +28,7 @@
 #include "../../events/SDL_keyboard_c.h"
 #include "text-input-unstable-v3-client-protocol.h"
 
-int Wayland_InitKeyboard(SDL_VideoDevice *_this)
+bool Wayland_InitKeyboard(SDL_VideoDevice *_this)
 {
 #ifdef SDL_USE_IME
     SDL_VideoData *internal = _this->internal;
@@ -38,7 +38,7 @@ int Wayland_InitKeyboard(SDL_VideoDevice *_this)
 #endif
     SDL_SetScancodeName(SDL_SCANCODE_APPLICATION, "Menu");
 
-    return 0;
+    return true;
 }
 
 void Wayland_QuitKeyboard(SDL_VideoDevice *_this)
@@ -51,7 +51,7 @@ void Wayland_QuitKeyboard(SDL_VideoDevice *_this)
 #endif
 }
 
-int Wayland_StartTextInput(SDL_VideoDevice *_this, SDL_Window *window)
+bool Wayland_StartTextInput(SDL_VideoDevice *_this, SDL_Window *window, SDL_PropertiesID props)
 {
     SDL_VideoData *internal = _this->internal;
     struct SDL_WaylandInput *input = internal->input;
@@ -59,15 +59,73 @@ int Wayland_StartTextInput(SDL_VideoDevice *_this, SDL_Window *window)
     if (internal->text_input_manager) {
         if (input && input->text_input) {
             const SDL_Rect *rect = &input->text_input->cursor_rect;
+            enum zwp_text_input_v3_content_hint hint = ZWP_TEXT_INPUT_V3_CONTENT_HINT_NONE;
+            enum zwp_text_input_v3_content_purpose purpose;
+
+            switch (SDL_GetTextInputType(props)) {
+            default:
+            case SDL_TEXTINPUT_TYPE_TEXT:
+                purpose = ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_NORMAL;
+                break;
+            case SDL_TEXTINPUT_TYPE_TEXT_NAME:
+                purpose = ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_NAME;
+                break;
+            case SDL_TEXTINPUT_TYPE_TEXT_EMAIL:
+                purpose = ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_EMAIL;
+                break;
+            case SDL_TEXTINPUT_TYPE_TEXT_USERNAME:
+                purpose = ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_NORMAL;
+                hint |= ZWP_TEXT_INPUT_V3_CONTENT_HINT_SENSITIVE_DATA;
+                break;
+            case SDL_TEXTINPUT_TYPE_TEXT_PASSWORD_HIDDEN:
+                purpose = ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_PASSWORD;
+                hint |= (ZWP_TEXT_INPUT_V3_CONTENT_HINT_HIDDEN_TEXT | ZWP_TEXT_INPUT_V3_CONTENT_HINT_SENSITIVE_DATA);
+                break;
+            case SDL_TEXTINPUT_TYPE_TEXT_PASSWORD_VISIBLE:
+                purpose = ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_PASSWORD;
+                hint |= ZWP_TEXT_INPUT_V3_CONTENT_HINT_SENSITIVE_DATA;
+                break;
+            case SDL_TEXTINPUT_TYPE_NUMBER:
+                purpose = ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_NUMBER;
+                break;
+            case SDL_TEXTINPUT_TYPE_NUMBER_PASSWORD_HIDDEN:
+                purpose = ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_PIN;
+                hint |= (ZWP_TEXT_INPUT_V3_CONTENT_HINT_HIDDEN_TEXT | ZWP_TEXT_INPUT_V3_CONTENT_HINT_SENSITIVE_DATA);
+                break;
+            case SDL_TEXTINPUT_TYPE_NUMBER_PASSWORD_VISIBLE:
+                purpose = ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_PIN;
+                hint |= ZWP_TEXT_INPUT_V3_CONTENT_HINT_SENSITIVE_DATA;
+                break;
+            }
+
+            switch (SDL_GetTextInputCapitalization(props)) {
+            default:
+            case SDL_CAPITALIZE_NONE:
+                break;
+            case SDL_CAPITALIZE_LETTERS:
+                hint |= ZWP_TEXT_INPUT_V3_CONTENT_HINT_UPPERCASE;
+                break;
+            case SDL_CAPITALIZE_WORDS:
+                hint |= ZWP_TEXT_INPUT_V3_CONTENT_HINT_TITLECASE;
+                break;
+            case SDL_CAPITALIZE_SENTENCES:
+                hint |= ZWP_TEXT_INPUT_V3_CONTENT_HINT_AUTO_CAPITALIZATION;
+                break;
+            }
+
+            if (SDL_GetTextInputAutocorrect(props)) {
+                hint |= (ZWP_TEXT_INPUT_V3_CONTENT_HINT_COMPLETION | ZWP_TEXT_INPUT_V3_CONTENT_HINT_SPELLCHECK);
+            }
+            if (SDL_GetTextInputMultiline(props)) {
+                hint |= ZWP_TEXT_INPUT_V3_CONTENT_HINT_MULTILINE;
+            }
 
             zwp_text_input_v3_enable(input->text_input->text_input);
 
-            /* Now that it's enabled, set the input properties */
-            zwp_text_input_v3_set_content_type(input->text_input->text_input,
-                                               ZWP_TEXT_INPUT_V3_CONTENT_HINT_NONE,
-                                               ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_NORMAL);
+            // Now that it's enabled, set the input properties
+            zwp_text_input_v3_set_content_type(input->text_input->text_input, hint, purpose);
             if (!SDL_RectEmpty(rect)) {
-                /* This gets reset on enable so we have to cache it */
+                // This gets reset on enable so we have to cache it
                 zwp_text_input_v3_set_cursor_rectangle(input->text_input->text_input,
                                                        rect->x,
                                                        rect->y,
@@ -79,14 +137,14 @@ int Wayland_StartTextInput(SDL_VideoDevice *_this, SDL_Window *window)
     }
 
     if (input && input->xkb.compose_state) {
-        /* Reset compose state so composite and dead keys don't carry over */
+        // Reset compose state so composite and dead keys don't carry over
         WAYLAND_xkb_compose_state_reset(input->xkb.compose_state);
     }
 
     return Wayland_UpdateTextInputArea(_this, window);
 }
 
-int Wayland_StopTextInput(SDL_VideoDevice *_this, SDL_Window *window)
+bool Wayland_StopTextInput(SDL_VideoDevice *_this, SDL_Window *window)
 {
     SDL_VideoData *internal = _this->internal;
     struct SDL_WaylandInput *input = internal->input;
@@ -104,13 +162,13 @@ int Wayland_StopTextInput(SDL_VideoDevice *_this, SDL_Window *window)
 #endif
 
     if (input && input->xkb.compose_state) {
-        /* Reset compose state so composite and dead keys don't carry over */
+        // Reset compose state so composite and dead keys don't carry over
         WAYLAND_xkb_compose_state_reset(input->xkb.compose_state);
     }
-    return 0;
+    return true;
 }
 
-int Wayland_UpdateTextInputArea(SDL_VideoDevice *_this, SDL_Window *window)
+bool Wayland_UpdateTextInputArea(SDL_VideoDevice *_this, SDL_Window *window)
 {
     SDL_VideoData *internal = _this->internal;
     if (internal->text_input_manager) {
@@ -133,19 +191,19 @@ int Wayland_UpdateTextInputArea(SDL_VideoDevice *_this, SDL_Window *window)
         SDL_IME_UpdateTextInputArea(window);
     }
 #endif
-    return 0;
+    return true;
 }
 
-SDL_bool Wayland_HasScreenKeyboardSupport(SDL_VideoDevice *_this)
+bool Wayland_HasScreenKeyboardSupport(SDL_VideoDevice *_this)
 {
     /* In reality we just want to return true when the screen keyboard is the
      * _only_ way to get text input. So, in addition to checking for the text
      * input protocol, make sure we don't have any physical keyboards either.
      */
     SDL_VideoData *internal = _this->internal;
-    SDL_bool haskeyboard = (internal->input != NULL) && (internal->input->keyboard != NULL);
-    SDL_bool hastextmanager = (internal->text_input_manager != NULL);
+    bool haskeyboard = (internal->input != NULL) && (internal->input->keyboard != NULL);
+    bool hastextmanager = (internal->text_input_manager != NULL);
     return !haskeyboard && hastextmanager;
 }
 
-#endif /* SDL_VIDEO_DRIVER_WAYLAND */
+#endif // SDL_VIDEO_DRIVER_WAYLAND

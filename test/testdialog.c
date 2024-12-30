@@ -44,7 +44,8 @@ static void SDLCALL callback(void* userdata, const char* const* files, int filte
     }
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
     SDL_Window *w;
     SDL_Renderer *r;
     SDLTest_CommonState *state;
@@ -61,9 +62,6 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    /* Enable standard application logging */
-    SDL_SetLogPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
-
     /* Parse commandline */
     for (i = 1; i < argc;) {
         int consumed;
@@ -79,11 +77,11 @@ int main(int argc, char *argv[]) {
         i += consumed;
     }
 
-    if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
         SDL_Log("SDL_Init failed (%s)", SDL_GetError());
         return 1;
     }
-    if (SDL_CreateWindowAndRenderer("testdialog", 640, 480, 0, &w, &r) < 0) {
+    if (!SDL_CreateWindowAndRenderer("testdialog", 640, 480, 0, &w, &r)) {
         SDL_Log("Failed to create window and/or renderer: %s\n", SDL_GetError());
         SDL_Quit();
         return 1;

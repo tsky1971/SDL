@@ -23,7 +23,7 @@
 #ifdef SDL_FILESYSTEM_N3DS
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-/* System dependent filesystem routines                                */
+// System dependent filesystem routines
 
 #include "../SDL_sysfilesystem.h"
 
@@ -32,7 +32,7 @@
 #include <errno.h>
 
 static char *MakePrefPath(const char *app);
-static int CreatePrefPathDir(const char *pref);
+static bool CreatePrefPathDir(const char *pref);
 
 char *SDL_SYS_GetBasePath(void)
 {
@@ -53,7 +53,7 @@ char *SDL_SYS_GetPrefPath(const char *org, const char *app)
         return NULL;
     }
 
-    if (CreatePrefPathDir(pref_path) < 0) {
+    if (!CreatePrefPathDir(pref_path)) {
         SDL_free(pref_path);
         return NULL;
     }
@@ -61,7 +61,7 @@ char *SDL_SYS_GetPrefPath(const char *org, const char *app)
     return pref_path;
 }
 
-/* TODO */
+// TODO
 char *SDL_SYS_GetUserFolder(SDL_Folder folder)
 {
     SDL_Unsupported();
@@ -77,14 +77,14 @@ static char *MakePrefPath(const char *app)
     return pref_path;
 }
 
-static int CreatePrefPathDir(const char *pref)
+static bool CreatePrefPathDir(const char *pref)
 {
     int result = mkdir(pref, 0666);
 
     if (result == -1 && errno != EEXIST) {
         return SDL_SetError("Failed to create '%s' (%s)", pref, strerror(errno));
     }
-    return 0;
+    return true;
 }
 
-#endif /* SDL_FILESYSTEM_N3DS */
+#endif // SDL_FILESYSTEM_N3DS

@@ -19,7 +19,7 @@
 #define MAX_YUV_SURFACE_SIZE(W, H, P) ((H + 1) * ((W + 1) + P) * 4)
 
 /* Return true if the YUV format is packed pixels */
-static SDL_bool is_packed_yuv_format(Uint32 format)
+static bool is_packed_yuv_format(Uint32 format)
 {
     return format == SDL_PIXELFORMAT_YUY2 || format == SDL_PIXELFORMAT_UYVY || format == SDL_PIXELFORMAT_YVYU;
 }
@@ -65,21 +65,21 @@ static SDL_Surface *generate_test_pattern(int pattern_size)
     return pattern;
 }
 
-static SDL_bool verify_yuv_data(Uint32 format, SDL_Colorspace colorspace, const Uint8 *yuv, int yuv_pitch, SDL_Surface *surface, int tolerance)
+static bool verify_yuv_data(Uint32 format, SDL_Colorspace colorspace, const Uint8 *yuv, int yuv_pitch, SDL_Surface *surface, int tolerance)
 {
     const int size = (surface->h * surface->pitch);
     Uint8 *rgb;
-    SDL_bool result = SDL_FALSE;
+    bool result = false;
 
     rgb = (Uint8 *)SDL_malloc(size);
     if (!rgb) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Out of memory");
-        return SDL_FALSE;
+        return false;
     }
 
-    if (SDL_ConvertPixelsAndColorspace(surface->w, surface->h, format, colorspace, 0, yuv, yuv_pitch, surface->format, SDL_COLORSPACE_SRGB, 0, rgb, surface->pitch) == 0) {
+    if (SDL_ConvertPixelsAndColorspace(surface->w, surface->h, format, colorspace, 0, yuv, yuv_pitch, surface->format, SDL_COLORSPACE_SRGB, 0, rgb, surface->pitch)) {
         int x, y;
-        result = SDL_TRUE;
+        result = true;
         for (y = 0; y < surface->h; ++y) {
             const Uint8 *actual = rgb + y * surface->pitch;
             const Uint8 *expected = (const Uint8 *)surface->pixels + y * surface->pitch;
@@ -90,7 +90,7 @@ static SDL_bool verify_yuv_data(Uint32 format, SDL_Colorspace colorspace, const 
                 int distance = (deltaR * deltaR + deltaG * deltaG + deltaB * deltaB);
                 if (distance > tolerance) {
                     SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Pixel at %d,%d was 0x%.2x,0x%.2x,0x%.2x, expected 0x%.2x,0x%.2x,0x%.2x, distance = %d\n", x, y, actual[0], actual[1], actual[2], expected[0], expected[1], expected[2], distance);
-                    result = SDL_FALSE;
+                    result = false;
                 }
                 actual += 3;
                 expected += 3;
@@ -104,7 +104,7 @@ static SDL_bool verify_yuv_data(Uint32 format, SDL_Colorspace colorspace, const 
     return result;
 }
 
-static int run_automated_tests(int pattern_size, int extra_pitch)
+static bool run_automated_tests(int pattern_size, int extra_pitch)
 {
     const Uint32 formats[] = {
         SDL_PIXELFORMAT_YV12,
@@ -125,7 +125,7 @@ static int run_automated_tests(int pattern_size, int extra_pitch)
     SDL_Colorspace colorspace;
     const int tight_tolerance = 20;
     const int loose_tolerance = 333;
-    int result = -1;
+    bool result = false;
 
     if (!pattern || !yuv1 || !yuv2) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't allocate test surfaces");
@@ -151,7 +151,7 @@ static int run_automated_tests(int pattern_size, int extra_pitch)
     /* Verify conversion to YUV formats */
     for (i = 0; i < SDL_arraysize(formats); ++i) {
         yuv1_pitch = CalculateYUVPitch(formats[i], pattern->w) + extra_pitch;
-        if (SDL_ConvertPixelsAndColorspace(pattern->w, pattern->h, pattern->format, SDL_COLORSPACE_SRGB, 0, pattern->pixels, pattern->pitch, formats[i], colorspace, 0, yuv1, yuv1_pitch) < 0) {
+        if (!SDL_ConvertPixelsAndColorspace(pattern->w, pattern->h, pattern->format, SDL_COLORSPACE_SRGB, 0, pattern->pixels, pattern->pitch, formats[i], colorspace, 0, yuv1, yuv1_pitch)) {
             SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't convert %s to %s: %s\n", SDL_GetPixelFormatName(pattern->format), SDL_GetPixelFormatName(formats[i]), SDL_GetError());
             goto done;
         }
@@ -166,11 +166,11 @@ static int run_automated_tests(int pattern_size, int extra_pitch)
         for (j = 0; j < SDL_arraysize(formats); ++j) {
             yuv1_pitch = CalculateYUVPitch(formats[i], pattern->w) + extra_pitch;
             yuv2_pitch = CalculateYUVPitch(formats[j], pattern->w) + extra_pitch;
-            if (SDL_ConvertPixelsAndColorspace(pattern->w, pattern->h, pattern->format, SDL_COLORSPACE_SRGB, 0, pattern->pixels, pattern->pitch, formats[i], colorspace, 0, yuv1, yuv1_pitch) < 0) {
+            if (!SDL_ConvertPixelsAndColorspace(pattern->w, pattern->h, pattern->format, SDL_COLORSPACE_SRGB, 0, pattern->pixels, pattern->pitch, formats[i], colorspace, 0, yuv1, yuv1_pitch)) {
                 SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't convert %s to %s: %s\n", SDL_GetPixelFormatName(pattern->format), SDL_GetPixelFormatName(formats[i]), SDL_GetError());
                 goto done;
             }
-            if (SDL_ConvertPixelsAndColorspace(pattern->w, pattern->h, formats[i], colorspace, 0, yuv1, yuv1_pitch, formats[j], colorspace, 0, yuv2, yuv2_pitch) < 0) {
+            if (!SDL_ConvertPixelsAndColorspace(pattern->w, pattern->h, formats[i], colorspace, 0, yuv1, yuv1_pitch, formats[j], colorspace, 0, yuv2, yuv2_pitch)) {
                 SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't convert %s to %s: %s\n", SDL_GetPixelFormatName(formats[i]), SDL_GetPixelFormatName(formats[j]), SDL_GetError());
                 goto done;
             }
@@ -191,11 +191,11 @@ static int run_automated_tests(int pattern_size, int extra_pitch)
 
             yuv1_pitch = CalculateYUVPitch(formats[i], pattern->w) + extra_pitch;
             yuv2_pitch = CalculateYUVPitch(formats[j], pattern->w) + extra_pitch;
-            if (SDL_ConvertPixelsAndColorspace(pattern->w, pattern->h, pattern->format, SDL_COLORSPACE_SRGB, 0, pattern->pixels, pattern->pitch, formats[i], colorspace, 0, yuv1, yuv1_pitch) < 0) {
+            if (!SDL_ConvertPixelsAndColorspace(pattern->w, pattern->h, pattern->format, SDL_COLORSPACE_SRGB, 0, pattern->pixels, pattern->pitch, formats[i], colorspace, 0, yuv1, yuv1_pitch)) {
                 SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't convert %s to %s: %s\n", SDL_GetPixelFormatName(pattern->format), SDL_GetPixelFormatName(formats[i]), SDL_GetError());
                 goto done;
             }
-            if (SDL_ConvertPixelsAndColorspace(pattern->w, pattern->h, formats[i], colorspace, 0, yuv1, yuv1_pitch, formats[j], colorspace, 0, yuv1, yuv2_pitch) < 0) {
+            if (!SDL_ConvertPixelsAndColorspace(pattern->w, pattern->h, formats[i], colorspace, 0, yuv1, yuv1_pitch, formats[j], colorspace, 0, yuv1, yuv2_pitch)) {
                 SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't convert %s to %s: %s\n", SDL_GetPixelFormatName(formats[i]), SDL_GetPixelFormatName(formats[j]), SDL_GetError());
                 goto done;
             }
@@ -220,7 +220,7 @@ static int run_automated_tests(int pattern_size, int extra_pitch)
 
     /* The pitch needs to be Uint16 aligned for P010 pixels */
     yuv1_pitch = CalculateYUVPitch(SDL_PIXELFORMAT_P010, pattern->w) + ((extra_pitch + 1) & ~1);
-    if (SDL_ConvertPixelsAndColorspace(pattern->w, pattern->h, pattern->format, SDL_COLORSPACE_SRGB, 0, pattern->pixels, pattern->pitch, SDL_PIXELFORMAT_P010, colorspace, 0, yuv1, yuv1_pitch) < 0) {
+    if (!SDL_ConvertPixelsAndColorspace(pattern->w, pattern->h, pattern->format, SDL_COLORSPACE_SRGB, 0, pattern->pixels, pattern->pitch, SDL_PIXELFORMAT_P010, colorspace, 0, yuv1, yuv1_pitch)) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't convert %s to %s: %s\n", SDL_GetPixelFormatName(pattern->format), SDL_GetPixelFormatName(SDL_PIXELFORMAT_P010), SDL_GetError());
         goto done;
     }
@@ -230,7 +230,7 @@ static int run_automated_tests(int pattern_size, int extra_pitch)
         goto done;
     }
 
-    result = 0;
+    result = true;
 
 done:
     SDL_free(yuv1);
@@ -239,38 +239,161 @@ done:
     return result;
 }
 
+static bool run_colorspace_test(void)
+{
+    bool result = false;
+    SDL_Window *window;
+    SDL_Renderer *renderer;
+    struct {
+        const char *name;
+        SDL_Colorspace colorspace;
+    } colorspaces[] = {
+#define COLORSPACE(X) { #X, X }
+        COLORSPACE(SDL_COLORSPACE_JPEG),
+#if 0 /* We don't support converting color primaries here */
+        COLORSPACE(SDL_COLORSPACE_BT601_LIMITED),
+        COLORSPACE(SDL_COLORSPACE_BT601_FULL),
+#endif
+        COLORSPACE(SDL_COLORSPACE_BT709_LIMITED),
+        COLORSPACE(SDL_COLORSPACE_BT709_FULL)
+#undef COLORSPACE
+    };
+    SDL_Surface *rgb = NULL;
+    SDL_Surface *yuv = NULL;
+    SDL_Texture *texture = NULL;
+    int allowed_error = 2;
+    int i;
+
+    if (!SDL_CreateWindowAndRenderer("testyuv", 320, 240, 0, &window, &renderer)) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't create window and renderer: %s\n", SDL_GetError());
+        goto done;
+    }
+
+    rgb = SDL_CreateSurface(32, 32, SDL_PIXELFORMAT_XRGB8888);
+    if (!rgb) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't create RGB surface: %s\n", SDL_GetError());
+        goto done;
+    }
+    SDL_FillSurfaceRect(rgb, NULL, SDL_MapSurfaceRGB(rgb, 255, 0, 0));
+
+    for (i = 0; i < SDL_arraysize(colorspaces); ++i) {
+        bool next = false;
+        Uint8 r, g, b, a;
+
+        SDL_Log("Checking colorspace %s\n", colorspaces[i].name);
+
+        yuv = SDL_ConvertSurfaceAndColorspace(rgb, SDL_PIXELFORMAT_NV12, NULL, colorspaces[i].colorspace, 0);
+        if (!yuv) {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't create YUV surface: %s\n", SDL_GetError());
+            goto done;
+        }
+
+        if (!SDL_ReadSurfacePixel(yuv, 0, 0, &r, &g, &b, &a)) {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't read YUV surface: %s\n", SDL_GetError());
+            goto done;
+        }
+
+        if (SDL_abs((int)r - 255) > allowed_error ||
+            SDL_abs((int)g - 0) > allowed_error ||
+            SDL_abs((int)b - 0) > allowed_error) {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed color conversion, expected 255,0,0, got %d,%d,%d\n", r, g, b);
+        }
+
+        texture = SDL_CreateTextureFromSurface(renderer, yuv);
+        if (!texture) {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't create YUV texture: %s\n", SDL_GetError());
+            goto done;
+        }
+
+        SDL_DestroySurface(yuv);
+        yuv = NULL;
+
+        SDL_RenderTexture(renderer, texture, NULL, NULL);
+        yuv = SDL_RenderReadPixels(renderer, NULL);
+
+        if (!SDL_ReadSurfacePixel(yuv, 0, 0, &r, &g, &b, &a)) {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't read YUV surface: %s\n", SDL_GetError());
+            goto done;
+        }
+
+        if (SDL_abs((int)r - 255) > allowed_error ||
+            SDL_abs((int)g - 0) > allowed_error ||
+            SDL_abs((int)b - 0) > allowed_error) {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed renderer color conversion, expected 255,0,0, got %d,%d,%d\n", r, g, b);
+        }
+
+        while (!next) {
+            SDL_Event event;
+            while (SDL_PollEvent(&event)) {
+                switch (event.type) {
+                case SDL_EVENT_KEY_DOWN:
+                    if (event.key.key == SDLK_ESCAPE) {
+                        result = true;
+                        goto done;
+                    }
+                    if (event.key.key == SDLK_SPACE) {
+                        next = true;
+                    }
+                    break;
+                case SDL_EVENT_QUIT:
+                    result = true;
+                    goto done;
+                }
+            }
+
+            SDL_RenderTexture(renderer, texture, NULL, NULL);
+            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+            SDL_RenderDebugText(renderer, 4, 4, colorspaces[i].name);
+            SDL_RenderPresent(renderer);
+            SDL_Delay(10);
+        }
+
+        SDL_DestroyTexture(texture);
+        texture = NULL;
+    }
+
+    result = true;
+
+done:
+    SDL_DestroySurface(rgb);
+    SDL_DestroySurface(yuv);
+    SDL_DestroyTexture(texture);
+    SDL_Quit();
+    return result;
+}
+
 int main(int argc, char **argv)
 {
     struct
     {
-        SDL_bool enable_intrinsics;
+        bool enable_intrinsics;
         int pattern_size;
         int extra_pitch;
     } automated_test_params[] = {
         /* Test: single pixel */
-        { SDL_FALSE, 1, 0 },
+        { false, 1, 0 },
         /* Test: even width and height */
-        { SDL_FALSE, 2, 0 },
-        { SDL_FALSE, 4, 0 },
+        { false, 2, 0 },
+        { false, 4, 0 },
         /* Test: odd width and height */
-        { SDL_FALSE, 1, 0 },
-        { SDL_FALSE, 3, 0 },
+        { false, 1, 0 },
+        { false, 3, 0 },
         /* Test: even width and height, extra pitch */
-        { SDL_FALSE, 2, 3 },
-        { SDL_FALSE, 4, 3 },
+        { false, 2, 3 },
+        { false, 4, 3 },
         /* Test: odd width and height, extra pitch */
-        { SDL_FALSE, 1, 3 },
-        { SDL_FALSE, 3, 3 },
+        { false, 1, 3 },
+        { false, 3, 3 },
         /* Test: even width and height with intrinsics */
-        { SDL_TRUE, 32, 0 },
+        { true, 32, 0 },
         /* Test: odd width and height with intrinsics */
-        { SDL_TRUE, 33, 0 },
-        { SDL_TRUE, 37, 0 },
+        { true, 33, 0 },
+        { true, 37, 0 },
         /* Test: even width and height with intrinsics, extra pitch */
-        { SDL_TRUE, 32, 3 },
+        { true, 32, 3 },
         /* Test: odd width and height with intrinsics, extra pitch */
-        { SDL_TRUE, 33, 3 },
-        { SDL_TRUE, 37, 3 },
+        { true, 33, 3 },
+        { true, 37, 3 },
     };
     char *filename = NULL;
     SDL_Surface *original;
@@ -289,14 +412,15 @@ int main(int argc, char **argv)
     Uint32 rgb_format = SDL_PIXELFORMAT_RGBX8888;
     SDL_Colorspace rgb_colorspace = SDL_COLORSPACE_SRGB;
     SDL_PropertiesID props;
-    SDL_bool monochrome = SDL_FALSE;
+    bool monochrome = false;
     int luminance = 100;
     int current = 0;
     int pitch;
     Uint8 *raw_yuv;
     Uint64 then, now;
     int i, iterations = 100;
-    SDL_bool should_run_automated_tests = SDL_FALSE;
+    bool should_run_automated_tests = false;
+    bool should_run_colorspace_test = false;
     SDLTest_CommonState *state;
 
     /* Initialize test framework */
@@ -304,9 +428,6 @@ int main(int argc, char **argv)
     if (!state) {
         return 1;
     }
-
-    /* Enable standard application logging */
-    SDL_SetLogPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
 
     /* Parse commandline */
     for (i = 1; i < argc;) {
@@ -372,13 +493,16 @@ int main(int argc, char **argv)
                 rgb_format = SDL_PIXELFORMAT_BGRA8888;
                 consumed = 1;
             } else if (SDL_strcmp(argv[i], "--monochrome") == 0) {
-                monochrome = SDL_TRUE;
+                monochrome = true;
                 consumed = 1;
             } else if (SDL_strcmp(argv[i], "--luminance") == 0 && argv[i+1]) {
                 luminance = SDL_atoi(argv[i+1]);
                 consumed = 2;
             } else if (SDL_strcmp(argv[i], "--automated") == 0) {
-                should_run_automated_tests = SDL_TRUE;
+                should_run_automated_tests = true;
+                consumed = 1;
+            } else if (SDL_strcmp(argv[i], "--colorspace-test") == 0) {
+                should_run_colorspace_test = true;
                 consumed = 1;
             } else if (!filename) {
                 filename = argv[i];
@@ -391,11 +515,12 @@ int main(int argc, char **argv)
                 "[--yv12|--iyuv|--yuy2|--uyvy|--yvyu|--nv12|--nv21]",
                 "[--rgb555|--rgb565|--rgb24|--argb|--abgr|--rgba|--bgra]",
                 "[--monochrome] [--luminance N%]",
-                "[--automated]",
+                "[--automated] [--colorspace-test]",
                 "[sample.bmp]",
                 NULL,
             };
             SDLTest_CommonLogUsage(state, argv[0], options);
+            SDL_Quit();
             SDLTest_CommonDestroyState(state);
             return 1;
         }
@@ -409,9 +534,16 @@ int main(int argc, char **argv)
                         automated_test_params[i].pattern_size,
                         automated_test_params[i].extra_pitch,
                         automated_test_params[i].enable_intrinsics ? "enabled" : "disabled");
-            if (run_automated_tests(automated_test_params[i].pattern_size, automated_test_params[i].extra_pitch) < 0) {
+            if (!run_automated_tests(automated_test_params[i].pattern_size, automated_test_params[i].extra_pitch)) {
                 return 2;
             }
+        }
+        return 0;
+    }
+
+    if (should_run_colorspace_test) {
+        if (!run_colorspace_test()) {
+            return 2;
         }
         return 0;
     }

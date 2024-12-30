@@ -25,7 +25,7 @@
 #include "SDL_sysfilesystem.h"
 #include "../stdlib/SDL_sysstdlib.h"
 
-int SDL_RemovePath(const char *path)
+bool SDL_RemovePath(const char *path)
 {
     if (!path) {
         return SDL_InvalidParamError("path");
@@ -33,7 +33,7 @@ int SDL_RemovePath(const char *path)
     return SDL_SYS_RemovePath(path);
 }
 
-int SDL_RenamePath(const char *oldpath, const char *newpath)
+bool SDL_RenamePath(const char *oldpath, const char *newpath)
 {
     if (!oldpath) {
         return SDL_InvalidParamError("oldpath");
@@ -43,26 +43,88 @@ int SDL_RenamePath(const char *oldpath, const char *newpath)
     return SDL_SYS_RenamePath(oldpath, newpath);
 }
 
-int SDL_CreateDirectory(const char *path)
+bool SDL_CopyFile(const char *oldpath, const char *newpath)
 {
-    /* TODO: Recursively create subdirectories */
+    if (!oldpath) {
+        return SDL_InvalidParamError("oldpath");
+    } else if (!newpath) {
+        return SDL_InvalidParamError("newpath");
+    }
+    return SDL_SYS_CopyFile(oldpath, newpath);
+}
+
+bool SDL_CreateDirectory(const char *path)
+{
     if (!path) {
         return SDL_InvalidParamError("path");
     }
-    return SDL_SYS_CreateDirectory(path);
+
+    bool retval = SDL_SYS_CreateDirectory(path);
+    if (!retval && *path) {  // maybe we're missing parent directories?
+        char *parents = SDL_strdup(path);
+        if (!parents) {
+            return false;  // oh well.
+        }
+
+        // in case there was a separator at the end of the path and it was
+        // upsetting something, chop it off.
+        const size_t slen = SDL_strlen(parents);
+        #ifdef SDL_PLATFORM_WINDOWS
+        if ((parents[slen - 1] == '/') || (parents[slen - 1] == '\\'))
+        #else
+        if (parents[slen - 1] == '/')
+        #endif
+        {
+            parents[slen - 1] = '\0';
+            retval = SDL_SYS_CreateDirectory(parents);
+        }
+
+        if (!retval) {
+            for (char *ptr = parents; *ptr; ptr++) {
+                const char ch = *ptr;
+                #ifdef SDL_PLATFORM_WINDOWS
+                const bool issep = (ch == '/') || (ch == '\\');
+                if (issep && ((ptr - parents) == 2) && (parents[1] == ':')) {
+                    continue;  // it's just the drive letter, skip it.
+                }
+                #else
+                const bool issep = (ch == '/');
+                if (issep && ((ptr - parents) == 0)) {
+                    continue; // it's just the root directory, skip it.
+                }
+                #endif
+
+                if (issep) {
+                    *ptr = '\0';
+                    // (this does not fail if the path already exists as a directory.)
+                    retval = SDL_SYS_CreateDirectory(parents);
+                    if (!retval) {  // still failing when making parents? Give up.
+                        break;
+                    }
+                    *ptr = ch;
+                }
+            }
+
+            // last chance: did it work this time?
+            retval = SDL_SYS_CreateDirectory(parents);
+        }
+
+        SDL_free(parents);
+    }
+    return retval;
 }
 
-int SDL_EnumerateDirectory(const char *path, SDL_EnumerateDirectoryCallback callback, void *userdata)
+bool SDL_EnumerateDirectory(const char *path, SDL_EnumerateDirectoryCallback callback, void *userdata)
 {
     if (!path) {
         return SDL_InvalidParamError("path");
     } else if (!callback) {
         return SDL_InvalidParamError("callback");
     }
-    return (SDL_SYS_EnumerateDirectory(path, path, callback, userdata) < 0) ? -1 : 0;
+    return SDL_SYS_EnumerateDirectory(path, path, callback, userdata);
 }
 
-int SDL_GetPathInfo(const char *path, SDL_PathInfo *info)
+bool SDL_GetPathInfo(const char *path, SDL_PathInfo *info)
 {
     SDL_PathInfo dummy;
 
@@ -78,18 +140,18 @@ int SDL_GetPathInfo(const char *path, SDL_PathInfo *info)
     return SDL_SYS_GetPathInfo(path, info);
 }
 
-static SDL_bool EverythingMatch(const char *pattern, const char *str, SDL_bool *matched_to_dir)
+static bool EverythingMatch(const char *pattern, const char *str, bool *matched_to_dir)
 {
     SDL_assert(pattern == NULL);
     SDL_assert(str != NULL);
     SDL_assert(matched_to_dir != NULL);
 
-    *matched_to_dir = SDL_TRUE;
-    return SDL_TRUE;  // everything matches!
+    *matched_to_dir = true;
+    return true;  // everything matches!
 }
 
 // this is just '*' and '?', with '/' matching nothing.
-static SDL_bool WildcardMatch(const char *pattern, const char *str, SDL_bool *matched_to_dir)
+static bool WildcardMatch(const char *pattern, const char *str, bool *matched_to_dir)
 {
     SDL_assert(pattern != NULL);
     SDL_assert(str != NULL);
@@ -117,8 +179,8 @@ static SDL_bool WildcardMatch(const char *pattern, const char *str, SDL_bool *ma
             sch = *(++str);
             pch = *(++pattern);
         } else if (!pattern_backtrack || (sch_backtrack == '/')) { // we didn't have a match. Are we in a '*' and NOT on a path separator? Keep going. Otherwise, fail.
-            *matched_to_dir = SDL_FALSE;
-            return SDL_FALSE;
+            *matched_to_dir = false;
+            return false;
         } else {  // still here? Wasn't a match, but we're definitely in a '*' pattern.
             str = ++str_backtrack;
             pattern = pattern_backtrack;
@@ -179,13 +241,13 @@ static char *CaseFoldUtf8String(const char *fname)
 {
     SDL_assert(fname != NULL);
     const size_t allocation = (SDL_strlen(fname) + 1) * 3 * 4;
-    char *retval = (char *) SDL_malloc(allocation);  // lazy: just allocating the max needed.
-    if (!retval) {
+    char *result = (char *) SDL_malloc(allocation);  // lazy: just allocating the max needed.
+    if (!result) {
         return NULL;
     }
 
     Uint32 codepoint;
-    char *ptr = retval;
+    char *ptr = result;
     size_t remaining = allocation;
     while ((codepoint = SDL_StepUTF8(&fname, NULL)) != 0) {
         Uint32 folded[3];
@@ -208,19 +270,19 @@ static char *CaseFoldUtf8String(const char *fname)
 
     if (remaining > 0) {
         SDL_assert(allocation > remaining);
-        ptr = SDL_realloc(retval, allocation - remaining);  // shrink it down.
-        if (ptr) {  // shouldn't fail, but if it does, `retval` is still valid.
-            retval = ptr;
+        ptr = (char *)SDL_realloc(result, allocation - remaining);  // shrink it down.
+        if (ptr) {  // shouldn't fail, but if it does, `result` is still valid.
+            result = ptr;
         }
     }
 
-    return retval;
+    return result;
 }
 
 
 typedef struct GlobDirCallbackData
 {
-    SDL_bool (*matcher)(const char *pattern, const char *str, SDL_bool *matched_to_dir);
+    bool (*matcher)(const char *pattern, const char *str, bool *matched_to_dir);
     const char *pattern;
     int num_entries;
     SDL_GlobFlags flags;
@@ -231,7 +293,7 @@ typedef struct GlobDirCallbackData
     SDL_IOStream *string_stream;
 } GlobDirCallbackData;
 
-static int SDLCALL GlobDirectoryCallback(void *userdata, const char *dirname, const char *fname)
+static SDL_EnumerationResult SDLCALL GlobDirectoryCallback(void *userdata, const char *dirname, const char *fname)
 {
     SDL_assert(userdata != NULL);
     SDL_assert(dirname != NULL);
@@ -246,19 +308,19 @@ static int SDLCALL GlobDirectoryCallback(void *userdata, const char *dirname, co
 
     char *fullpath = NULL;
     if (SDL_asprintf(&fullpath, "%s/%s", dirname, fname) < 0) {
-        return -1;
+        return SDL_ENUM_FAILURE;
     }
 
     char *folded = NULL;
     if (data->flags & SDL_GLOB_CASEINSENSITIVE) {
         folded = CaseFoldUtf8String(fullpath);
         if (!folded) {
-            return -1;
+            return SDL_ENUM_FAILURE;
         }
     }
 
-    SDL_bool matched_to_dir = SDL_FALSE;
-    const SDL_bool matched = data->matcher(data->pattern, (folded ? folded : fullpath) + data->basedirlen, &matched_to_dir);
+    bool matched_to_dir = false;
+    const bool matched = data->matcher(data->pattern, (folded ? folded : fullpath) + data->basedirlen, &matched_to_dir);
     //SDL_Log("GlobDirectoryCallback: Considered %spath='%s' vs pattern='%s': %smatched (matched_to_dir=%s)", folded ? "(folded) " : "", (folded ? folded : fullpath) + data->basedirlen, data->pattern, matched ? "" : "NOT ", matched_to_dir ? "TRUE" : "FALSE");
     SDL_free(folded);
 
@@ -267,28 +329,28 @@ static int SDLCALL GlobDirectoryCallback(void *userdata, const char *dirname, co
         const size_t slen = SDL_strlen(subpath) + 1;
         if (SDL_WriteIO(data->string_stream, subpath, slen) != slen) {
             SDL_free(fullpath);
-            return -1;  // stop enumerating, return failure to the app.
+            return SDL_ENUM_FAILURE;  // stop enumerating, return failure to the app.
         }
         data->num_entries++;
     }
 
-    int retval = 1;  // keep enumerating by default.
+    SDL_EnumerationResult result = SDL_ENUM_CONTINUE;  // keep enumerating by default.
     if (matched_to_dir) {
         SDL_PathInfo info;
-        if ((data->getpathinfo(fullpath, &info, data->fsuserdata) == 0) && (info.type == SDL_PATHTYPE_DIRECTORY)) {
+        if (data->getpathinfo(fullpath, &info, data->fsuserdata) && (info.type == SDL_PATHTYPE_DIRECTORY)) {
             //SDL_Log("GlobDirectoryCallback: Descending into subdir '%s'", fname);
-            if (data->enumerator(fullpath, GlobDirectoryCallback, data, data->fsuserdata) < 0) {
-                retval = -1;
+            if (!data->enumerator(fullpath, GlobDirectoryCallback, data, data->fsuserdata)) {
+                result = SDL_ENUM_FAILURE;
             }
         }
     }
 
     SDL_free(fullpath);
 
-    return retval;
+    return result;
 }
 
-const char * const *SDL_InternalGlobDirectory(const char *path, const char *pattern, SDL_GlobFlags flags, int *count, SDL_GlobEnumeratorFunc enumerator, SDL_GlobGetPathInfoFunc getpathinfo, void *userdata)
+char **SDL_InternalGlobDirectory(const char *path, const char *pattern, SDL_GlobFlags flags, int *count, SDL_GlobEnumeratorFunc enumerator, SDL_GlobGetPathInfoFunc getpathinfo, void *userdata)
 {
     int dummycount;
     if (!count) {
@@ -304,7 +366,7 @@ const char * const *SDL_InternalGlobDirectory(const char *path, const char *patt
     // if path ends with any '/', chop them off, so we don't confuse the pattern matcher later.
     char *pathcpy = NULL;
     size_t pathlen = SDL_strlen(path);
-    if (pathlen && (path[pathlen-1] == '/')) {
+    if ((pathlen > 1) && (path[pathlen-1] == '/')) {
         pathcpy = SDL_strdup(path);
         if (!pathcpy) {
             return NULL;
@@ -357,24 +419,24 @@ const char * const *SDL_InternalGlobDirectory(const char *path, const char *patt
     data.fsuserdata = userdata;
     data.basedirlen = SDL_strlen(path) + 1;  // +1 for the '/' we'll be adding.
 
-    char **retval = NULL;
-    if (data.enumerator(path, GlobDirectoryCallback, &data, data.fsuserdata) == 0) {
+    char **result = NULL;
+    if (data.enumerator(path, GlobDirectoryCallback, &data, data.fsuserdata)) {
         const size_t streamlen = (size_t) SDL_GetIOSize(data.string_stream);
         const size_t buflen = streamlen + ((data.num_entries + 1) * sizeof (char *));  // +1 for NULL terminator at end of array.
-        retval = (char **) SDL_malloc(buflen);
-        if (retval) {
+        result = (char **) SDL_malloc(buflen);
+        if (result) {
             if (data.num_entries > 0) {
                 Sint64 iorc = SDL_SeekIO(data.string_stream, 0, SDL_IO_SEEK_SET);
                 SDL_assert(iorc == 0);  // this should never fail for a memory stream!
-                char *ptr = (char *) (retval + (data.num_entries + 1));
+                char *ptr = (char *) (result + (data.num_entries + 1));
                 iorc = SDL_ReadIO(data.string_stream, ptr, streamlen);
                 SDL_assert(iorc == (Sint64) streamlen);  // this should never fail for a memory stream!
                 for (int i = 0; i < data.num_entries; i++) {
-                    retval[i] = ptr;
+                    result[i] = ptr;
                     ptr += SDL_strlen(ptr) + 1;
                 }
             }
-            retval[data.num_entries] = NULL;  // NULL terminate the list.
+            result[data.num_entries] = NULL;  // NULL terminate the list.
             *count = data.num_entries;
         }
     }
@@ -383,20 +445,20 @@ const char * const *SDL_InternalGlobDirectory(const char *path, const char *patt
     SDL_free(folded);
     SDL_free(pathcpy);
 
-    return SDL_FreeLater(retval);
+    return result;
 }
 
-static int GlobDirectoryGetPathInfo(const char *path, SDL_PathInfo *info, void *userdata)
+static bool GlobDirectoryGetPathInfo(const char *path, SDL_PathInfo *info, void *userdata)
 {
     return SDL_GetPathInfo(path, info);
 }
 
-static int GlobDirectoryEnumerator(const char *path, SDL_EnumerateDirectoryCallback cb, void *cbuserdata, void *userdata)
+static bool GlobDirectoryEnumerator(const char *path, SDL_EnumerateDirectoryCallback cb, void *cbuserdata, void *userdata)
 {
     return SDL_EnumerateDirectory(path, cb, cbuserdata);
 }
 
-const char * const *SDL_GlobDirectory(const char *path, const char *pattern, SDL_GlobFlags flags, int *count)
+char **SDL_GlobDirectory(const char *path, const char *pattern, SDL_GlobFlags flags, int *count)
 {
     //SDL_Log("SDL_GlobDirectory('%s', '%s') ...", path, pattern);
     return SDL_InternalGlobDirectory(path, pattern, flags, count, GlobDirectoryEnumerator, GlobDirectoryGetPathInfo, NULL);
@@ -414,7 +476,7 @@ const char *SDL_GetBasePath(void)
 }
 
 
-static char *CachedUserFolders[SDL_FOLDER_TOTAL];
+static char *CachedUserFolders[SDL_FOLDER_COUNT];
 
 const char *SDL_GetUserFolder(SDL_Folder folder)
 {
@@ -431,26 +493,31 @@ const char *SDL_GetUserFolder(SDL_Folder folder)
 }
 
 
-const char *SDL_GetPrefPath(const char *org, const char *app)
+char *SDL_GetPrefPath(const char *org, const char *app)
 {
-    char *path = SDL_SYS_GetPrefPath(org, app);
-    return SDL_FreeLater(path);
+    return SDL_SYS_GetPrefPath(org, app);
 }
 
+char *SDL_GetCurrentDirectory(void)
+{
+    return SDL_SYS_GetCurrentDirectory();
+}
 
 void SDL_InitFilesystem(void)
 {
-    CachedBasePath = NULL;  // just in case.
-    SDL_zeroa(CachedUserFolders);
 }
 
 void SDL_QuitFilesystem(void)
 {
-    SDL_free(CachedBasePath);
-    CachedBasePath = NULL;
+    if (CachedBasePath) {
+        SDL_free(CachedBasePath);
+        CachedBasePath = NULL;
+    }
     for (int i = 0; i < SDL_arraysize(CachedUserFolders); i++) {
-        SDL_free(CachedUserFolders[i]);
-        CachedUserFolders[i] = NULL;
+        if (CachedUserFolders[i]) {
+            SDL_free(CachedUserFolders[i]);
+            CachedUserFolders[i] = NULL;
+        }
     }
 }
 

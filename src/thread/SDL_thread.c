@@ -20,13 +20,13 @@
 */
 #include "SDL_internal.h"
 
-/* System independent thread management routines for SDL */
+// System independent thread management routines for SDL
 
 #include "SDL_thread_c.h"
 #include "SDL_systhread.h"
 #include "../SDL_error_c.h"
 
-/* The storage is local to the thread, but the IDs are global for the process */
+// The storage is local to the thread, but the IDs are global for the process
 
 static SDL_AtomicInt SDL_tls_allocated;
 static SDL_AtomicInt SDL_tls_id;
@@ -46,7 +46,7 @@ void *SDL_GetTLS(SDL_TLSID *id)
         return NULL;
     }
 
-    storage_index = SDL_AtomicGet(id) - 1;
+    storage_index = SDL_GetAtomicInt(id) - 1;
     storage = SDL_SYS_GetTLSData();
     if (!storage || storage_index < 0 || storage_index >= storage->limit) {
         return NULL;
@@ -54,7 +54,7 @@ void *SDL_GetTLS(SDL_TLSID *id)
     return storage->array[storage_index].data;
 }
 
-int SDL_SetTLS(SDL_TLSID *id, const void *value, SDL_TLSDestructorCallback destructor)
+bool SDL_SetTLS(SDL_TLSID *id, const void *value, SDL_TLSDestructorCallback destructor)
 {
     SDL_TLSData *storage;
     int storage_index;
@@ -69,20 +69,20 @@ int SDL_SetTLS(SDL_TLSID *id, const void *value, SDL_TLSDestructorCallback destr
      */
     SDL_InitTLSData();
 
-    /* Get the storage index associated with the ID in a thread-safe way */
-    storage_index = SDL_AtomicGet(id) - 1;
+    // Get the storage index associated with the ID in a thread-safe way
+    storage_index = SDL_GetAtomicInt(id) - 1;
     if (storage_index < 0) {
         int new_id = (SDL_AtomicIncRef(&SDL_tls_id) + 1);
 
-        SDL_AtomicCompareAndSwap(id, 0, new_id);
+        SDL_CompareAndSwapAtomicInt(id, 0, new_id);
 
         /* If there was a race condition we'll have wasted an ID, but every thread
          * will have the same storage index for this id.
          */
-        storage_index = SDL_AtomicGet(id) - 1;
+        storage_index = SDL_GetAtomicInt(id) - 1;
     }
 
-    /* Get the storage for the current thread */
+    // Get the storage for the current thread
     storage = SDL_SYS_GetTLSData();
     if (!storage || storage_index >= storage->limit) {
         unsigned int i, oldlimit, newlimit;
@@ -92,7 +92,7 @@ int SDL_SetTLS(SDL_TLSID *id, const void *value, SDL_TLSDestructorCallback destr
         newlimit = (storage_index + TLS_ALLOC_CHUNKSIZE);
         new_storage = (SDL_TLSData *)SDL_realloc(storage, sizeof(*storage) + (newlimit - 1) * sizeof(storage->array[0]));
         if (!new_storage) {
-            return -1;
+            return false;
         }
         storage = new_storage;
         storage->limit = newlimit;
@@ -100,23 +100,23 @@ int SDL_SetTLS(SDL_TLSID *id, const void *value, SDL_TLSDestructorCallback destr
             storage->array[i].data = NULL;
             storage->array[i].destructor = NULL;
         }
-        if (SDL_SYS_SetTLSData(storage) != 0) {
+        if (!SDL_SYS_SetTLSData(storage)) {
             SDL_free(storage);
-            return -1;
+            return false;
         }
         SDL_AtomicIncRef(&SDL_tls_allocated);
     }
 
     storage->array[storage_index].data = SDL_const_cast(void *, value);
     storage->array[storage_index].destructor = destructor;
-    return 0;
+    return true;
 }
 
 void SDL_CleanupTLS(void)
 {
     SDL_TLSData *storage;
 
-    /* Cleanup the storage for the current thread */
+    // Cleanup the storage for the current thread
     storage = SDL_SYS_GetTLSData();
     if (storage) {
         int i;
@@ -135,10 +135,10 @@ void SDL_QuitTLSData(void)
 {
     SDL_CleanupTLS();
 
-    if (SDL_AtomicGet(&SDL_tls_allocated) == 0) {
+    if (SDL_GetAtomicInt(&SDL_tls_allocated) == 0) {
         SDL_SYS_QuitTLSData();
     } else {
-        /* Some thread hasn't called SDL_CleanupTLS() */
+        // Some thread hasn't called SDL_CleanupTLS()
     }
 }
 
@@ -185,11 +185,11 @@ SDL_TLSData *SDL_Generic_GetTLSData(void)
     return storage;
 }
 
-int SDL_Generic_SetTLSData(SDL_TLSData *data)
+bool SDL_Generic_SetTLSData(SDL_TLSData *data)
 {
     SDL_ThreadID thread = SDL_GetCurrentThreadID();
     SDL_TLSEntry *prev, *entry;
-    int retval = 0;
+    bool result = true;
 
     SDL_LockMutex(SDL_generic_TLS_mutex);
     prev = NULL;
@@ -217,19 +217,19 @@ int SDL_Generic_SetTLSData(SDL_TLSData *data)
             entry->next = SDL_generic_TLS;
             SDL_generic_TLS = entry;
         } else {
-            retval = -1;
+            result = false;
         }
     }
     SDL_UnlockMutex(SDL_generic_TLS_mutex);
 
-    return retval;
+    return result;
 }
 
 void SDL_Generic_QuitTLSData(void)
 {
     SDL_TLSEntry *entry;
 
-    /* This should have been cleaned up by the time we get here */
+    // This should have been cleaned up by the time we get here
     SDL_assert(!SDL_generic_TLS);
     if (SDL_generic_TLS) {
         SDL_LockMutex(SDL_generic_TLS_mutex);
@@ -249,7 +249,7 @@ void SDL_Generic_QuitTLSData(void)
     }
 }
 
-/* Non-thread-safe global error variable */
+// Non-thread-safe global error variable
 static SDL_error *SDL_GetStaticErrBuf(void)
 {
     static SDL_error SDL_global_error;
@@ -271,8 +271,8 @@ static void SDLCALL SDL_FreeErrBuf(void *data)
 }
 #endif
 
-/* Routine to get the thread-specific error variable */
-SDL_error *SDL_GetErrBuf(SDL_bool create)
+// Routine to get the thread-specific error variable
+SDL_error *SDL_GetErrBuf(bool create)
 {
 #ifdef SDL_THREADS_DISABLED
     return SDL_GetStaticErrBuf();
@@ -303,7 +303,12 @@ SDL_error *SDL_GetErrBuf(SDL_bool create)
         SDL_SetTLS(&tls_errbuf, errbuf, SDL_FreeErrBuf);
     }
     return errbuf;
-#endif /* SDL_THREADS_DISABLED */
+#endif // SDL_THREADS_DISABLED
+}
+
+static bool ThreadValid(SDL_Thread *thread)
+{
+    return SDL_ObjectValid(thread, SDL_OBJECT_TYPE_THREAD);
 }
 
 void SDL_RunThread(SDL_Thread *thread)
@@ -313,23 +318,24 @@ void SDL_RunThread(SDL_Thread *thread)
 
     int *statusloc = &thread->status;
 
-    /* Perform any system-dependent setup - this function may not fail */
+    // Perform any system-dependent setup - this function may not fail
     SDL_SYS_SetupThread(thread->name);
 
-    /* Get the thread id */
+    // Get the thread id
     thread->threadid = SDL_GetCurrentThreadID();
 
-    /* Run the function */
+    // Run the function
     *statusloc = userfunc(userdata);
 
-    /* Clean up thread-local storage */
+    // Clean up thread-local storage
     SDL_CleanupTLS();
 
-    /* Mark us as ready to be joined (or detached) */
-    if (!SDL_AtomicCompareAndSwap(&thread->state, SDL_THREAD_STATE_ALIVE, SDL_THREAD_STATE_ZOMBIE)) {
-        /* Clean up if something already detached us. */
-        if (SDL_AtomicCompareAndSwap(&thread->state, SDL_THREAD_STATE_DETACHED, SDL_THREAD_STATE_CLEANED)) {
-            SDL_free(thread->name); /* Can't free later, we've already cleaned up TLS */
+    // Mark us as ready to be joined (or detached)
+    if (!SDL_CompareAndSwapAtomicInt(&thread->state, SDL_THREAD_ALIVE, SDL_THREAD_COMPLETE)) {
+        // Clean up if something already detached us.
+        if (SDL_GetThreadState(thread) == SDL_THREAD_DETACHED) {
+            SDL_SetObjectValid(thread, SDL_OBJECT_TYPE_THREAD, false);
+            SDL_free(thread->name); // Can't free later, we've already cleaned up TLS
             SDL_free(thread);
         }
     }
@@ -339,8 +345,8 @@ SDL_Thread *SDL_CreateThreadWithPropertiesRuntime(SDL_PropertiesID props,
                               SDL_FunctionPointer pfnBeginThread,
                               SDL_FunctionPointer pfnEndThread)
 {
-    // rather than check this in every backend, just make sure it's correct upfront. Only allow non-NULL if non-WinRT Windows, or Microsoft GDK.
-    #if (!defined(SDL_PLATFORM_WIN32) && !defined(SDL_PLATFORM_GDK)) || defined(SDL_PLATFORM_WINRT)
+    // rather than check this in every backend, just make sure it's correct upfront. Only allow non-NULL if Windows, or Microsoft GDK.
+    #if !defined(SDL_PLATFORM_WINDOWS)
     if (pfnBeginThread || pfnEndThread) {
         SDL_SetError("_beginthreadex/_endthreadex not supported on this platform");
         return NULL;
@@ -364,7 +370,7 @@ SDL_Thread *SDL_CreateThreadWithPropertiesRuntime(SDL_PropertiesID props,
         return NULL;
     }
     thread->status = -1;
-    SDL_AtomicSet(&thread->state, SDL_THREAD_STATE_ALIVE);
+    SDL_SetAtomicInt(&thread->state, SDL_THREAD_ALIVE);
 
     // Set up the arguments for the thread
     if (name) {
@@ -379,9 +385,12 @@ SDL_Thread *SDL_CreateThreadWithPropertiesRuntime(SDL_PropertiesID props,
     thread->userdata = userdata;
     thread->stacksize = stacksize;
 
+    SDL_SetObjectValid(thread, SDL_OBJECT_TYPE_THREAD, true);
+
     // Create the thread and go!
-    if (SDL_SYS_CreateThread(thread, pfnBeginThread, pfnEndThread) < 0) {
+    if (!SDL_SYS_CreateThread(thread, pfnBeginThread, pfnEndThread)) {
         // Oops, failed.  Gotta free everything
+        SDL_SetObjectValid(thread, SDL_OBJECT_TYPE_THREAD, false);
         SDL_free(thread->name);
         SDL_free(thread);
         thread = NULL;
@@ -420,10 +429,12 @@ SDL_Thread *SDL_CreateThreadWithStackSize(SDL_ThreadFunction fn, const char *nam
 
 SDL_ThreadID SDL_GetThreadID(SDL_Thread *thread)
 {
-    SDL_ThreadID id;
+    SDL_ThreadID id = 0;
 
     if (thread) {
-        id = thread->threadid;
+        if (ThreadValid(thread)) {
+            id = thread->threadid;
+        }
     } else {
         id = SDL_GetCurrentThreadID();
     }
@@ -432,63 +443,76 @@ SDL_ThreadID SDL_GetThreadID(SDL_Thread *thread)
 
 const char *SDL_GetThreadName(SDL_Thread *thread)
 {
-    if (thread) {
-        return thread->name;
+    if (ThreadValid(thread)) {
+        return SDL_GetPersistentString(thread->name);
     } else {
         return NULL;
     }
 }
 
-int SDL_SetThreadPriority(SDL_ThreadPriority priority)
+bool SDL_SetCurrentThreadPriority(SDL_ThreadPriority priority)
 {
     return SDL_SYS_SetThreadPriority(priority);
 }
 
 void SDL_WaitThread(SDL_Thread *thread, int *status)
 {
-    if (thread) {
-        SDL_SYS_WaitThread(thread);
+    if (!ThreadValid(thread) || SDL_GetThreadState(thread) == SDL_THREAD_DETACHED) {
         if (status) {
-            *status = thread->status;
+            *status = -1;
         }
-        SDL_FreeLater(thread->name);
-        SDL_free(thread);
+        return;
     }
+
+    SDL_SYS_WaitThread(thread);
+    if (status) {
+        *status = thread->status;
+    }
+    SDL_SetObjectValid(thread, SDL_OBJECT_TYPE_THREAD, false);
+    SDL_free(thread->name);
+    SDL_free(thread);
+}
+
+SDL_ThreadState SDL_GetThreadState(SDL_Thread *thread)
+{
+    if (!ThreadValid(thread)) {
+        return SDL_THREAD_UNKNOWN;
+    }
+
+    return (SDL_ThreadState)SDL_GetAtomicInt(&thread->state);
 }
 
 void SDL_DetachThread(SDL_Thread *thread)
 {
-    if (!thread) {
+    if (!ThreadValid(thread)) {
         return;
     }
 
-    /* Grab dibs if the state is alive+joinable. */
-    if (SDL_AtomicCompareAndSwap(&thread->state, SDL_THREAD_STATE_ALIVE, SDL_THREAD_STATE_DETACHED)) {
+    // Grab dibs if the state is alive+joinable.
+    if (SDL_CompareAndSwapAtomicInt(&thread->state, SDL_THREAD_ALIVE, SDL_THREAD_DETACHED)) {
         SDL_SYS_DetachThread(thread);
     } else {
-        /* all other states are pretty final, see where we landed. */
-        const int thread_state = SDL_AtomicGet(&thread->state);
-        if ((thread_state == SDL_THREAD_STATE_DETACHED) || (thread_state == SDL_THREAD_STATE_CLEANED)) {
-            return; /* already detached (you shouldn't call this twice!) */
-        } else if (thread_state == SDL_THREAD_STATE_ZOMBIE) {
-            SDL_WaitThread(thread, NULL); /* already done, clean it up. */
-        } else {
-            SDL_assert(0 && "Unexpected thread state");
+        // all other states are pretty final, see where we landed.
+        SDL_ThreadState thread_state = SDL_GetThreadState(thread);
+        if (thread_state == SDL_THREAD_DETACHED) {
+            return; // already detached (you shouldn't call this twice!)
+        } else if (thread_state == SDL_THREAD_COMPLETE) {
+            SDL_WaitThread(thread, NULL); // already done, clean it up.
         }
     }
 }
 
-int SDL_WaitSemaphore(SDL_Semaphore *sem)
+void SDL_WaitSemaphore(SDL_Semaphore *sem)
 {
-    return SDL_WaitSemaphoreTimeoutNS(sem, -1);
+    SDL_WaitSemaphoreTimeoutNS(sem, -1);
 }
 
-int SDL_TryWaitSemaphore(SDL_Semaphore *sem)
+bool SDL_TryWaitSemaphore(SDL_Semaphore *sem)
 {
     return SDL_WaitSemaphoreTimeoutNS(sem, 0);
 }
 
-int SDL_WaitSemaphoreTimeout(SDL_Semaphore *sem, Sint32 timeoutMS)
+bool SDL_WaitSemaphoreTimeout(SDL_Semaphore *sem, Sint32 timeoutMS)
 {
     Sint64 timeoutNS;
 
@@ -500,12 +524,12 @@ int SDL_WaitSemaphoreTimeout(SDL_Semaphore *sem, Sint32 timeoutMS)
     return SDL_WaitSemaphoreTimeoutNS(sem, timeoutNS);
 }
 
-int SDL_WaitCondition(SDL_Condition *cond, SDL_Mutex *mutex)
+void SDL_WaitCondition(SDL_Condition *cond, SDL_Mutex *mutex)
 {
-    return SDL_WaitConditionTimeoutNS(cond, mutex, -1);
+    SDL_WaitConditionTimeoutNS(cond, mutex, -1);
 }
 
-int SDL_WaitConditionTimeout(SDL_Condition *cond, SDL_Mutex *mutex, Sint32 timeoutMS)
+bool SDL_WaitConditionTimeout(SDL_Condition *cond, SDL_Mutex *mutex, Sint32 timeoutMS)
 {
     Sint64 timeoutNS;
 
@@ -516,3 +540,43 @@ int SDL_WaitConditionTimeout(SDL_Condition *cond, SDL_Mutex *mutex, Sint32 timeo
     }
     return SDL_WaitConditionTimeoutNS(cond, mutex, timeoutNS);
 }
+
+bool SDL_ShouldInit(SDL_InitState *state)
+{
+    while (SDL_GetAtomicInt(&state->status) != SDL_INIT_STATUS_INITIALIZED) {
+        if (SDL_CompareAndSwapAtomicInt(&state->status, SDL_INIT_STATUS_UNINITIALIZED, SDL_INIT_STATUS_INITIALIZING)) {
+            state->thread = SDL_GetCurrentThreadID();
+            return true;
+        }
+
+        // Wait for the other thread to complete transition
+        SDL_Delay(1);
+    }
+    return false;
+}
+
+bool SDL_ShouldQuit(SDL_InitState *state)
+{
+    while (SDL_GetAtomicInt(&state->status) != SDL_INIT_STATUS_UNINITIALIZED) {
+        if (SDL_CompareAndSwapAtomicInt(&state->status, SDL_INIT_STATUS_INITIALIZED, SDL_INIT_STATUS_UNINITIALIZING)) {
+            state->thread = SDL_GetCurrentThreadID();
+            return true;
+        }
+
+        // Wait for the other thread to complete transition
+        SDL_Delay(1);
+    }
+    return false;
+}
+
+void SDL_SetInitialized(SDL_InitState *state, bool initialized)
+{
+    SDL_assert(state->thread == SDL_GetCurrentThreadID());
+
+    if (initialized) {
+        SDL_SetAtomicInt(&state->status, SDL_INIT_STATUS_INITIALIZED);
+    } else {
+        SDL_SetAtomicInt(&state->status, SDL_INIT_STATUS_UNINITIALIZED);
+    }
+}
+

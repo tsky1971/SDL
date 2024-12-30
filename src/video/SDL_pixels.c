@@ -20,16 +20,13 @@
 */
 #include "SDL_internal.h"
 
-/* General (mostly internal) pixel/color manipulation routines for SDL */
+// General (mostly internal) pixel/color manipulation routines for SDL
 
 #include "SDL_sysvideo.h"
-#include "SDL_blit.h"
 #include "SDL_pixels_c.h"
 #include "SDL_RLEaccel_c.h"
-#include "../SDL_hashtable.h"
-#include "../SDL_list.h"
 
-/* Lookup tables to expand partial bytes to the full 0..255 range */
+// Lookup tables to expand partial bytes to the full 0..255 range
 
 static const Uint8 lookup_0[] = {
     255
@@ -79,14 +76,14 @@ const Uint8 *SDL_expand_byte[9] = {
     lookup_8
 };
 
-/* Lookup tables to expand 8 bit to 10 bit range */
+// Lookup tables to expand 8 bit to 10 bit range
 const Uint16 SDL_expand_byte_10[] = {
     0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64, 68, 72, 76, 80, 84, 88, 92, 96, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 144, 148, 152, 156, 160, 164, 168, 173, 177, 181, 185, 189, 193, 197, 201, 205, 209, 213, 217, 221, 225, 229, 233, 237, 241, 245, 249, 253, 257, 261, 265, 269, 273, 277, 281, 285, 289, 293, 297, 301, 305, 309, 313, 317, 321, 325, 329, 333, 337, 341, 345, 349, 353, 357, 361, 365, 369, 373, 377, 381, 385, 389, 393, 397, 401, 405, 409, 413, 417, 421, 425, 429, 433, 437, 441, 445, 449, 453, 457, 461, 465, 469, 473, 477, 481, 485, 489, 493, 497, 501, 505, 509, 514, 518, 522, 526, 530, 534, 538, 542, 546, 550, 554, 558, 562, 566, 570, 574, 578, 582, 586, 590, 594, 598, 602, 606, 610, 614, 618, 622, 626, 630, 634, 638, 642, 646, 650, 654, 658, 662, 666, 670, 674, 678, 682, 686, 690, 694, 698, 702, 706, 710, 714, 718, 722, 726, 730, 734, 738, 742, 746, 750, 754, 758, 762, 766, 770, 774, 778, 782, 786, 790, 794, 798, 802, 806, 810, 814, 818, 822, 826, 830, 834, 838, 842, 846, 850, 855, 859, 863, 867, 871, 875, 879, 883, 887, 891, 895, 899, 903, 907, 911, 915, 919, 923, 927, 931, 935, 939, 943, 947, 951, 955, 959, 963, 967, 971, 975, 979, 983, 987, 991, 995, 999, 1003, 1007, 1011, 1015, 1019, 1023
 };
 SDL_COMPILE_TIME_ASSERT(SDL_expand_byte_10_size, SDL_arraysize(SDL_expand_byte_10) == (1 << 8));
 
 
-/* Helper functions */
+// Helper functions
 
 #define CASE(X) \
     case X:     \
@@ -165,14 +162,14 @@ const char *SDL_GetPixelFormatName(SDL_PixelFormat format)
 }
 #undef CASE
 
-int SDL_GetMasksForPixelFormat(SDL_PixelFormat format, int *bpp, Uint32 *Rmask, Uint32 *Gmask, Uint32 *Bmask, Uint32 *Amask)
+bool SDL_GetMasksForPixelFormat(SDL_PixelFormat format, int *bpp, Uint32 *Rmask, Uint32 *Gmask, Uint32 *Bmask, Uint32 *Amask)
 {
     Uint32 masks[4];
 
-#if SDL_HAVE_YUV
-    /* Partial support for SDL_Surface with FOURCC */
+#ifdef SDL_HAVE_YUV
+    // Partial support for SDL_Surface with FOURCC
     if (SDL_ISPIXELFORMAT_FOURCC(format)) {
-        /* Not a format that uses masks */
+        // Not a format that uses masks
         *Rmask = *Gmask = *Bmask = *Amask = 0;
         // however, some of these are packed formats, and can legit declare bits-per-pixel!
         switch (format) {
@@ -184,7 +181,7 @@ int SDL_GetMasksForPixelFormat(SDL_PixelFormat format, int *bpp, Uint32 *Rmask, 
             default:
                 *bpp = 0;  // oh well.
         }
-        return 0;
+        return true;
     }
 #else
     if (SDL_ISPIXELFORMAT_FOURCC(format)) {
@@ -192,7 +189,7 @@ int SDL_GetMasksForPixelFormat(SDL_PixelFormat format, int *bpp, Uint32 *Rmask, 
     }
 #endif
 
-    /* Initialize the values here */
+    // Initialize the values here
     if (SDL_BYTESPERPIXEL(format) <= 2) {
         *bpp = SDL_BITSPERPIXEL(format);
     } else {
@@ -210,7 +207,7 @@ int SDL_GetMasksForPixelFormat(SDL_PixelFormat format, int *bpp, Uint32 *Rmask, 
         *Gmask = 0x0000FF00;
         *Bmask = 0x00FF0000;
 #endif
-        return 0;
+        return true;
     }
 
     if (format == SDL_PIXELFORMAT_BGR24) {
@@ -223,14 +220,14 @@ int SDL_GetMasksForPixelFormat(SDL_PixelFormat format, int *bpp, Uint32 *Rmask, 
         *Gmask = 0x0000FF00;
         *Bmask = 0x000000FF;
 #endif
-        return 0;
+        return true;
     }
 
     if (SDL_PIXELTYPE(format) != SDL_PIXELTYPE_PACKED8 &&
         SDL_PIXELTYPE(format) != SDL_PIXELTYPE_PACKED16 &&
         SDL_PIXELTYPE(format) != SDL_PIXELTYPE_PACKED32) {
-        /* Not a format that uses masks */
-        return 0;
+        // Not a format that uses masks
+        return true;
     }
 
     switch (SDL_PIXELLAYOUT(format)) {
@@ -334,20 +331,20 @@ int SDL_GetMasksForPixelFormat(SDL_PixelFormat format, int *bpp, Uint32 *Rmask, 
     default:
         return SDL_SetError("Unknown pixel format");
     }
-    return 0;
+    return true;
 }
 
 SDL_PixelFormat SDL_GetPixelFormatForMasks(int bpp, Uint32 Rmask, Uint32 Gmask, Uint32 Bmask, Uint32 Amask)
 {
     switch (bpp) {
     case 1:
-        /* SDL defaults to MSB ordering */
+        // SDL defaults to MSB ordering
         return SDL_PIXELFORMAT_INDEX1MSB;
     case 2:
-        /* SDL defaults to MSB ordering */
+        // SDL defaults to MSB ordering
         return SDL_PIXELFORMAT_INDEX2MSB;
     case 4:
-        /* SDL defaults to MSB ordering */
+        // SDL defaults to MSB ordering
         return SDL_PIXELFORMAT_INDEX4MSB;
     case 8:
         if (Rmask == 0xE0 &&
@@ -459,7 +456,7 @@ SDL_PixelFormat SDL_GetPixelFormatForMasks(int bpp, Uint32 Rmask, Uint32 Gmask, 
             Gmask == 0x07C0 &&
             Bmask == 0xF800 &&
             Amask == 0x0000) {
-            /* Technically this would be BGR556, but Witek says this works in bug 3158 */
+            // Technically this would be BGR556, but Witek says this works in bug 3158
             return SDL_PIXELFORMAT_RGB565;
         }
         break;
@@ -575,20 +572,20 @@ SDL_PixelFormat SDL_GetPixelFormatForMasks(int bpp, Uint32 Rmask, Uint32 Gmask, 
     return SDL_PIXELFORMAT_UNKNOWN;
 }
 
+static SDL_InitState SDL_format_details_init;
 static SDL_HashTable *SDL_format_details;
-static SDL_Mutex *SDL_format_details_lock;
 
-static int SDL_InitPixelFormatDetails(SDL_PixelFormatDetails *details, SDL_PixelFormat format)
+static bool SDL_InitPixelFormatDetails(SDL_PixelFormatDetails *details, SDL_PixelFormat format)
 {
     int bpp;
     Uint32 Rmask, Gmask, Bmask, Amask;
     Uint32 mask;
 
-    if (SDL_GetMasksForPixelFormat(format, &bpp, &Rmask, &Gmask, &Bmask, &Amask) < 0) {
-        return -1;
+    if (!SDL_GetMasksForPixelFormat(format, &bpp, &Rmask, &Gmask, &Bmask, &Amask)) {
+        return false;
     }
 
-    /* Set up the format */
+    // Set up the format
     SDL_zerop(details);
     details->format = format;
     details->bits_per_pixel = (Uint8)bpp;
@@ -642,60 +639,51 @@ static int SDL_InitPixelFormatDetails(SDL_PixelFormatDetails *details, SDL_Pixel
         }
     }
 
-    return 0;
+    return true;
 }
 
 const SDL_PixelFormatDetails *SDL_GetPixelFormatDetails(SDL_PixelFormat format)
 {
     SDL_PixelFormatDetails *details;
 
-    if (!SDL_format_details_lock) {
-        SDL_format_details_lock = SDL_CreateMutex();
-    }
-
-    SDL_LockMutex(SDL_format_details_lock);
-
-    if (!SDL_format_details) {
-        SDL_format_details = SDL_CreateHashTable(NULL, 8, SDL_HashID, SDL_KeyMatchID, SDL_NukeFreeValue, SDL_FALSE);
+    if (SDL_ShouldInit(&SDL_format_details_init)) {
+        SDL_format_details = SDL_CreateHashTable(NULL, 8, SDL_HashID, SDL_KeyMatchID, SDL_NukeFreeValue, true, false);
+        if (!SDL_format_details) {
+            SDL_SetInitialized(&SDL_format_details_init, false);
+            return NULL;
+        }
+        SDL_SetInitialized(&SDL_format_details_init, true);
     }
 
     if (SDL_FindInHashTable(SDL_format_details, (const void *)(uintptr_t)format, (const void **)&details)) {
-        goto done;
+        return details;
     }
 
-    /* Allocate an empty pixel format structure, and initialize it */
+    // Allocate an empty pixel format structure, and initialize it
     details = (SDL_PixelFormatDetails *)SDL_malloc(sizeof(*details));
     if (!details) {
-        goto done;
+        return NULL;
     }
 
-    if (SDL_InitPixelFormatDetails(details, format) < 0) {
+    if (!SDL_InitPixelFormatDetails(details, format)) {
         SDL_free(details);
-        details = NULL;
-        goto done;
+        return NULL;
     }
 
     if (!SDL_InsertIntoHashTable(SDL_format_details, (const void *)(uintptr_t)format, (void *)details)) {
         SDL_free(details);
-        details = NULL;
-        goto done;
+        return NULL;
     }
-
-done:
-    SDL_UnlockMutex(SDL_format_details_lock);
 
     return details;
 }
 
 void SDL_QuitPixelFormatDetails(void)
 {
-    if (SDL_format_details) {
+    if (SDL_ShouldQuit(&SDL_format_details_init)) {
         SDL_DestroyHashTable(SDL_format_details);
         SDL_format_details = NULL;
-    }
-    if (SDL_format_details_lock) {
-        SDL_DestroyMutex(SDL_format_details_lock);
-        SDL_format_details_lock = NULL;
+        SDL_SetInitialized(&SDL_format_details_init, false);
     }
 }
 
@@ -767,45 +755,45 @@ float SDL_PQfromNits(float v)
  * https://kdashg.github.io/misc/colors/from-coeffs.html
  */
 static const float mat_BT601_Limited_8bit[] = {
-    -0.0627451017f, -0.501960814f, -0.501960814f, 0.0f, /* offset */
-    1.1644f, 0.0000f, 1.5960f, 0.0f,                    /* Rcoeff */
-    1.1644f, -0.3918f, -0.8130f, 0.0f,                  /* Gcoeff */
-    1.1644f, 2.0172f, 0.0000f, 0.0f,                    /* Bcoeff */
+    -0.0627451017f, -0.501960814f, -0.501960814f, 0.0f, // offset
+    1.1644f, 0.0000f, 1.5960f, 0.0f,                    // Rcoeff
+    1.1644f, -0.3918f, -0.8130f, 0.0f,                  // Gcoeff
+    1.1644f, 2.0172f, 0.0000f, 0.0f,                    // Bcoeff
 };
 
 static const float mat_BT601_Full_8bit[] = {
-    0.0f, -0.501960814f, -0.501960814f, 0.0f,           /* offset */
-    1.0000f, 0.0000f, 1.4020f, 0.0f,                    /* Rcoeff */
-    1.0000f, -0.3441f, -0.7141f, 0.0f,                  /* Gcoeff */
-    1.0000f, 1.7720f, 0.0000f, 0.0f,                    /* Bcoeff */
+    0.0f, -0.501960814f, -0.501960814f, 0.0f,           // offset
+    1.0000f, 0.0000f, 1.4075f, 0.0f,                    // Rcoeff
+    1.0000f, -0.3455f, -0.7169f, 0.0f,                  // Gcoeff
+    1.0000f, 1.7790f, 0.0000f, 0.0f,                    // Bcoeff
 };
 
 static const float mat_BT709_Limited_8bit[] = {
-    -0.0627451017f, -0.501960814f, -0.501960814f, 0.0f, /* offset */
-    1.1644f, 0.0000f, 1.7927f, 0.0f,                    /* Rcoeff */
-    1.1644f, -0.2132f, -0.5329f, 0.0f,                  /* Gcoeff */
-    1.1644f, 2.1124f, 0.0000f, 0.0f,                    /* Bcoeff */
+    -0.0627451017f, -0.501960814f, -0.501960814f, 0.0f, // offset
+    1.1644f, 0.0000f, 1.7927f, 0.0f,                    // Rcoeff
+    1.1644f, -0.2132f, -0.5329f, 0.0f,                  // Gcoeff
+    1.1644f, 2.1124f, 0.0000f, 0.0f,                    // Bcoeff
 };
 
 static const float mat_BT709_Full_8bit[] = {
-    0.0f, -0.501960814f, -0.501960814f, 0.0f,           /* offset */
-    1.0000f, 0.0000f, 1.5748f, 0.0f,                    /* Rcoeff */
-    1.0000f, -0.1873f, -0.4681f, 0.0f,                  /* Gcoeff */
-    1.0000f, 1.8556f, 0.0000f, 0.0f,                    /* Bcoeff */
+    0.0f, -0.501960814f, -0.501960814f, 0.0f,           // offset
+    1.0000f, 0.0000f, 1.5810f, 0.0f,                    // Rcoeff
+    1.0000f, -0.1881f, -0.4700f, 0.0f,                  // Gcoeff
+    1.0000f, 1.8629f, 0.0000f, 0.0f,                    // Bcoeff
 };
 
 static const float mat_BT2020_Limited_10bit[] = {
-    -0.062561095f, -0.500488759f, -0.500488759f, 0.0f,  /* offset */
-    1.1678f, 0.0000f, 1.6836f, 0.0f,                    /* Rcoeff */
-    1.1678f, -0.1879f, -0.6523f, 0.0f,                  /* Gcoeff */
-    1.1678f, 2.1481f, 0.0000f, 0.0f,                    /* Bcoeff */
+    -0.062561095f, -0.500488759f, -0.500488759f, 0.0f,  // offset
+    1.1678f, 0.0000f, 1.6836f, 0.0f,                    // Rcoeff
+    1.1678f, -0.1879f, -0.6523f, 0.0f,                  // Gcoeff
+    1.1678f, 2.1481f, 0.0000f, 0.0f,                    // Bcoeff
 };
 
 static const float mat_BT2020_Full_10bit[] = {
-    0.0f, -0.500488759f, -0.500488759f, 0.0f,           /* offset */
-    1.0000f, 0.0000f, 1.4760f, 0.0f,                    /* Rcoeff */
-    1.0000f, -0.1647f, -0.5719f, 0.0f,                  /* Gcoeff */
-    1.0000f, 1.8832f, 0.0000f, 0.0f,                    /* Bcoeff */
+    0.0f, -0.500488759f, -0.500488759f, 0.0f,           // offset
+    1.0000f, 0.0000f, 1.4760f, 0.0f,                    // Rcoeff
+    1.0000f, -0.1647f, -0.5719f, 0.0f,                  // Gcoeff
+    1.0000f, 1.8832f, 0.0000f, 0.0f,                    // Bcoeff
 };
 
 static const float *SDL_GetBT601ConversionMatrix( SDL_Colorspace colorspace )
@@ -1011,7 +999,7 @@ SDL_Palette *SDL_CreatePalette(int ncolors)
 {
     SDL_Palette *palette;
 
-    /* Input validation */
+    // Input validation
     if (ncolors < 1) {
         SDL_InvalidParamError("ncolors");
         return NULL;
@@ -1035,18 +1023,17 @@ SDL_Palette *SDL_CreatePalette(int ncolors)
     return palette;
 }
 
-int SDL_SetPaletteColors(SDL_Palette *palette, const SDL_Color *colors,
-                         int firstcolor, int ncolors)
+bool SDL_SetPaletteColors(SDL_Palette *palette, const SDL_Color *colors, int firstcolor, int ncolors)
 {
-    int status = 0;
+    bool result = true;
 
-    /* Verify the parameters */
+    // Verify the parameters
     if (!palette) {
-        return -1;
+        return false;
     }
     if (ncolors > (palette->ncolors - firstcolor)) {
         ncolors = (palette->ncolors - firstcolor);
-        status = -1;
+        result = false;
     }
 
     if (colors != (palette->colors + firstcolor)) {
@@ -1058,7 +1045,7 @@ int SDL_SetPaletteColors(SDL_Palette *palette, const SDL_Color *colors,
         palette->version = 1;
     }
 
-    return status;
+    return result;
 }
 
 void SDL_DestroyPalette(SDL_Palette *palette)
@@ -1080,7 +1067,7 @@ void SDL_DitherPalette(SDL_Palette *palette)
 {
     int i;
     if (palette->ncolors != 256) {
-        return; /* only 8bpp supported right now */
+        return; // only 8bpp supported right now
     }
 
     for (i = 0; i < palette->ncolors; i++) {
@@ -1106,7 +1093,7 @@ void SDL_DitherPalette(SDL_Palette *palette)
  */
 Uint8 SDL_FindColor(const SDL_Palette *pal, Uint8 r, Uint8 g, Uint8 b, Uint8 a)
 {
-    /* Do colorspace distance matching */
+    // Do colorspace distance matching
     unsigned int smallest;
     unsigned int distance;
     int rd, gd, bd, ad;
@@ -1122,7 +1109,7 @@ Uint8 SDL_FindColor(const SDL_Palette *pal, Uint8 r, Uint8 g, Uint8 b, Uint8 a)
         distance = (rd * rd) + (gd * gd) + (bd * bd) + (ad * ad);
         if (distance < smallest) {
             pixel = (Uint8)i;
-            if (distance == 0) { /* Perfect match! */
+            if (distance == 0) { // Perfect match!
                 break;
             }
             smallest = distance;
@@ -1131,53 +1118,70 @@ Uint8 SDL_FindColor(const SDL_Palette *pal, Uint8 r, Uint8 g, Uint8 b, Uint8 a)
     return pixel;
 }
 
-/* Tell whether palette is opaque, and if it has an alpha_channel */
-void SDL_DetectPalette(const SDL_Palette *pal, SDL_bool *is_opaque, SDL_bool *has_alpha_channel)
+Uint8 SDL_LookupRGBAColor(SDL_HashTable *palette_map, Uint32 pixel, const SDL_Palette *pal)
+{
+    Uint8 color_index = 0;
+    const void *value;
+    if (SDL_FindInHashTable(palette_map, (const void *)(uintptr_t)pixel, &value)) {
+        color_index = (Uint8)(uintptr_t)value;
+    } else {
+        Uint8 r = (Uint8)((pixel >> 24) & 0xFF);
+        Uint8 g = (Uint8)((pixel >> 16) & 0xFF);
+        Uint8 b = (Uint8)((pixel >>  8) & 0xFF);
+        Uint8 a = (Uint8)((pixel >>  0) & 0xFF);
+        color_index = SDL_FindColor(pal, r, g, b, a);
+        SDL_InsertIntoHashTable(palette_map, (const void *)(uintptr_t)pixel, (const void *)(uintptr_t)color_index);
+    }
+    return color_index;
+}
+
+// Tell whether palette is opaque, and if it has an alpha_channel
+void SDL_DetectPalette(const SDL_Palette *pal, bool *is_opaque, bool *has_alpha_channel)
 {
     int i;
 
     {
-        SDL_bool all_opaque = SDL_TRUE;
+        bool all_opaque = true;
         for (i = 0; i < pal->ncolors; i++) {
             Uint8 alpha_value = pal->colors[i].a;
             if (alpha_value != SDL_ALPHA_OPAQUE) {
-                all_opaque = SDL_FALSE;
+                all_opaque = false;
                 break;
             }
         }
 
         if (all_opaque) {
-            /* Palette is opaque, with an alpha channel */
-            *is_opaque = SDL_TRUE;
-            *has_alpha_channel = SDL_TRUE;
+            // Palette is opaque, with an alpha channel
+            *is_opaque = true;
+            *has_alpha_channel = true;
             return;
         }
     }
 
     {
-        SDL_bool all_transparent = SDL_TRUE;
+        bool all_transparent = true;
         for (i = 0; i < pal->ncolors; i++) {
             Uint8 alpha_value = pal->colors[i].a;
             if (alpha_value != SDL_ALPHA_TRANSPARENT) {
-                all_transparent = SDL_FALSE;
+                all_transparent = false;
                 break;
             }
         }
 
         if (all_transparent) {
-            /* Palette is opaque, without an alpha channel */
-            *is_opaque = SDL_TRUE;
-            *has_alpha_channel = SDL_FALSE;
+            // Palette is opaque, without an alpha channel
+            *is_opaque = true;
+            *has_alpha_channel = false;
             return;
         }
     }
 
-    /* Palette has alpha values */
-    *is_opaque = SDL_FALSE;
-    *has_alpha_channel = SDL_TRUE;
+    // Palette has alpha values
+    *is_opaque = false;
+    *has_alpha_channel = true;
 }
 
-/* Find the opaque pixel value corresponding to an RGB triple */
+// Find the opaque pixel value corresponding to an RGB triple
 Uint32 SDL_MapRGB(const SDL_PixelFormatDetails *format, const SDL_Palette *palette, Uint8 r, Uint8 g, Uint8 b)
 {
     if (!format) {
@@ -1206,7 +1210,7 @@ Uint32 SDL_MapRGB(const SDL_PixelFormatDetails *format, const SDL_Palette *palet
     }
 }
 
-/* Find the pixel value corresponding to an RGBA quadruple */
+// Find the pixel value corresponding to an RGBA quadruple
 Uint32 SDL_MapRGBA(const SDL_PixelFormatDetails *format, const SDL_Palette *palette, Uint8 r, Uint8 g, Uint8 b, Uint8 a)
 {
     if (!format) {
@@ -1341,7 +1345,7 @@ void SDL_GetRGBA(Uint32 pixel, const SDL_PixelFormatDetails *format, const SDL_P
     }
 }
 
-/* Map from Palette to Palette */
+// Map from Palette to Palette
 static Uint8 *Map1to1(const SDL_Palette *src, const SDL_Palette *dst, int *identical)
 {
     Uint8 *map;
@@ -1349,7 +1353,7 @@ static Uint8 *Map1to1(const SDL_Palette *src, const SDL_Palette *dst, int *ident
 
     if (identical) {
         if (src->ncolors <= dst->ncolors) {
-            /* If an identical palette, no need to map */
+            // If an identical palette, no need to map
             if (src == dst ||
                 (SDL_memcmp(src->colors, dst->colors,
                             src->ncolors * sizeof(SDL_Color)) == 0)) {
@@ -1371,7 +1375,7 @@ static Uint8 *Map1to1(const SDL_Palette *src, const SDL_Palette *dst, int *ident
     return map;
 }
 
-/* Map from Palette to BitField */
+// Map from Palette to BitField
 static Uint8 *Map1toN(const SDL_Palette *pal, Uint8 Rmod, Uint8 Gmod, Uint8 Bmod, Uint8 Amod, const SDL_PixelFormatDetails *dst)
 {
     Uint8 *map;
@@ -1389,7 +1393,7 @@ static Uint8 *Map1toN(const SDL_Palette *pal, Uint8 Rmod, Uint8 Gmod, Uint8 Bmod
         return NULL;
     }
 
-    /* We memory copy to the pixel map so the endianness is preserved */
+    // We memory copy to the pixel map so the endianness is preserved
     for (i = 0; i < pal->ncolors; ++i) {
         Uint8 R = (Uint8)((pal->colors[i].r * Rmod) / 255);
         Uint8 G = (Uint8)((pal->colors[i].g * Gmod) / 255);
@@ -1401,55 +1405,47 @@ static Uint8 *Map1toN(const SDL_Palette *pal, Uint8 Rmod, Uint8 Gmod, Uint8 Bmod
     return map;
 }
 
-/* Map from BitField to Dithered-Palette to Palette */
-static Uint8 *MapNto1(const SDL_PixelFormatDetails *src, const SDL_Palette *pal, int *identical)
+bool SDL_ValidateMap(SDL_Surface *src, SDL_Surface *dst)
 {
-    /* Generate a 256 color dither palette */
-    SDL_Palette dithered;
-    SDL_Color colors[256];
+    SDL_BlitMap *map = &src->map;
 
-    if (!pal) {
-        SDL_SetError("dst does not have a palette set");
-        return NULL;
+    if (map->info.dst_fmt != dst->fmt ||
+        map->info.dst_pal != dst->palette ||
+        (dst->palette &&
+         map->dst_palette_version != dst->palette->version) ||
+        (src->palette &&
+         map->src_palette_version != src->palette->version)) {
+        if (!SDL_MapSurface(src, dst)) {
+            return false;
+        }
+        // just here for debugging
+        // printf
+        // ("src = 0x%08X src->flags = %08X map->info.flags = %08x\ndst = 0x%08X dst->flags = %08X dst->map.info.flags = %08X\nmap->blit = 0x%08x\n",
+        // src, dst->flags, map->info.flags, dst, dst->flags,
+        // dst->map.info.flags, map->blit);
+    } else {
+        map->info.dst_surface = dst;
     }
-
-    dithered.colors = colors;
-    dithered.ncolors = SDL_arraysize(colors);
-    SDL_DitherPalette(&dithered);
-    return Map1to1(&dithered, pal, identical);
-}
-
-void SDL_InvalidateAllBlitMap(SDL_Surface *surface)
-{
-    SDL_ListNode *l = surface->internal->list_blitmap;
-
-    surface->internal->list_blitmap = NULL;
-
-    while (l) {
-        SDL_ListNode *tmp = l;
-        SDL_InvalidateMap((SDL_BlitMap *)l->entry);
-        l = l->next;
-        SDL_free(tmp);
-    }
+    return true;
 }
 
 void SDL_InvalidateMap(SDL_BlitMap *map)
 {
-    if (!map) {
-        return;
-    }
-    if (map->dst) {
-        /* Un-register from the destination surface */
-        SDL_ListRemove(&map->dst->internal->list_blitmap, map);
-    }
-    map->dst = NULL;
+    map->info.dst_fmt = NULL;
+    map->info.dst_pal = NULL;
     map->src_palette_version = 0;
     map->dst_palette_version = 0;
-    SDL_free(map->info.table);
-    map->info.table = NULL;
+    if (map->info.table) {
+        SDL_free(map->info.table);
+        map->info.table = NULL;
+    }
+    if (map->info.palette_map) {
+        SDL_DestroyHashTable(map->info.palette_map);
+        map->info.palette_map = NULL;
+    }
 }
 
-int SDL_MapSurface(SDL_Surface *src, SDL_Surface *dst)
+bool SDL_MapSurface(SDL_Surface *src, SDL_Surface *dst)
 {
     const SDL_PixelFormatDetails *srcfmt;
     const SDL_Palette *srcpal;
@@ -1457,24 +1453,24 @@ int SDL_MapSurface(SDL_Surface *src, SDL_Surface *dst)
     const SDL_Palette *dstpal;
     SDL_BlitMap *map;
 
-    /* Clear out any previous mapping */
-    map = &src->internal->map;
-#if SDL_HAVE_RLE
-    if (src->internal->flags & SDL_INTERNAL_SURFACE_RLEACCEL) {
-        SDL_UnRLESurface(src, SDL_TRUE);
+    // Clear out any previous mapping
+    map = &src->map;
+#ifdef SDL_HAVE_RLE
+    if (src->internal_flags & SDL_INTERNAL_SURFACE_RLEACCEL) {
+        SDL_UnRLESurface(src, true);
     }
 #endif
     SDL_InvalidateMap(map);
 
-    /* Figure out what kind of mapping we're doing */
+    // Figure out what kind of mapping we're doing
     map->identity = 0;
-    srcfmt = src->internal->format;
-    srcpal = src->internal->palette;
-    dstfmt = dst->internal->format;
-    dstpal = dst->internal->palette;
+    srcfmt = src->fmt;
+    srcpal = src->palette;
+    dstfmt = dst->fmt;
+    dstpal = dst->palette;
     if (SDL_ISPIXELFORMAT_INDEXED(srcfmt->format)) {
         if (SDL_ISPIXELFORMAT_INDEXED(dstfmt->format)) {
-            /* Palette --> Palette */
+            // Palette --> Palette
             if (srcpal && dstpal) {
                 map->info.table = Map1to1(srcpal, dstpal, &map->identity);
             } else {
@@ -1482,44 +1478,31 @@ int SDL_MapSurface(SDL_Surface *src, SDL_Surface *dst)
             }
             if (!map->identity) {
                 if (!map->info.table) {
-                    return -1;
+                    return false;
                 }
             }
             if (srcfmt->bits_per_pixel != dstfmt->bits_per_pixel) {
                 map->identity = 0;
             }
         } else {
-            /* Palette --> BitField */
+            // Palette --> BitField
             map->info.table =
-                Map1toN(srcpal, src->internal->map.info.r, src->internal->map.info.g,
-                        src->internal->map.info.b, src->internal->map.info.a, dstfmt);
+                Map1toN(srcpal, src->map.info.r, src->map.info.g,
+                        src->map.info.b, src->map.info.a, dstfmt);
             if (!map->info.table) {
-                return -1;
+                return false;
             }
         }
     } else {
         if (SDL_ISPIXELFORMAT_INDEXED(dstfmt->format)) {
-            /* BitField --> Palette */
-            map->info.table = MapNto1(srcfmt, dstpal, &map->identity);
-            if (!map->identity) {
-                if (!map->info.table) {
-                    return -1;
-                }
-            }
-            map->identity = 0; /* Don't optimize to copy */
+            // BitField --> Palette
+            map->info.palette_map = SDL_CreateHashTable(NULL, 32, SDL_HashID, SDL_KeyMatchID, NULL, false, false);
         } else {
-            /* BitField --> BitField */
+            // BitField --> BitField
             if (srcfmt == dstfmt) {
                 map->identity = 1;
             }
         }
-    }
-
-    map->dst = dst;
-
-    if (map->dst) {
-        /* Register BlitMap to the destination surface, to be invalidated when needed */
-        SDL_ListAdd(&map->dst->internal->list_blitmap, map);
     }
 
     if (dstpal) {
@@ -1534,7 +1517,7 @@ int SDL_MapSurface(SDL_Surface *src, SDL_Surface *dst)
         map->src_palette_version = 0;
     }
 
-    /* Choose your blitters wisely */
-    return SDL_CalculateBlit(src);
+    // Choose your blitters wisely
+    return SDL_CalculateBlit(src, dst);
 }
 

@@ -23,7 +23,8 @@
 #ifndef SDL_windowsrawinput_h_
 #define SDL_windowsrawinput_h_
 
-extern int WIN_SetRawMouseEnabled(SDL_VideoDevice *_this, SDL_bool enabled);
-extern int WIN_SetRawKeyboardEnabled(SDL_VideoDevice *_this, SDL_bool enabled);
+extern bool WIN_SetRawMouseEnabled(SDL_VideoDevice *_this, bool enabled);
+extern bool WIN_SetRawKeyboardEnabled(SDL_VideoDevice *_this, bool enabled);
+extern bool WIN_RefreshRawInputEnabled(SDL_VideoDevice *_this);
 
-#endif /* SDL_windowsrawinput_h_ */
+#endif // SDL_windowsrawinput_h_

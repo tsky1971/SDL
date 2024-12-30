@@ -64,6 +64,10 @@ Note the `/**` at the start of the comment. That's a "Doxygen-style" comment,
 and wikiheaders will treat this differently than a comment with one `*`, as
 this signifies that this is not just a comment, but _documentation_.
 
+These comments _must_ start in the first column of the line, or wikiheaders
+will ignore them, even with the "/**" start (we should improve the script
+someday to handle this, but currently this is a requirement).
+
 We do _not_ parse every magic Doxygen tag, and we don't parse them in `@param`
 format. The goal here was to mostly coexist with people that might want
 to run Doxygen on the SDL headers, not to build Doxygen from scratch. That
@@ -236,6 +240,15 @@ typedef struct SDL_MyStruct
 
 wikiheaders will complain loudly if you don't do this, and exit with an
 error message.
+
+
+## Don't repeat type names in `\param` and `\returns` sections.
+
+Wikiheaders will explicitly mention the datatype for each parameter and the
+return value, linking to the datatype's wikipage. Users reading the headers
+can see the types in the function signature right below the documentation
+comment. So don't mention the type a second time in the documentation if
+possible. It looks cluttered and repetitive to do so.
 
 
 ## Code examples go in the wiki.

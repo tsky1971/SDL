@@ -1,16 +1,25 @@
 # This cmake build script is meant for verifying the various CMake configuration scripts.
 
 cmake_minimum_required(VERSION 3.12)
-project(sdl_test LANGUAGES C)
+project(SDL_cmake_selftest LANGUAGES C)
+
+include(CheckLanguage)
+
+# FIXME: how to target ios/tvos with Swift?
+# https://gitlab.kitware.com/cmake/cmake/-/issues/20104
+if(APPLE AND CMAKE_SYSTEM_NAME MATCHES ".*(Darwin|MacOS).*")
+    # multiple values for CMAKE_OSX_ARCHITECTURES not supported with Swift
+    list(LENGTH CMAKE_OSX_ARCHITECTURES count_osx_archs)
+    if(count_osx_archs LESS_EQUAL 1)
+        check_language(Swift)
+        if(CMAKE_Swift_COMPILER)
+            enable_language(Swift)
+        endif()
+    endif()
+endif()
 
 message(STATUS "CMAKE_SYSTEM_NAME=      ${CMAKE_SYSTEM_NAME}")
 message(STATUS "CMAKE_SYSTEM_PROCESSOR= ${CMAKE_SYSTEM_PROCESSOR}")
-
-if(WINDOWS_STORE)
-    enable_language(CXX)
-    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/ZW>")
-    set_source_files_properties(ain_cli.c main_gui.c PROPERTIES LANGUAGE CXX)
-endif()
 
 include(GenerateExportHeader)
 
@@ -74,6 +83,12 @@ if(TEST_SHARED)
         add_executable(sdltest-shared sdltest.c)
         target_link_libraries(sdltest-shared PRIVATE SDL3::SDL3_test SDL3::SDL3-shared)
     endif()
+
+    if(CMAKE_Swift_COMPILER)
+        add_executable(swift-shared main.swift)
+        target_include_directories(swift-shared PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/swift")
+        target_link_libraries(swift-shared PRIVATE SDL3::SDL3-shared)
+    endif()
 endif()
 
 if(TEST_STATIC)
@@ -91,6 +106,12 @@ if(TEST_STATIC)
     if(TEST_TEST)
         add_executable(sdltest-static sdltest.c)
         target_link_libraries(sdltest-static PRIVATE SDL3::SDL3_test SDL3::SDL3-static)
+    endif()
+
+    if(CMAKE_Swift_COMPILER)
+        add_executable(swift-static main.swift)
+        target_include_directories(swift-static PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/swift")
+        target_link_libraries(swift-static PRIVATE SDL3::SDL3-static)
     endif()
 endif()
 

@@ -21,9 +21,9 @@ static SDL_AudioStream *stream_in = NULL;
 static SDL_AudioStream *stream_out = NULL;
 static SDLTest_CommonState *state = NULL;
 
-int SDL_AppInit(void **appstate, int argc, char **argv)
+SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv)
 {
-    const SDL_AudioDeviceID *devices;
+    SDL_AudioDeviceID *devices;
     SDL_AudioSpec outspec;
     SDL_AudioSpec inspec;
     SDL_AudioDeviceID device;
@@ -39,9 +39,6 @@ int SDL_AppInit(void **appstate, int argc, char **argv)
     if (!state) {
         return SDL_APP_SUCCESS;
     }
-
-    /* Enable standard application logging */
-    SDL_SetLogPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
 
     /* Parse commandline */
     for (i = 1; i < argc;) {
@@ -64,12 +61,12 @@ int SDL_AppInit(void **appstate, int argc, char **argv)
     }
 
     /* Load the SDL library */
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) {
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't initialize SDL: %s\n", SDL_GetError());
         return SDL_APP_SUCCESS;
     }
 
-    if (SDL_CreateWindowAndRenderer("testaudiorecording", 320, 240, 0, &window, &renderer) < 0) {
+    if (!SDL_CreateWindowAndRenderer("testaudiorecording", 320, 240, 0, &window, &renderer)) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't create SDL window and renderer: %s\n", SDL_GetError());
         return SDL_APP_SUCCESS;
     }
@@ -103,6 +100,7 @@ int SDL_AppInit(void **appstate, int argc, char **argv)
     device = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, NULL);
     if (!device) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't open an audio device for playback: %s!\n", SDL_GetError());
+        SDL_free(devices);
         return SDL_APP_FAILURE;
     }
     SDL_PauseAudioDevice(device);
@@ -110,9 +108,11 @@ int SDL_AppInit(void **appstate, int argc, char **argv)
     stream_out = SDL_CreateAudioStream(&outspec, &outspec);
     if (!stream_out) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't create an audio stream for playback: %s!\n", SDL_GetError());
+        SDL_free(devices);
         return SDL_APP_FAILURE;
-    } else if (SDL_BindAudioStream(device, stream_out) == -1) {
+    } else if (!SDL_BindAudioStream(device, stream_out)) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't bind an audio stream for playback: %s!\n", SDL_GetError());
+        SDL_free(devices);
         return SDL_APP_FAILURE;
     }
 
@@ -124,15 +124,17 @@ int SDL_AppInit(void **appstate, int argc, char **argv)
     device = SDL_OpenAudioDevice(want_device, NULL);
     if (!device) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't open an audio device for recording: %s!\n", SDL_GetError());
+        SDL_free(devices);
         return SDL_APP_FAILURE;
     }
+    SDL_free(devices);
     SDL_PauseAudioDevice(device);
     SDL_GetAudioDeviceFormat(device, &inspec, NULL);
     stream_in = SDL_CreateAudioStream(&inspec, &inspec);
     if (!stream_in) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't create an audio stream for recording: %s!\n", SDL_GetError());
         return SDL_APP_FAILURE;
-    } else if (SDL_BindAudioStream(device, stream_in) == -1) {
+    } else if (!SDL_BindAudioStream(device, stream_in)) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't bind an audio stream for recording: %s!\n", SDL_GetError());
         return SDL_APP_FAILURE;
     }
@@ -144,7 +146,7 @@ int SDL_AppInit(void **appstate, int argc, char **argv)
     return SDL_APP_CONTINUE;
 }
 
-int SDL_AppEvent(void *appstate, const SDL_Event *event)
+SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 {
     if (event->type == SDL_EVENT_QUIT) {
         return SDL_APP_SUCCESS;
@@ -154,21 +156,21 @@ int SDL_AppEvent(void *appstate, const SDL_Event *event)
         }
     } else if (event->type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
         if (event->button.button == 1) {
-            SDL_PauseAudioDevice(SDL_GetAudioStreamDevice(stream_out));
+            SDL_PauseAudioStreamDevice(stream_out);
             SDL_FlushAudioStream(stream_out);  /* so no samples are held back for resampling purposes. */
-            SDL_ResumeAudioDevice(SDL_GetAudioStreamDevice(stream_in));
+            SDL_ResumeAudioStreamDevice(stream_in);
         }
     } else if (event->type == SDL_EVENT_MOUSE_BUTTON_UP) {
         if (event->button.button == 1) {
-            SDL_PauseAudioDevice(SDL_GetAudioStreamDevice(stream_in));
+            SDL_PauseAudioStreamDevice(stream_in);
             SDL_FlushAudioStream(stream_in);  /* so no samples are held back for resampling purposes. */
-            SDL_ResumeAudioDevice(SDL_GetAudioStreamDevice(stream_out));
+            SDL_ResumeAudioStreamDevice(stream_out);
         }
     }
     return SDL_APP_CONTINUE;
 }
 
-int SDL_AppIterate(void *appstate)
+SDL_AppResult SDL_AppIterate(void *appstate)
 {
     if (!SDL_AudioDevicePaused(SDL_GetAudioStreamDevice(stream_in))) {
         SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
@@ -185,7 +187,7 @@ int SDL_AppIterate(void *appstate)
         if (br < 0) {
             SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to read from input audio stream: %s\n", SDL_GetError());
             return SDL_APP_FAILURE;
-        } else if (SDL_PutAudioStreamData(stream_out, buf, br) < 0) {
+        } else if (!SDL_PutAudioStreamData(stream_out, buf, br)) {
             SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to write to output audio stream: %s\n", SDL_GetError());
             return SDL_APP_FAILURE;
         }
@@ -194,7 +196,7 @@ int SDL_AppIterate(void *appstate)
     return SDL_APP_CONTINUE;
 }
 
-void SDL_AppQuit(void *appstate)
+void SDL_AppQuit(void *appstate, SDL_AppResult result)
 {
     SDL_Log("Shutting down.\n");
     const SDL_AudioDeviceID devid_in = SDL_GetAudioStreamDevice(stream_in);
@@ -205,8 +207,8 @@ void SDL_AppQuit(void *appstate)
     SDL_DestroyAudioStream(stream_out);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
-    SDLTest_CommonDestroyState(state);
     SDL_Quit();
+    SDLTest_CommonDestroyState(state);
 }
 
 

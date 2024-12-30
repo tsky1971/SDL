@@ -72,14 +72,14 @@ upper_lower_to_bytestring(Uint8 *out, Uint64 upper, Uint64 lower)
 /**
  * Check String-to-GUID conversion
  *
- * \sa SDL_GUIDFromString
+ * \sa SDL_StringToGUID
  */
-static int
-TestGuidFromString(void *arg)
+static int SDLCALL
+TestStringToGUID(void *arg)
 {
     int i;
 
-    SDLTest_AssertPass("Call to SDL_GUIDFromString");
+    SDLTest_AssertPass("Call to SDL_StringToGUID");
     for (i = 0; i < NUM_TEST_GUIDS; ++i) {
         Uint8 expected[16];
         SDL_GUID guid;
@@ -87,7 +87,7 @@ TestGuidFromString(void *arg)
         upper_lower_to_bytestring(expected,
                                   test_guids[i].upper, test_guids[i].lower);
 
-        guid = SDL_GUIDFromString(test_guids[i].str);
+        guid = SDL_StringToGUID(test_guids[i].str);
         SDLTest_AssertCheck(SDL_memcmp(expected, guid.data, 16) == 0, "GUID from string, GUID was: '%s'", test_guids[i].str);
     }
 
@@ -99,20 +99,20 @@ TestGuidFromString(void *arg)
  *
  * \sa SDL_GUIDToString
  */
-static int
-TestGuidToString(void *arg)
+static int SDLCALL
+TestGUIDToString(void *arg)
 {
     int i;
 
     SDLTest_AssertPass("Call to SDL_GUIDToString");
     for (i = 0; i < NUM_TEST_GUIDS; ++i) {
-        const char *guid_str;
+        char guid_str[33];
         SDL_GUID guid;
 
         upper_lower_to_bytestring(guid.data,
                                   test_guids[i].upper, test_guids[i].lower);
 
-        guid_str = SDL_GUIDToString(guid);
+        SDL_GUIDToString(guid, guid_str, sizeof(guid_str));
         SDLTest_AssertCheck(SDL_strcmp(guid_str, test_guids[i].str) == 0, "Checking whether strings match, expected %s, got %s\n", test_guids[i].str, guid_str);
     }
 
@@ -123,11 +123,11 @@ TestGuidToString(void *arg)
 
 /* GUID routine test cases */
 static const SDLTest_TestCaseReference guidTest1 = {
-    (SDLTest_TestCaseFp)TestGuidFromString, "TestGuidFromString", "Call to SDL_GUIDFromString", TEST_ENABLED
+    TestStringToGUID, "TestStringToGUID", "Call to SDL_StringToGUID", TEST_ENABLED
 };
 
 static const SDLTest_TestCaseReference guidTest2 = {
-    (SDLTest_TestCaseFp)TestGuidToString, "TestGuidToString", "Call to SDL_GUIDToString", TEST_ENABLED
+    TestGUIDToString, "TestGUIDToString", "Call to SDL_GUIDToString", TEST_ENABLED
 };
 
 /* Sequence of GUID routine test cases */

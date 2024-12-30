@@ -1,5 +1,24 @@
 #!/usr/bin/perl -w
 
+# Simple DirectMedia Layer
+# Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
+#
+# This software is provided 'as-is', without any express or implied
+# warranty.  In no event will the authors be held liable for any damages
+# arising from the use of this software.
+#
+# Permission is granted to anyone to use this software for any purpose,
+# including commercial applications, and to alter it and redistribute it
+# freely, subject to the following restrictions:
+#
+# 1. The origin of this software must not be misrepresented; you must not
+#    claim that you wrote the original software. If you use this software
+#    in a product, an acknowledgment in the product documentation would be
+#    appreciated but is not required.
+# 2. Altered source versions must be plainly marked as such, and must not be
+#    misrepresented as being the original software.
+# 3. This notice may not be removed or altered from any source distribution.
+
 use warnings;
 use strict;
 use File::Path;
@@ -32,6 +51,12 @@ my $wikipreamble = undef;
 my $wikiheaderfiletext = 'Defined in %fname%';
 my $manpageheaderfiletext = 'Defined in %fname%';
 my $headercategoryeval = undef;
+my $quickrefenabled = 0;
+my @quickrefcategoryorder;
+my $quickreftitle = undef;
+my $quickrefurl = undef;
+my $quickrefdesc = undef;
+my $quickrefmacroregex = undef;
 my $changeformat = undef;
 my $manpath = undef;
 my $gitrev = undef;
@@ -103,6 +128,12 @@ if (defined $optionsfname) {
             $wikiheaderfiletext = $val, next if $key eq 'wikiheaderfiletext';
             $manpageheaderfiletext = $val, next if $key eq 'manpageheaderfiletext';
             $headercategoryeval = $val, next if $key eq 'headercategoryeval';
+            $quickrefenabled = int($val), next if $key eq 'quickrefenabled';
+            @quickrefcategoryorder = split(/,/, $val), next if $key eq 'quickrefcategoryorder';
+            $quickreftitle = $val, next if $key eq 'quickreftitle';
+            $quickrefurl = $val, next if $key eq 'quickrefurl';
+            $quickrefdesc = $val, next if $key eq 'quickrefdesc';
+            $quickrefmacroregex = $val, next if $key eq 'quickrefmacroregex';
         }
     }
     close(OPTIONS);
@@ -257,14 +288,14 @@ sub wikify_chunk {
             $codedstr .= wikify_chunk($wikitype, $1, undef, undef);
             if (defined $apiprefixregex) {
                 # Convert obvious API things to wikilinks, even inside `code` blocks.
-                $codeblock =~ s/\b($apiprefixregex[a-zA-Z0-9_]+)/[[$1]]/gms;
+                $codeblock =~ s/(\A|[^\/a-zA-Z0-9_])($apiprefixregex[a-zA-Z0-9_]+)/$1\[\[$2\]\]/gms;
             }
             $codedstr .= "<code>$codeblock</code>";
         }
 
         # Convert obvious API things to wikilinks.
         if (defined $apiprefixregex) {
-            $str =~ s/\b($apiprefixregex[a-zA-Z0-9_]+)/[[$1]]/gms;
+            $str =~ s/(\A|[^\/a-zA-Z0-9_])($apiprefixregex[a-zA-Z0-9_]+)/$1\[\[$2\]\]/gms;
         }
 
         # Make some Markdown things into MediaWiki...
@@ -309,7 +340,7 @@ sub wikify_chunk {
 
         # Convert obvious API things to wikilinks.
         if (defined $apiprefixregex) {
-            $str =~ s/\b($apiprefixregex[a-zA-Z0-9_]+)/[$1]($1)/gms;
+            $str =~ s/(\A|[^\/a-zA-Z0-9_])($apiprefixregex[a-zA-Z0-9_]+)/$1\[$2\]\($2\)/gms;
         }
 
         $str = $codedstr . $str;
@@ -628,6 +659,7 @@ my %headersymsrettype = (); # $headersymsrettype{"SDL_OpenAudio"} -> string of C
 my %wikitypes = ();  # contains string of wiki page extension, like $wikitypes{"SDL_OpenAudio"} == 'mediawiki'
 my %wikisyms = ();  # contains references to hash of strings, each string being the full contents of a section of a wiki page, like $wikisyms{"SDL_OpenAudio"}{"Remarks"}.
 my %wikisectionorder = ();   # contains references to array, each array item being a key to a wikipage section in the correct order, like $wikisectionorder{"SDL_OpenAudio"}[2] == 'Remarks'
+my %quickreffuncorder = ();   # contains references to array, each array item being a key to a category with functions in the order they appear in the headers, like $quickreffuncorder{"Audio"}[0] == 'SDL_GetNumAudioDrivers'
 
 my %referenceonly = ();  # $referenceonly{"Y"} -> symbol name that this symbol is bound to. This makes wiki pages that say "See X" where "X" is a typedef and "Y" is a define attached to it. These pages are generated in the wiki only and do not bridge to the headers or manpages.
 
@@ -701,6 +733,279 @@ sub sanitize_c_typename {
     return $str;
 }
 
+my %big_ascii = (
+    'A' => [ "\x{20}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}\x{20}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{2588}\x{2588}\x{2551}", "\x{255A}\x{2550}\x{255D}\x{20}\x{20}\x{255A}\x{2550}\x{255D}" ],
+    'B' => [ "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}\x{20}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{255A}\x{2550}\x{2550}\x{2550}\x{2550}\x{2550}\x{255D}\x{20}" ],
+    'C' => [ "\x{20}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{2550}\x{2550}\x{255D}", "\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{20}\x{20}\x{20}", "\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{20}\x{20}\x{20}", "\x{255A}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}", "\x{20}\x{255A}\x{2550}\x{2550}\x{2550}\x{2550}\x{2550}\x{255D}" ],
+    'D' => [ "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}\x{20}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{255A}\x{2550}\x{2550}\x{2550}\x{2550}\x{2550}\x{255D}\x{20}" ],
+    'E' => [ "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{2550}\x{2550}\x{255D}", "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}\x{20}\x{20}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{255D}\x{20}\x{20}", "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}", "\x{255A}\x{2550}\x{2550}\x{2550}\x{2550}\x{2550}\x{2550}\x{255D}" ],
+    'F' => [ "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{2550}\x{2550}\x{255D}", "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}\x{20}\x{20}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{255D}\x{20}\x{20}", "\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{20}\x{20}\x{20}", "\x{255A}\x{2550}\x{255D}\x{20}\x{20}\x{20}\x{20}\x{20}" ],
+    'G' => [ "\x{20}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}\x{20}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{2550}\x{2550}\x{255D}\x{20}", "\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{2588}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2551}", "\x{255A}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{20}\x{255A}\x{2550}\x{2550}\x{2550}\x{2550}\x{2550}\x{255D}\x{20}" ],
+    'H' => [ "\x{2588}\x{2588}\x{2557}\x{20}\x{20}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{2588}\x{2588}\x{2551}", "\x{255A}\x{2550}\x{255D}\x{20}\x{20}\x{255A}\x{2550}\x{255D}" ],
+    'I' => [ "\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2551}", "\x{255A}\x{2550}\x{255D}" ],
+    'J' => [ "\x{20}\x{20}\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2557}", "\x{20}\x{20}\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2551}", "\x{20}\x{20}\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2551}", "\x{255A}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{20}\x{255A}\x{2550}\x{2550}\x{2550}\x{2550}\x{255D}\x{20}" ],
+    'K' => [ "\x{2588}\x{2588}\x{2557}\x{20}\x{20}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2551}\x{20}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}\x{20}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2588}\x{2588}\x{2557}\x{20}", "\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{2588}\x{2588}\x{2557}", "\x{255A}\x{2550}\x{255D}\x{20}\x{20}\x{255A}\x{2550}\x{255D}" ],
+    'L' => [ "\x{2588}\x{2588}\x{2557}\x{20}\x{20}\x{20}\x{20}\x{20}", "\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{20}\x{20}\x{20}", "\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{20}\x{20}\x{20}", "\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{20}\x{20}\x{20}", "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}", "\x{255A}\x{2550}\x{2550}\x{2550}\x{2550}\x{2550}\x{2550}\x{255D}" ],
+    'M' => [ "\x{2588}\x{2588}\x{2588}\x{2557}\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}\x{20}\x{2588}\x{2588}\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2554}\x{2588}\x{2588}\x{2588}\x{2588}\x{2554}\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2551}\x{255A}\x{2588}\x{2588}\x{2554}\x{255D}\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2551}\x{20}\x{255A}\x{2550}\x{255D}\x{20}\x{2588}\x{2588}\x{2551}", "\x{255A}\x{2550}\x{255D}\x{20}\x{20}\x{20}\x{20}\x{20}\x{255A}\x{2550}\x{255D}" ],
+    'N' => [ "\x{2588}\x{2588}\x{2588}\x{2557}\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}\x{20}\x{20}\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2554}\x{2588}\x{2588}\x{2557}\x{20}\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2551}\x{255A}\x{2588}\x{2588}\x{2557}\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2551}\x{20}\x{255A}\x{2588}\x{2588}\x{2588}\x{2588}\x{2551}", "\x{255A}\x{2550}\x{255D}\x{20}\x{20}\x{255A}\x{2550}\x{2550}\x{2550}\x{255D}" ],
+    'O' => [ "\x{20}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}\x{20}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{2550}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2551}", "\x{255A}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{20}\x{255A}\x{2550}\x{2550}\x{2550}\x{2550}\x{2550}\x{255D}\x{20}" ],
+    'P' => [ "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}\x{20}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{2550}\x{255D}\x{20}", "\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{20}\x{20}\x{20}", "\x{255A}\x{2550}\x{255D}\x{20}\x{20}\x{20}\x{20}\x{20}" ],
+    'Q' => [ "\x{20}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{2550}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2551}\x{2584}\x{2584}\x{20}\x{2588}\x{2588}\x{2551}", "\x{255A}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{20}\x{255A}\x{2550}\x{2550}\x{2580}\x{2580}\x{2550}\x{255D}\x{20}" ],
+    'R' => [ "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}\x{20}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{2588}\x{2588}\x{2551}", "\x{255A}\x{2550}\x{255D}\x{20}\x{20}\x{255A}\x{2550}\x{255D}" ],
+    'S' => [ "\x{20}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{2550}\x{2550}\x{255D}", "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}", "\x{255A}\x{2550}\x{2550}\x{2550}\x{2550}\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{255A}\x{2550}\x{2550}\x{2550}\x{2550}\x{2550}\x{255D}\x{20}" ],
+    'T' => [ "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}", "\x{255A}\x{2550}\x{2550}\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{255D}", "\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{20}", "\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{20}", "\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{20}", "\x{20}\x{20}\x{20}\x{255A}\x{2550}\x{255D}\x{20}\x{20}\x{20}" ],
+    'U' => [ "\x{2588}\x{2588}\x{2557}\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2551}", "\x{255A}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{20}\x{255A}\x{2550}\x{2550}\x{2550}\x{2550}\x{2550}\x{255D}\x{20}" ],
+    'V' => [ "\x{2588}\x{2588}\x{2557}\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2551}", "\x{255A}\x{2588}\x{2588}\x{2557}\x{20}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{20}\x{255A}\x{2588}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}\x{20}", "\x{20}\x{20}\x{255A}\x{2550}\x{2550}\x{2550}\x{255D}\x{20}\x{20}" ],
+    'W' => [ "\x{2588}\x{2588}\x{2557}\x{20}\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2551}\x{20}\x{2588}\x{2557}\x{20}\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2551}\x{2588}\x{2588}\x{2588}\x{2557}\x{2588}\x{2588}\x{2551}", "\x{255A}\x{2588}\x{2588}\x{2588}\x{2554}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{20}\x{255A}\x{2550}\x{2550}\x{255D}\x{255A}\x{2550}\x{2550}\x{255D}\x{20}" ],
+    'X' => [ "\x{2588}\x{2588}\x{2557}\x{20}\x{20}\x{2588}\x{2588}\x{2557}", "\x{255A}\x{2588}\x{2588}\x{2557}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{20}\x{255A}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}\x{20}", "\x{20}\x{2588}\x{2588}\x{2554}\x{2588}\x{2588}\x{2557}\x{20}", "\x{2588}\x{2588}\x{2554}\x{255D}\x{20}\x{2588}\x{2588}\x{2557}", "\x{255A}\x{2550}\x{255D}\x{20}\x{20}\x{255A}\x{2550}\x{255D}" ],
+    'Y' => [ "\x{2588}\x{2588}\x{2557}\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2557}", "\x{255A}\x{2588}\x{2588}\x{2557}\x{20}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{20}\x{255A}\x{2588}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}\x{20}", "\x{20}\x{20}\x{255A}\x{2588}\x{2588}\x{2554}\x{255D}\x{20}\x{20}", "\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{20}", "\x{20}\x{20}\x{20}\x{255A}\x{2550}\x{255D}\x{20}\x{20}\x{20}" ],
+    'Z' => [ "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}", "\x{255A}\x{2550}\x{2550}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{20}\x{20}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}\x{20}", "\x{20}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}\x{20}\x{20}", "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}", "\x{255A}\x{2550}\x{2550}\x{2550}\x{2550}\x{2550}\x{2550}\x{255D}" ],
+    ' ' => [ "\x{20}\x{20}\x{20}\x{20}", "\x{20}\x{20}\x{20}\x{20}", "\x{20}\x{20}\x{20}\x{20}", "\x{20}\x{20}\x{20}\x{20}", "\x{20}\x{20}\x{20}\x{20}", "\x{20}\x{20}\x{20}\x{20}" ],
+    '.' => [ "\x{20}\x{20}\x{20}", "\x{20}\x{20}\x{20}", "\x{20}\x{20}\x{20}", "\x{20}\x{20}\x{20}", "\x{2588}\x{2588}\x{2557}", "\x{255A}\x{2550}\x{255D}" ],
+    ',' => [ "\x{20}\x{20}\x{20}", "\x{20}\x{20}\x{20}", "\x{20}\x{20}\x{20}", "\x{20}\x{20}\x{20}", "\x{2584}\x{2588}\x{2557}", "\x{255A}\x{2550}\x{255D}" ],
+    '/' => [ "\x{20}\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2557}", "\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{20}\x{20}\x{2588}\x{2588}\x{2554}\x{255D}\x{20}", "\x{20}\x{2588}\x{2588}\x{2554}\x{255D}\x{20}\x{20}", "\x{2588}\x{2588}\x{2554}\x{255D}\x{20}\x{20}\x{20}", "\x{255A}\x{2550}\x{255D}\x{20}\x{20}\x{20}\x{20}" ],
+    '!' => [ "\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2551}", "\x{255A}\x{2550}\x{255D}", "\x{2588}\x{2588}\x{2557}", "\x{255A}\x{2550}\x{255D}" ],
+    '_' => [ "\x{20}\x{20}\x{20}\x{20}\x{20}\x{20}\x{20}\x{20}", "\x{20}\x{20}\x{20}\x{20}\x{20}\x{20}\x{20}\x{20}", "\x{20}\x{20}\x{20}\x{20}\x{20}\x{20}\x{20}\x{20}", "\x{20}\x{20}\x{20}\x{20}\x{20}\x{20}\x{20}\x{20}", "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}", "\x{255A}\x{2550}\x{2550}\x{2550}\x{2550}\x{2550}\x{2550}\x{255D}" ],
+    '0' => [ "\x{20}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}\x{20}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2551}\x{2588}\x{2588}\x{2554}\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}\x{2588}\x{2588}\x{2551}", "\x{255A}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{20}\x{255A}\x{2550}\x{2550}\x{2550}\x{2550}\x{2550}\x{255D}\x{20}" ],
+    '1' => [ "\x{20}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2588}\x{2551}", "\x{255A}\x{2588}\x{2588}\x{2551}", "\x{20}\x{2588}\x{2588}\x{2551}", "\x{20}\x{2588}\x{2588}\x{2551}", "\x{20}\x{255A}\x{2550}\x{255D}" ],
+    '2' => [ "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}\x{20}", "\x{255A}\x{2550}\x{2550}\x{2550}\x{2550}\x{2588}\x{2588}\x{2557}", "\x{20}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{2550}\x{255D}\x{20}", "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}", "\x{255A}\x{2550}\x{2550}\x{2550}\x{2550}\x{2550}\x{2550}\x{255D}" ],
+    '3' => [ "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}\x{20}", "\x{255A}\x{2550}\x{2550}\x{2550}\x{2550}\x{2588}\x{2588}\x{2557}", "\x{20}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{20}\x{255A}\x{2550}\x{2550}\x{2550}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{255A}\x{2550}\x{2550}\x{2550}\x{2550}\x{2550}\x{255D}\x{20}" ],
+    '4' => [ "\x{2588}\x{2588}\x{2557}\x{20}\x{20}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2551}\x{20}\x{20}\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2551}", "\x{255A}\x{2550}\x{2550}\x{2550}\x{2550}\x{2588}\x{2588}\x{2551}", "\x{20}\x{20}\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2551}", "\x{20}\x{20}\x{20}\x{20}\x{20}\x{255A}\x{2550}\x{255D}" ],
+    '5' => [ "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{2550}\x{2550}\x{255D}", "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}", "\x{255A}\x{2550}\x{2550}\x{2550}\x{2550}\x{2588}\x{2588}\x{2551}", "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2551}", "\x{255A}\x{2550}\x{2550}\x{2550}\x{2550}\x{2550}\x{2550}\x{255D}" ],
+    '6' => [ "\x{20}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}\x{20}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{2550}\x{2550}\x{255D}\x{20}", "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}\x{20}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{2550}\x{2588}\x{2588}\x{2557}", "\x{255A}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{20}\x{255A}\x{2550}\x{2550}\x{2550}\x{2550}\x{2550}\x{255D}\x{20}" ],
+    '7' => [ "\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}", "\x{255A}\x{2550}\x{2550}\x{2550}\x{2550}\x{2588}\x{2588}\x{2551}", "\x{20}\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2554}\x{255D}\x{20}", "\x{20}\x{20}\x{20}\x{2588}\x{2588}\x{2551}\x{20}\x{20}", "\x{20}\x{20}\x{20}\x{255A}\x{2550}\x{255D}\x{20}\x{20}" ],
+    '8' => [ "\x{20}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}\x{20}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{2588}\x{2588}\x{2557}", "\x{255A}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{2588}\x{2588}\x{2557}", "\x{255A}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{20}\x{255A}\x{2550}\x{2550}\x{2550}\x{2550}\x{255D}\x{20}" ],
+    '9' => [ "\x{20}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2557}\x{20}", "\x{2588}\x{2588}\x{2554}\x{2550}\x{2550}\x{2588}\x{2588}\x{2557}", "\x{255A}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2551}", "\x{20}\x{255A}\x{2550}\x{2550}\x{2550}\x{2588}\x{2588}\x{2551}", "\x{20}\x{2588}\x{2588}\x{2588}\x{2588}\x{2588}\x{2554}\x{255D}", "\x{20}\x{255A}\x{2550}\x{2550}\x{2550}\x{2550}\x{255D}\x{20}" ],
+);
+
+sub print_big_ascii_string {
+    my $fh = shift;
+    my $str = shift;
+    my $comment = shift;
+    my $lowascii = shift;
+    $comment = '' if not defined $comment;
+    $lowascii = 0 if not defined $lowascii;
+
+    my @chars = split //, $str;
+    my $charcount = scalar(@chars);
+
+    binmode($fh, ":utf8");
+
+    my $maxrows = $lowascii ? 5 : 6;
+
+    for(my $rownum = 0; $rownum < $maxrows; $rownum++){
+        print $fh $comment;
+        my $charidx = 0;
+        foreach my $ch (@chars) {
+            my $rowsref = $big_ascii{uc($ch)};
+            die("Don't have a big ascii entry for '$ch'!\n") if not defined $rowsref;
+            my $row = @$rowsref[$rownum];
+
+            if ($lowascii) {
+                my @x = split //, $row;
+                foreach (@x) {
+                    my $v = ($_ eq "\x{2588}") ? 'X' : ' ';
+                    print $fh $v;
+                }
+            } else {
+                print $fh $row;
+            }
+
+            $charidx++;
+
+            if ($charidx < $charcount) {
+                print $fh " ";
+            }
+        }
+        print $fh "\n";
+    }
+}
+
+sub generate_quickref {
+    my $briefsref = shift;
+    my $path = shift;
+    my $lowascii = shift;
+
+    # !!! FIXME: this gitrev and majorver/etc stuff is copy/pasted a few times now.
+    if (!$gitrev) {
+        $gitrev = `cd "$srcpath" ; git rev-list HEAD~..`;
+        chomp($gitrev);
+    }
+
+    # !!! FIXME
+    open(FH, '<', "$srcpath/$versionfname") or die("Can't open '$srcpath/$versionfname': $!\n");
+    my $majorver = 0;
+    my $minorver = 0;
+    my $microver = 0;
+    while (<FH>) {
+        chomp;
+        if (/$versionmajorregex/) {
+            $majorver = int($1);
+        } elsif (/$versionminorregex/) {
+            $minorver = int($1);
+        } elsif (/$versionmicroregex/) {
+            $microver = int($1);
+        }
+    }
+    close(FH);
+    my $fullversion = "$majorver.$minorver.$microver";
+
+    my $tmppath = "$path.tmp";
+    open(my $fh, '>', $tmppath) or die("Can't open '$tmppath': $!\n");
+
+    if (not @quickrefcategoryorder) {
+        @quickrefcategoryorder = sort keys %headercategorydocs;
+    }
+
+    #my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = gmtime(time);
+    #my $datestr = sprintf("%04d-%02d-%02d %02d:%02d:%02d GMT", $year+1900, $mon+1, $mday, $hour, $min, $sec);
+
+    print $fh "<!-- DO NOT EDIT THIS PAGE ON THE WIKI. IT WILL BE OVERWRITTEN BY WIKIHEADERS AND CHANGES WILL BE LOST! -->\n\n";
+
+    # Just something to test big_ascii output.
+    #print_big_ascii_string($fh, "ABCDEFGHIJ", '', $lowascii);
+    #print_big_ascii_string($fh, "KLMNOPQRST", '', $lowascii);
+    #print_big_ascii_string($fh, "UVWXYZ0123", '', $lowascii);
+    #print_big_ascii_string($fh, "456789JT3A", '', $lowascii);
+    #print_big_ascii_string($fh, "hello, _a.b/c_!!", '', $lowascii);
+
+    # Dan Bechard's work was on an SDL2 cheatsheet:
+    # https://blog.theprogrammingjunkie.com/post/sdl2-cheatsheet/
+
+    if ($lowascii) {
+        print $fh "# QuickReferenceNoUnicode\n\n";
+        print $fh "If you want to paste this into a text editor that can handle\n";
+        print $fh "fancy Unicode section headers, try using\n";
+        print $fh "[QuickReference](QuickReference) instead.\n\n";
+    } else {
+        print $fh "# QuickReference\n\n";
+        print $fh "If you want to paste this into a text editor that can't handle\n";
+        print $fh "the fancy Unicode section headers, try using\n";
+        print $fh "[QuickReferenceNoUnicode](QuickReferenceNoUnicode) instead.\n\n";
+    }
+
+    print $fh "```c\n";
+    print $fh "// $quickreftitle\n" if defined $quickreftitle;
+    print $fh "//\n";
+    print $fh "// $quickrefurl\n//\n" if defined $quickrefurl;
+    print $fh "// $quickrefdesc\n" if defined $quickrefdesc;
+    #print $fh "// When this document was written: $datestr\n";
+    print $fh "// Based on $projectshortname version $fullversion\n";
+    #print $fh "// git revision $gitrev\n";
+    print $fh "//\n";
+    print $fh "// This can be useful in an IDE with search and syntax highlighting.\n";
+    print $fh "//\n";
+    print $fh "// Original idea for this document came from Dan Bechard (thanks!)\n";
+    print $fh "// ASCII art generated by: https://patorjk.com/software/taag/#p=display&f=ANSI%20Shadow (with modified 'S' for readability)\n\n";
+
+    foreach (@quickrefcategoryorder) {
+        my $cat = $_;
+        my $maxlen = 0;
+        my @csigs = ();
+        my $funcorderref = $quickreffuncorder{$cat};
+        next if not defined $funcorderref;
+
+        foreach (@$funcorderref) {
+            my $sym = $_;
+            my $csig = '';
+
+            if ($headersymstype{$sym} == 1) {  # function
+                $csig = "${headersymsrettype{$sym}} $sym";
+                my $fnsigparams = $headersymsparaminfo{$sym};
+                if (not defined($fnsigparams)) {
+                    $csig .= '(void);';
+                } else {
+                    my $sep = '(';
+                    for (my $i = 0; $i < scalar(@$fnsigparams); $i += 2) {
+                        my $paramname = @$fnsigparams[$i];
+                        my $paramtype = @$fnsigparams[$i+1];
+                        my $spc = ($paramtype =~ /\*\Z/) ? '' : ' ';
+                        $csig .= "$sep$paramtype$spc$paramname";
+                        $sep = ', ';
+                    }
+                    $csig .= ");";
+                }
+            } elsif ($headersymstype{$sym} == 2) {  # macro
+                next if defined $quickrefmacroregex && not $sym =~ /$quickrefmacroregex/;
+
+                $csig = (split /\n/, $headerdecls{$sym})[0];  # get the first line from a multiline string.
+                if (not $csig =~ s/\A(\#define [a-zA-Z0-9_]*\(.*?\))(\s+.*)?\Z/$1/) {
+                    $csig =~ s/\A(\#define [a-zA-Z0-9_]*)(\s+.*)?\Z/$1/;
+                }
+                chomp($csig);
+            }
+
+            my $len = length($csig);
+            $maxlen = $len if $len > $maxlen;
+
+            push @csigs, $sym;
+            push @csigs, $csig;
+        }
+
+        $maxlen += 2;
+
+        next if (not @csigs);
+
+        print $fh "\n";
+        print_big_ascii_string($fh, $cat, '// ', $lowascii);
+        print $fh "\n";
+
+        while (@csigs) {
+            my $sym = shift @csigs;
+            my $csig = shift @csigs;
+            my $brief = $$briefsref{$sym};
+            if (defined $brief) {
+                $brief = "$brief";
+                chomp($brief);
+                my $thiswikitype = defined $wikitypes{$sym} ? $wikitypes{$sym} : 'md';  # default to MarkDown for new stuff.
+                $brief = dewikify($thiswikitype, $brief);
+                my $spaces = ' ' x ($maxlen - length($csig));
+                $brief = "$spaces// $brief";
+            } else {
+                $brief = '';
+            }
+            print $fh "$csig$brief\n";
+        }
+    }
+
+    print $fh "```\n\n";
+
+    close($fh);
+
+#    # Don't overwrite the file if nothing has changed besides the timestamp
+#    #  and git revision.
+#    my $matches = 1;
+#    if ( not -f $path ) {
+#        $matches = 0;  # always write if the file hasn't been created yet.
+#    } else {
+#        open(my $fh_a, '<', $tmppath) or die("Can't open '$tmppath': $!\n");
+#        open(my $fh_b, '<', $path) or die("Can't open '$path': $!\n");
+#        while (1) {
+#            my $a = <$fh_a>;
+#            my $b = <$fh_b>;
+#            $matches = 0, last if ((not defined $a) != (not defined $b));
+#            last if ((not defined $a) || (not defined $b));
+#            if ($a ne $b) {
+#                next if ($a =~ /\A\/\/ When this document was written:/);
+#                next if ($a =~ /\A\/\/ git revision /);
+#                $matches = 0;
+#                last;
+#            }
+#        }
+#
+#        close($fh_a);
+#        close($fh_b);
+#    }
+#
+#    if ($matches) {
+#        unlink($tmppath);  # it's the same file except maybe the date/gitrev. Don't overwrite it.
+#    } else {
+#        rename($tmppath, $path) or die("Can't rename '$tmppath' to '$path': $!\n");
+#    }
+    rename($tmppath, $path) or die("Can't rename '$tmppath' to '$path': $!\n");
+}
+
+
 my $incpath = "$srcpath";
 $incpath .= "/$incsubdir" if $incsubdir ne '';
 
@@ -730,10 +1035,12 @@ while (my $d = readdir(DH)) {
     }
 
     my @contents = ();
+    my @function_order = ();
     my $ignoring_lines = 0;
     my $header_comment = -1;
     my $saw_category_doxygen = -1;
     my $lineno = 0;
+
     while (<FH>) {
         chomp;
         $lineno++;
@@ -917,7 +1224,7 @@ while (my $d = readdir(DH)) {
 
             my $paramsstr = undef;
 
-            if (!$is_forced_inline && $decl =~ /\A\s*extern\s+(SDL_DEPRECATED\s+|)(SDLMAIN_|SDL_)?DECLSPEC\s+(const\s+|)(unsigned\s+|)(.*?)([\*\s]+)(\*?)\s*SDLCALL\s+(.*?)\s*\((.*?)\);/) {
+            if (!$is_forced_inline && $decl =~ /\A\s*extern\s+(SDL_DEPRECATED\s+|)(SDLMAIN_|SDL_)?DECLSPEC\w*\s+(const\s+|)(unsigned\s+|)(.*?)([\*\s]+)(\*?)\s*SDLCALL\s+(.*?)\s*\((.*?)\);/) {
                 $sym = $8;
                 $rettype = "$3$4$5$6";
                 $paramsstr = $9;
@@ -981,15 +1288,21 @@ while (my $d = readdir(DH)) {
             }
 
             if (!$is_forced_inline) {  # don't do with forced-inline because we don't want the implementation inserted in the wiki.
+                my $shrink_length = 0;
+
                 $decl = '';  # rebuild this with the line breaks, since it looks better for syntax highlighting.
                 foreach (@decllines) {
                     if ($decl eq '') {
+                        my $temp;
+
                         $decl = $_;
-                        $decl =~ s/\Aextern\s+(SDL_DEPRECATED\s+|)(SDLMAIN_|SDL_)?DECLSPEC\s+(.*?)\s+(\*?)SDLCALL\s+/$3$4 /;
+                        $temp = $decl;
+                        $temp =~ s/\Aextern\s+(SDL_DEPRECATED\s+|)(SDLMAIN_|SDL_)?DECLSPEC\w*\s+(.*?)\s+(\*?)SDLCALL\s+/$3$4 /;
+                        $shrink_length = length($decl) - length($temp);
+                        $decl = $temp;
                     } else {
                         my $trimmed = $_;
-                        # !!! FIXME: trim space for SDL_DEPRECATED if it was used, too.
-                        $trimmed =~ s/\A\s{28}//;  # 28 for shrinking to match the removed "extern SDL_DECLSPEC SDLCALL "
+                        $trimmed =~ s/\A\s{$shrink_length}//;  # shrink to match the removed "extern SDL_DECLSPEC SDLCALL "
                         $decl .= $trimmed;
                     }
                     $decl .= "\n";
@@ -1048,7 +1361,6 @@ while (my $d = readdir(DH)) {
                 }
             }
             $decl .= $additional_decl;
-
         } elsif ($symtype == 2) {  # a macro
             if ($decl =~ /\A\s*\#\s*define\s+(.*?)(\(.*?\)|)\s+/) {
                 $sym = $1;
@@ -1103,14 +1415,16 @@ while (my $d = readdir(DH)) {
             }
 
             # This block attempts to find the whole struct/union/enum definition by counting matching brackets. Kind of yucky.
+            # It also "parses" enums enough to find out the elements of it.
             if ($has_definition) {
                 my $started = 0;
                 my $brackets = 0;
                 my $pending = $decl;
+                my $skipping_comment = 0;
 
                 $decl = '';
                 while (!$started || ($brackets != 0)) {
-                    foreach my $seg (split(/([{}])/, $pending)) {
+                    foreach my $seg (split(/([{}])/, $pending)) {   # (this will pick up brackets in comments! Be careful!)
                         $decl .= $seg;
                         if ($seg eq '{') {
                             $started = 1;
@@ -1118,6 +1432,25 @@ while (my $d = readdir(DH)) {
                         } elsif ($seg eq '}') {
                             die("Something is wrong with header $incpath/$dent while parsing $sym; is a bracket missing?\n") if ($brackets <= 0);
                             $brackets--;
+                        }
+                    }
+
+                    if ($skipping_comment) {
+                        if ($pending =~ s/\A.*?\*\///) {
+                            $skipping_comment = 0;
+                        }
+                    }
+
+                    if (!$skipping_comment && $started && ($symtype == 4)) {  # Pick out elements of an enum.
+                        my $stripped = "$pending";
+                        $stripped =~ s/\/\*.*?\*\///g;  # dump /* comments */ that exist fully on one line.
+                        if ($stripped =~ /\/\*/) {  # uhoh, a /* comment */ that crosses newlines.
+                            $skipping_comment = 1;
+                        } elsif ($stripped =~ /\A\s*([a-zA-Z0-9_]+)(.*)\Z/) {  #\s*(\=\s*.*?|)\s*,?(.*?)\Z/) {
+                            if ($1 ne 'typedef') {  # make sure we didn't just eat the first line by accident.  :/
+                                #print("ENUM [$1] $incpath/$dent:$lineno\n");
+                                $referenceonly{$1} = $sym;
+                            }
                         }
                     }
 
@@ -1255,6 +1588,7 @@ while (my $d = readdir(DH)) {
             $headersymstype{$sym} = $symtype;
             $headersymsparaminfo{$sym} = \@paraminfo if (scalar(@paraminfo) > 0);
             $headersymsrettype{$sym} = $rettype if (defined($rettype));
+            push @function_order, $sym if ($symtype == 1) || ($symtype == 2);
             push @contents, join("\n", @templines);
             push @contents, join("\n", @decllines) if (scalar(@decllines) > 0);
         }
@@ -1263,6 +1597,7 @@ while (my $d = readdir(DH)) {
     close(FH);
 
     $headers{$dent} = \@contents;
+    $quickreffuncorder{$current_wiki_category} = \@function_order if defined $current_wiki_category;
 }
 closedir(DH);
 
@@ -1739,6 +2074,8 @@ if ($copy_direction == 1) {  # --copy-to-headers
 
 } elsif ($copy_direction == -1) { # --copy-to-wiki
 
+    my %briefs = ();  # $briefs{'SDL_OpenAudio'} -> the \brief string for the function.
+
     if (defined $changeformat) {
         $dewikify_mode = $changeformat;
         $wordwrap_mode = $changeformat;
@@ -1810,10 +2147,13 @@ if ($copy_direction == 1) {  # --copy-to-headers
         $sections{'Remarks'} = "$remarks\n" if $remarks ne '';
         $sections{'Syntax'} = $syntax;
 
+        $briefs{$sym} = $brief;
+
         my %params = ();  # have to parse these and build up the wiki tables after, since Markdown needs to know the length of the largest string.  :/
         my @paramsorder = ();
         my $fnsigparams = $headersymsparaminfo{$sym};
         my $has_returns = 0;
+        my $has_threadsafety = 0;
 
         while (@doxygenlines) {
             my $l = shift @doxygenlines;
@@ -1952,6 +2292,7 @@ if ($copy_direction == 1) {  # --copy-to-headers
                 }
                 $desc =~ s/[\s\n]+\Z//ms;
                 $sections{'Thread Safety'} = wordwrap(wikify($wikitype, $desc)) . "\n";
+                $has_threadsafety = 1;
             } elsif ($l =~ /\A\\sa\s+(.*)\Z/) {
                 my $sa = $1;
                 $sa =~ s/\(\)\Z//;  # Convert "SDL_Func()" to "SDL_Func"
@@ -1967,6 +2308,11 @@ if ($copy_direction == 1) {  # --copy-to-headers
         if (($symtype == 1) && ($headersymsrettype{$sym} ne 'void') && !$has_returns) {
             print STDERR "WARNING: Function '$sym' has a non-void return type but no '\\returns' declaration\n";
         }
+
+        # !!! FIXME: uncomment this when we're trying to clean this up in the headers.
+        #if (($symtype == 1) && !$has_threadsafety) {
+        #    print STDERR "WARNING: Function '$sym' doesn't have a '\\threadsafety' declaration\n";
+        #}
 
         # Make sure %params is in the same order as the actual function signature and add C datatypes...
         my $params_has_c_datatype = 0;
@@ -2246,9 +2592,14 @@ if ($copy_direction == 1) {  # --copy-to-headers
             print FH "###### $wikified_preamble\n";
         }
 
+        my $category = 'CategoryAPIMacro';
+        if ($headersymstype{$refersto} == 4) {
+            $category = 'CategoryAPIEnumerators';  # NOT CategoryAPIEnum!
+        }
+
         print FH "# $sym\n\nPlease refer to [$refersto]($refersto) for details.\n\n";
         print FH "----\n";
-        print FH "[CategoryAPI](CategoryAPI), [CategoryAPIMacro](CategoryAPIMacro)\n\n";
+        print FH "[CategoryAPI](CategoryAPI), [$category]($category)\n\n";
 
         close(FH);
     }
@@ -2357,6 +2708,11 @@ __EOF__
         }
     }
 
+    # Write out quick reference pages...
+    if ($quickrefenabled) {
+        generate_quickref(\%briefs, "$wikipath/QuickReference.md", 0);
+        generate_quickref(\%briefs, "$wikipath/QuickReferenceNoUnicode.md", 1);
+    }
 } elsif ($copy_direction == -2) { # --copy-to-manpages
     # This only takes from the wiki data, since it has sections we omit from the headers, like code examples.
 

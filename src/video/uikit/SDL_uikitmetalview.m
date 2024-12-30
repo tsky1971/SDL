@@ -31,13 +31,14 @@
 #if defined(SDL_VIDEO_DRIVER_UIKIT) && (defined(SDL_VIDEO_VULKAN) || defined(SDL_VIDEO_METAL))
 
 #include "../SDL_sysvideo.h"
+#include "../../events/SDL_windowevents_c.h"
 
 #import "SDL_uikitwindow.h"
 #import "SDL_uikitmetalview.h"
 
 @implementation SDL_uikitmetalview
 
-/* Returns a Metal-compatible layer. */
+// Returns a Metal-compatible layer.
 + (Class)layerClass
 {
     return [CAMetalLayer class];
@@ -55,7 +56,7 @@
     return self;
 }
 
-/* Set the size of the metal drawables when the view is resized. */
+// Set the size of the metal drawables when the view is resized.
 - (void)layoutSubviews
 {
     [super layoutSubviews];
@@ -67,7 +68,13 @@
     CGSize size = self.bounds.size;
     size.width *= self.layer.contentsScale;
     size.height *= self.layer.contentsScale;
-    ((CAMetalLayer *)self.layer).drawableSize = size;
+
+    CAMetalLayer *metallayer = ((CAMetalLayer *)self.layer);
+    if (metallayer.drawableSize.width != size.width ||
+        metallayer.drawableSize.height != size.height) {
+        metallayer.drawableSize = size;
+        SDL_SendWindowEvent([self getSDLWindow], SDL_EVENT_WINDOW_METAL_VIEW_RESIZED, 0, 0);
+    }
 }
 
 @end
@@ -130,4 +137,4 @@ void *UIKit_Metal_GetLayer(SDL_VideoDevice *_this, SDL_MetalView view)
     }
 }
 
-#endif /* SDL_VIDEO_DRIVER_UIKIT && (SDL_VIDEO_VULKAN || SDL_VIDEO_METAL) */
+#endif // SDL_VIDEO_DRIVER_UIKIT && (SDL_VIDEO_VULKAN || SDL_VIDEO_METAL)

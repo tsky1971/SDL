@@ -1,16 +1,33 @@
 cmake_minimum_required(VERSION 3.16)
 
-if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_CURRENT_BINARY_DIR)
-  message(FATAL_ERROR "Prevented in-tree build. Please create a build directory outside of the SDL source code and run \"cmake -S ${CMAKE_SOURCE_DIR} -B .\" from there")
+if(NOT DEFINED CMAKE_BUILD_TYPE)
+  set(cmake_build_type_undefined 1)
 endif()
 
 # See docs/release_checklist.md
-project(SDL3 LANGUAGES C VERSION "3.1.2")
+project(SDL3 LANGUAGES C VERSION "3.1.7")
 
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
   set(SDL3_SUBPROJECT OFF)
 else()
   set(SDL3_SUBPROJECT ON)
+endif()
+
+# By default, configure SDL3 in RelWithDebInfo configuration
+if(NOT SDL3_SUBPROJECT)
+  get_property(is_multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+  if(is_multi_config)
+      # The first item in CMAKE_CONFIGURATION_TYPES is the default configuration
+      if(DEFINED CMAKE_CONFIGURATION_TYPES AND "RelWithDebInfo" IN_LIST CMAKE_CONFIGURATION_TYPES)
+        list(REMOVE_ITEM CMAKE_CONFIGURATION_TYPES "RelWithDebInfo")
+        list(INSERT CMAKE_CONFIGURATION_TYPES 0 "RelWithDebInfo")
+        set(CMAKE_CONFIGURATION_TYPES "${CMAKE_CONFIGURATION_TYPES}" CACHE STRING "CMake configuration types" FORCE)
+      endif()
+  else()
+    if(cmake_build_type_undefined)
+      set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "CMake build type" FORCE)
+    endif()
+  endif()
 endif()
 
 # CMake 3.0 expands the "if(${A})" in "set(OFF 1);set(A OFF);if(${A})" to "if(1)"
@@ -52,10 +69,10 @@ include("${SDL3_SOURCE_DIR}/cmake/sdltargets.cmake")
 include("${SDL3_SOURCE_DIR}/cmake/GetGitRevisionDescription.cmake")
 include("${SDL3_SOURCE_DIR}/cmake/3rdparty.cmake")
 include("${SDL3_SOURCE_DIR}/cmake/PreseedMSVCCache.cmake")
+include("${SDL3_SOURCE_DIR}/cmake/PreseedEmscriptenCache.cmake")
 
 SDL_DetectCompiler()
 SDL_DetectTargetCPUArchitectures(SDL_CPUS)
-SDL_Preseed_CMakeCache()
 
 # Increment this if there is an incompatible change - but if that happens,
 # we should rename the library from SDL3 to SDL4, at which point this would
@@ -155,6 +172,11 @@ if(WINDOWS OR MACOS OR IOS OR TVOS OR VISIONOS OR WATCHOS)
   set(SDL_SYSTEM_ICONV_DEFAULT OFF)
 endif()
 
+set(SDL_RELOCATABLE_DEFAULT OFF)
+if(MSVC)
+  set(SDL_RELOCATABLE_DEFAULT ON)
+endif()
+
 if(MSVC)
   if(NOT SDL_LIBC)
     # Make sure /RTC1 is disabled, otherwise it will use functions from the CRT
@@ -233,6 +255,7 @@ endmacro()
 
 define_sdl_subsystem(Audio)
 define_sdl_subsystem(Video)
+define_sdl_subsystem(GPU DEPS SDL_VIDEO)
 define_sdl_subsystem(Render DEPS SDL_VIDEO)
 define_sdl_subsystem(Camera DEPS SDL_VIDEO)
 define_sdl_subsystem(Joystick)
@@ -253,11 +276,23 @@ else()
   set(SDL_RPATH_DEFAULT OFF)
 endif()
 
+set(SDL_PRESEED_AVAILABLE OFF)
+if(COMMAND SDL_Preseed_CMakeCache)
+  set(SDL_PRESEED_AVAILABLE ON)
+endif()
+
+set(SDL_X11_XRANDR_DEFAULT ON)
+if(SOLARIS)
+  set(SDL_X11_XRANDR_DEFAULT OFF)
+endif()
+
 # Allow some projects to be built conditionally.
-set_option(SDL_DISABLE_INSTALL    "Disable installation of SDL3" ${SDL3_SUBPROJECT})
+set_option(SDL_DISABLE_INSTALL     "Disable installation of SDL3" ${SDL3_SUBPROJECT})
 cmake_dependent_option(SDL_DISABLE_INSTALL_CPACK "Create binary SDL3 archive using CPack" ${SDL3_SUBPROJECT} "NOT SDL_DISABLE_INSTALL" ON)
 cmake_dependent_option(SDL_DISABLE_INSTALL_DOCS "Install docs for SDL3" ON "NOT SDL_DISABLE_INSTALL;NOT SDL_FRAMEWORK" ON)
-set_option(SDL_DISABLE_UNINSTALL  "Disable uninstallation of SDL3" OFF)
+set_option(SDL_DISABLE_UNINSTALL   "Disable uninstallation of SDL3" OFF)
+cmake_dependent_option(SDL_PRESEED "Preseed CMake cache to speed up configuration" ON "${SDL_PRESEED_AVAILABLE}" OFF)
+cmake_dependent_option(SDL_RELOCATABLE "Create relocatable SDL package" ${SDL_RELOCATABLE_DEFAULT} "NOT SDL_DISABLE_INSTALL" OFF)
 
 cmake_dependent_option(SDL_DISABLE_ANDROID_JAR  "Disable creation of SDL3.jar" ${SDL3_SUBPROJECT} "ANDROID" ON)
 
@@ -283,6 +318,7 @@ set_option(SDL_SYSTEM_ICONV        "Use iconv() from system-installed libraries"
 set_option(SDL_LIBICONV            "Prefer iconv() from libiconv, if available, over libc version" OFF)
 set_option(SDL_GCC_ATOMICS         "Use gcc builtin atomics" ${SDL_GCC_ATOMICS_DEFAULT})
 dep_option(SDL_DBUS                "Enable D-Bus support" ON "${UNIX_SYS}" OFF)
+dep_option(SDL_LIBURING            "Enable liburing support" ON "${UNIX_SYS}" OFF)
 dep_option(SDL_DISKAUDIO           "Support the disk writer audio driver" ON "SDL_AUDIO" OFF)
 dep_option(SDL_DUMMYAUDIO          "Support the dummy audio driver" ON "SDL_AUDIO" OFF)
 dep_option(SDL_DUMMYVIDEO          "Use dummy video driver" ON "SDL_VIDEO" OFF)
@@ -306,11 +342,14 @@ set_option(SDL_RPATH               "Use an rpath when linking SDL" ${SDL_RPATH_D
 set_option(SDL_CLOCK_GETTIME       "Use clock_gettime() instead of gettimeofday()" ${SDL_CLOCK_GETTIME_DEFAULT})
 dep_option(SDL_X11                 "Use X11 video driver" ${UNIX_SYS} "SDL_VIDEO" OFF)
 dep_option(SDL_X11_SHARED          "Dynamically load X11 support" ON "SDL_X11" OFF)
-set(SDL_X11_OPTIONS Xcursor Xdbe XInput Xfixes Xrandr Xscrnsaver XShape)
-foreach(_SUB ${SDL_X11_OPTIONS})
-  string(TOUPPER "SDL_X11_${_SUB}" _OPT)
-  dep_option(${_OPT}               "Enable ${_SUB} support" ON "SDL_X11" OFF)
-endforeach()
+dep_option(SDL_X11_XCURSOR         "Enable Xcursor support" ON SDL_X11 OFF)
+dep_option(SDL_X11_XDBE            "Enable Xdbe support" ON SDL_X11 OFF)
+dep_option(SDL_X11_XINPUT          "Enable XInput support" ON SDL_X11 OFF)
+dep_option(SDL_X11_XFIXES          "Enable Xfixes support" ON SDL_X11 OFF)
+dep_option(SDL_X11_XRANDR          "Enable Xrandr support" "${SDL_X11_XRANDR_DEFAULT}" SDL_X11 OFF)
+dep_option(SDL_X11_XSCRNSAVER      "Enable Xscrnsaver support" ON SDL_X11 OFF)
+dep_option(SDL_X11_XSHAPE          "Enable XShape support" ON SDL_X11 OFF)
+dep_option(SDL_X11_XSYNC           "Enable Xsync support" ON SDL_X11 OFF)
 dep_option(SDL_WAYLAND             "Use Wayland video driver" ${UNIX_SYS} "SDL_VIDEO" OFF)
 dep_option(SDL_WAYLAND_SHARED      "Dynamically load Wayland support" ON "SDL_WAYLAND" OFF)
 dep_option(SDL_WAYLAND_LIBDECOR    "Use client-side window decorations on Wayland" ON "SDL_WAYLAND" OFF)
@@ -321,12 +360,16 @@ dep_option(SDL_COCOA               "Use Cocoa video driver" ON "APPLE" OFF)
 dep_option(SDL_DIRECTX             "Use DirectX for Windows audio/video" ON "SDL_AUDIO OR SDL_VIDEO;WINDOWS" OFF)
 dep_option(SDL_XINPUT              "Use Xinput for Windows" ON "WINDOWS" OFF)
 dep_option(SDL_WASAPI              "Use the Windows WASAPI audio driver" ON "WINDOWS;SDL_AUDIO" OFF)
-dep_option(SDL_RENDER_D3D          "Enable the Direct3D render driver" ON "SDL_RENDER" OFF)
+dep_option(SDL_RENDER_D3D          "Enable the Direct3D 9 render driver" ON "SDL_RENDER;SDL_DIRECTX" OFF)
+dep_option(SDL_RENDER_D3D11        "Enable the Direct3D 11 render driver" ON "SDL_RENDER;SDL_DIRECTX" OFF)
+dep_option(SDL_RENDER_D3D12        "Enable the Direct3D 12 render driver" ON "SDL_RENDER;SDL_DIRECTX" OFF)
 dep_option(SDL_RENDER_METAL        "Enable the Metal render driver" ON "SDL_RENDER;${APPLE}" OFF)
+dep_option(SDL_RENDER_GPU          "Enable the SDL_GPU render driver" ON "SDL_RENDER;SDL_GPU" OFF)
 dep_option(SDL_VIVANTE             "Use Vivante EGL video driver" ON "${UNIX_SYS};SDL_CPU_ARM32" OFF)
-dep_option(SDL_VULKAN              "Enable Vulkan support" ON "SDL_VIDEO;ANDROID OR APPLE OR LINUX OR WINDOWS" OFF)
-dep_option(SDL_RENDER_VULKAN       "Enable the Vulkan render driver" ON "SDL_RENDER;SDL_VULKAN;ANDROID OR APPLE OR LINUX OR WINDOWS" OFF)
+dep_option(SDL_VULKAN              "Enable Vulkan support" ON "SDL_VIDEO;ANDROID OR APPLE OR LINUX OR FREEBSD OR WINDOWS" OFF)
+dep_option(SDL_RENDER_VULKAN       "Enable the Vulkan render driver" ON "SDL_RENDER;SDL_VULKAN" OFF)
 dep_option(SDL_METAL               "Enable Metal support" ON "APPLE" OFF)
+set_option(SDL_OPENVR              "Use OpenVR video driver" OFF)
 dep_option(SDL_KMSDRM              "Use KMS DRM video driver" ${UNIX_SYS} "SDL_VIDEO" OFF)
 dep_option(SDL_KMSDRM_SHARED       "Dynamically load KMS DRM support" ON "SDL_KMSDRM" OFF)
 set_option(SDL_OFFSCREEN           "Use offscreen video driver" ON)
@@ -342,6 +385,7 @@ set_option(SDL_LIBUDEV             "Enable libudev support" ON)
 set_option(SDL_ASAN                "Use AddressSanitizer to detect memory errors" OFF)
 set_option(SDL_CCACHE              "Use Ccache to speed up build" OFF)
 set_option(SDL_CLANG_TIDY          "Run clang-tidy static analysis" OFF)
+set_option(SDL_GPU_DXVK            "Build SDL_GPU with DXVK support" OFF)
 
 set(SDL_VENDOR_INFO "" CACHE STRING "Vendor name and/or version to add to SDL_REVISION")
 
@@ -350,9 +394,12 @@ cmake_dependent_option(SDL_STATIC "Build a static version of the library" ${SDL_
 option(SDL_TEST_LIBRARY   "Build the SDL3_test library" ON)
 
 dep_option(SDL_TESTS           "Build the test directory" OFF SDL_TEST_LIBRARY OFF)
-dep_option(SDL_INSTALL_TESTS   "Install test-cases" OFF "NOT SDL_DISABLE_INSTALL;NOT SDL_FRAMEWORK;NOT WINDOWS_STORE" OFF)
+dep_option(SDL_INSTALL_TESTS   "Install test-cases" OFF "NOT SDL_DISABLE_INSTALL;NOT SDL_FRAMEWORK" OFF)
 dep_option(SDL_TESTS_LINK_SHARED "link tests to shared SDL library" "${SDL_SHARED}" "SDL_SHARED;SDL_STATIC" "${SDL_SHARED}")
 set(SDL_TESTS_TIMEOUT_MULTIPLIER "1" CACHE STRING "Timeout multiplier to account for really slow machines")
+
+set_option(SDL_EXAMPLES           "Build the examples directory")
+dep_option(SDL_EXAMPLES_LINK_SHARED "link examples to shared SDL library" "${SDL_SHARED}" "SDL_SHARED;SDL_STATIC" "${SDL_SHARED}")
 
 if(VITA)
   set_option(VIDEO_VITA_PIB  "Build with PSVita piglet gles2 support" OFF)
@@ -361,6 +408,10 @@ endif()
 
 if(NOT (SDL_SHARED OR SDL_STATIC))
   message(FATAL_ERROR "SDL_SHARED and SDL_STATIC cannot both be disabled")
+endif()
+
+if(SDL_PRESEED)
+  SDL_Preseed_CMakeCache()
 endif()
 
 if(SDL_SHARED)
@@ -410,11 +461,6 @@ if (LIBC_IS_GLIBC AND CMAKE_SIZEOF_VOID_P EQUAL 4)
   sdl_compile_definitions(PRIVATE "_TIME_BITS=64")
 endif()
 
-if(WINDOWS_STORE)
-  sdl_compile_definitions(PRIVATE "SDL_BUILDING_WINRT=1" "WINAPI_FAMILY=WINAPI_FAMILY_APP")
-  sdl_compile_options(PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:/ZW>" "$<$<COMPILE_LANGUAGE:CXX>:-EHsc>")
-endif()
-
 check_linker_supports_version_file(HAVE_WL_VERSION_SCRIPT)
 if(HAVE_WL_VERSION_SCRIPT)
   sdl_shared_link_options("-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/src/dynapi/SDL_dynapi.sym")
@@ -441,8 +487,8 @@ endif()
 sdl_compile_definitions(PRIVATE "USING_GENERATED_CONFIG_H")
 sdl_include_directories(
   PRIVATE
-    "${SDL3_BINARY_DIR}/include-config-$<LOWER_CASE:$<CONFIG>>"
-    "${SDL3_BINARY_DIR}/include"
+    "${SDL3_BINARY_DIR}/include-config-$<LOWER_CASE:$<CONFIG>>/build_config"
+    "${SDL3_BINARY_DIR}/include-revision"
     "${SDL3_SOURCE_DIR}/include"
 )
 # Note: The clang toolset for Visual Studio does not support the '-idirafter' option.
@@ -452,37 +498,6 @@ else()
   sdl_include_directories(NO_EXPORT SYSTEM PRIVATE "$<BUILD_INTERFACE:${SDL3_SOURCE_DIR}/src/video/khronos>")
 endif()
 
-# General source files
-sdl_glob_sources(
-  "${SDL3_SOURCE_DIR}/src/*.c"
-  "${SDL3_SOURCE_DIR}/src/atomic/*.c"
-  "${SDL3_SOURCE_DIR}/src/audio/*.c"
-  "${SDL3_SOURCE_DIR}/src/camera/*.c"
-  "${SDL3_SOURCE_DIR}/src/core/*.c"
-  "${SDL3_SOURCE_DIR}/src/cpuinfo/*.c"
-  "${SDL3_SOURCE_DIR}/src/dynapi/*.c"
-  "${SDL3_SOURCE_DIR}/src/events/*.c"
-  "${SDL3_SOURCE_DIR}/src/file/*.c"
-  "${SDL3_SOURCE_DIR}/src/filesystem/*.c"
-  "${SDL3_SOURCE_DIR}/src/joystick/*.c"
-  "${SDL3_SOURCE_DIR}/src/haptic/*.c"
-  "${SDL3_SOURCE_DIR}/src/hidapi/*.c"
-  "${SDL3_SOURCE_DIR}/src/libm/*.c"
-  "${SDL3_SOURCE_DIR}/src/locale/*.c"
-  "${SDL3_SOURCE_DIR}/src/main/*.c"
-  "${SDL3_SOURCE_DIR}/src/misc/*.c"
-  "${SDL3_SOURCE_DIR}/src/power/*.c"
-  "${SDL3_SOURCE_DIR}/src/render/*.c"
-  "${SDL3_SOURCE_DIR}/src/render/*/*.c"
-  "${SDL3_SOURCE_DIR}/src/sensor/*.c"
-  "${SDL3_SOURCE_DIR}/src/stdlib/*.c"
-  "${SDL3_SOURCE_DIR}/src/storage/*.c"
-  "${SDL3_SOURCE_DIR}/src/thread/*.c"
-  "${SDL3_SOURCE_DIR}/src/time/*.c"
-  "${SDL3_SOURCE_DIR}/src/timer/*.c"
-  "${SDL3_SOURCE_DIR}/src/video/*.c"
-  "${SDL3_SOURCE_DIR}/src/video/yuv2rgb/*.c"
-)
 if(MSVC AND TARGET SDL3-shared)
   if(SDL_CPU_X64)
     enable_language(ASM_MASM)
@@ -810,6 +825,24 @@ if(SDL_ASSEMBLY)
     endif()
   endif()
 
+  if(SDL_ARMNEON)
+    check_c_source_compiles("
+        #include <arm_neon.h>
+        void floats_add(float *dest, float *a, float *b, unsigned size) {
+          for (; size >= 4; size -= 4, dest += 4, a += 4, b += 4) {
+            vst1q_f32(dest, vaddq_f32(vld1q_f32(a), vld1q_f32(b)));
+          }
+        }
+        int main(int argc, char *argv[]) {
+          floats_add((float*)0, (float*)0, (float*)0, 0);
+          return 0;
+         }" COMPILER_SUPPORTS_ARMNEON)
+
+    if(COMPILER_SUPPORTS_ARMNEON)
+      set(HAVE_ARMNEON TRUE)
+    endif()
+  endif()
+
   if(USE_GCC OR USE_CLANG)
     # TODO: Those all seem to be quite GCC specific - needs to be
     # reworked for better compiler support
@@ -862,24 +895,6 @@ if(SDL_ASSEMBLY)
       cmake_pop_check_state()
       if(COMPILER_SUPPORTS_LASX AND HAVE_LASXINTRIN_H)
         set(HAVE_LASX TRUE)
-      endif()
-    endif()
-
-    if(SDL_ARMNEON)
-      check_c_source_compiles("
-        #include <arm_neon.h>
-        void floats_add(float *dest, float *a, float *b, unsigned size) {
-          for (; size >= 4; size -= 4, dest += 4, a += 4, b += 4) {
-            vst1q_f32(dest, vaddq_f32(vld1q_f32(a), vld1q_f32(b)));
-          }
-        }
-        int main(int argc, char *argv[]) {
-          floats_add((float*)0, (float*)0, (float*)0, 0);
-          return 0;
-         }" COMPILER_SUPPORTS_ARMNEON)
-
-      if(COMPILER_SUPPORTS_ARMNEON)
-        set(HAVE_ARMNEON TRUE)
       endif()
     endif()
   endif()
@@ -936,7 +951,7 @@ endif()
 set(SDL_DISABLE_ALLOCA 0)
 check_include_file("alloca.h" "HAVE_ALLOCA_H")
 if(MSVC)
-  check_include_file("malloc.h" "HAVE_MALLOC")
+  check_include_file("malloc.h" "HAVE_MALLOC_H")
   check_symbol_exists("_alloca" "malloc.h" _ALLOCA_IN_MALLOC_H)
   if(NOT HAVE_ALLOCA_H AND NOT _ALLOCA_IN_MALLOC_H)
     set(SDL_DISABLE_ALLOCA 1)
@@ -957,6 +972,7 @@ if(SDL_LIBC)
     memory.h
     signal.h
     stdarg.h
+    stdbool.h
     stddef.h
     stdint.h
     stdio.h
@@ -981,17 +997,17 @@ if(SDL_LIBC)
   set(symbols_to_check
     abs acos acosf asin asinf atan atan2 atan2f atanf atof atoi
     bcopy
-    calloc ceil ceilf copysign copysignf cos cosf
+    ceil ceilf copysign copysignf cos cosf
     _Exit exp expf
-    fabs fabsf floor floorf fmod fmodf fopen64 free fseeko fseeko64
+    fabs fabsf floor floorf fmod fmodf fopen64 fseeko fseeko64
     getenv
     _i64toa index itoa
     log log10 log10f logf lround lroundf _ltoa
     malloc memcmp memcpy memmove memset modf modff
     pow powf putenv
-    realloc rindex round roundf
+    rindex round roundf
     scalbn scalbnf setenv sin sinf sqr sqrt sqrtf sscanf strchr
-    strcmp strlcat strlcpy strlen strncmp strnlen
+    strcmp strlcat strlcpy strlen strncmp strnlen strpbrk
     strrchr strstr strnstr strtod strtok_r strtol strtoll strtoul strtoull
     tan tanf trunc truncf
     unsetenv
@@ -1000,7 +1016,7 @@ if(SDL_LIBC)
   )
   if(WINDOWS)
     list(APPEND symbols_to_check
-      _strrev _ui64toa _uitoa _ultoa _wcsdup
+      _copysign _fseeki64 _strrev _ui64toa _uitoa _ultoa _wcsdup
     )
   else()
     list(APPEND symbols_to_check
@@ -1054,11 +1070,13 @@ if(SDL_LIBC)
         return ${math_fn}f(f);
       }
     " LIBC_HAS_${MATH_FN}F)
-    set(HAVE_${MATH_FN}F "${LIBC_HAS_${MATH_FN}}")
+    set(HAVE_${MATH_FN}F "${LIBC_HAS_${MATH_FN}F}")
   endforeach()
   cmake_pop_check_state()
 
   if(NOT WINDOWS)
+    check_symbol_exists(fdatasync "unistd.h" HAVE_FDATASYNC)
+    check_symbol_exists(gethostname "unistd.h" HAVE_GETHOSTNAME)
     check_symbol_exists(getpagesize "unistd.h" HAVE_GETPAGESIZE)
     check_symbol_exists(sigaction "signal.h" HAVE_SIGACTION)
     check_symbol_exists(setjmp "setjmp.h" HAVE_SETJMP)
@@ -1126,6 +1144,54 @@ else()
   endif()
 endif()
 
+# General source files
+sdl_glob_sources(
+  "${SDL3_SOURCE_DIR}/src/*.c"
+  "${SDL3_SOURCE_DIR}/src/atomic/*.c"
+  "${SDL3_SOURCE_DIR}/src/audio/*.c"
+  "${SDL3_SOURCE_DIR}/src/camera/*.c"
+  "${SDL3_SOURCE_DIR}/src/core/*.c"
+  "${SDL3_SOURCE_DIR}/src/cpuinfo/*.c"
+  "${SDL3_SOURCE_DIR}/src/dynapi/*.c"
+  "${SDL3_SOURCE_DIR}/src/events/*.c"
+  "${SDL3_SOURCE_DIR}/src/file/*.c"
+  "${SDL3_SOURCE_DIR}/src/file/generic/*.c"
+  "${SDL3_SOURCE_DIR}/src/filesystem/*.c"
+  "${SDL3_SOURCE_DIR}/src/gpu/*.c"
+  "${SDL3_SOURCE_DIR}/src/joystick/*.c"
+  "${SDL3_SOURCE_DIR}/src/haptic/*.c"
+  "${SDL3_SOURCE_DIR}/src/hidapi/*.c"
+  "${SDL3_SOURCE_DIR}/src/locale/*.c"
+  "${SDL3_SOURCE_DIR}/src/main/*.c"
+  "${SDL3_SOURCE_DIR}/src/misc/*.c"
+  "${SDL3_SOURCE_DIR}/src/power/*.c"
+  "${SDL3_SOURCE_DIR}/src/render/*.c"
+  "${SDL3_SOURCE_DIR}/src/render/*/*.c"
+  "${SDL3_SOURCE_DIR}/src/sensor/*.c"
+  "${SDL3_SOURCE_DIR}/src/stdlib/*.c"
+  "${SDL3_SOURCE_DIR}/src/storage/*.c"
+  "${SDL3_SOURCE_DIR}/src/thread/*.c"
+  "${SDL3_SOURCE_DIR}/src/time/*.c"
+  "${SDL3_SOURCE_DIR}/src/timer/*.c"
+  "${SDL3_SOURCE_DIR}/src/video/*.c"
+  "${SDL3_SOURCE_DIR}/src/video/yuv2rgb/*.c"
+)
+
+# Build uclibc as a static library such that non-used symbols don't end up in the SDL3 shared library.
+file(GLOB SDL_UCLIBC_SOURCES "${SDL3_SOURCE_DIR}/src/libm/*.c")
+add_library(SDL_uclibc STATIC "${SDL_UCLIBC_SOURCES}")
+target_compile_definitions(SDL_uclibc PRIVATE USING_GENERATED_CONFIG_H)
+target_include_directories(SDL_uclibc PRIVATE "${SDL3_BINARY_DIR}/include-config-$<LOWER_CASE:$<CONFIG>>/build_config")
+target_include_directories(SDL_uclibc PRIVATE "${SDL3_SOURCE_DIR}/src")
+target_include_directories(SDL_uclibc PRIVATE "${SDL3_SOURCE_DIR}/include")
+SDL_AddCommonCompilerFlags(SDL_uclibc)
+sdl_sources(STATIC "$<TARGET_OBJECTS:SDL_uclibc>")
+if(TARGET SDL3-shared)
+  target_link_libraries(SDL3-shared PRIVATE SDL_uclibc)
+endif()
+if(HAVE_GCC_FVISIBILITY)
+  set_property(TARGET SDL_uclibc PROPERTY C_VISIBILITY_PRESET "hidden")
+endif()
 
 # Enable/disable various subsystems of the SDL library
 foreach(_SUB ${SDL_SUBSYSTEMS})
@@ -1233,9 +1299,6 @@ if(ANDROID)
   endif()
 
   if(SDL_AUDIO)
-    set(SDL_AUDIO_DRIVER_ANDROID 1)
-    sdl_glob_sources("${SDL3_SOURCE_DIR}/src/audio/android/*.c")
-
     set(SDL_AUDIO_DRIVER_OPENSLES 1)
     sdl_glob_sources("${SDL3_SOURCE_DIR}/src/audio/openslES/*.c")
 
@@ -1269,7 +1332,6 @@ if(ANDROID)
     set(SDL_JOYSTICK_ANDROID 1)
     sdl_glob_sources(
       "${SDL3_SOURCE_DIR}/src/joystick/android/*.c"
-      "${SDL3_SOURCE_DIR}/src/joystick/steam/*.c"
     )
     set(HAVE_SDL_JOYSTICK TRUE)
   endif()
@@ -1388,13 +1450,20 @@ if(ANDROID)
         set(javadoc_index_html "${javadocdir}/index.html")
         add_custom_command(
           OUTPUT "${javadoc_index_html}"
-          COMMAND ${CMAKE_COMMAND} -E rm -rf "${javadocdir}"
+          COMMAND ${CMAKE_COMMAND} -E rm -rf "${javadocdir}" "${javadocjar}"
           COMMAND ${Java_JAVADOC_EXECUTABLE} -encoding utf8 -d "${javadocdir}"
             -classpath "${path_android_jar}"
             -author -use -version ${SDL_JAVA_SOURCES}
           DEPENDS ${SDL_JAVA_SOURCES} "${path_android_jar}"
         )
-        add_custom_target(SDL3-javadoc ALL DEPENDS "${javadoc_index_html}")
+        add_custom_command(
+          OUTPUT "${javadocjar}"
+          COMMAND ${Java_JAR_EXECUTABLE} -c -f "${javadocjar}"
+            -C "${javadocdir}" *
+          WORKING_DIRECTORY "${javadocdir}"
+          DEPENDS ${javadoc_index_html}
+        )
+        add_custom_target(SDL3-javadoc ALL DEPENDS "${javadoc_index_html}" "${javadocjar}")
         set_property(TARGET SDL3-javadoc PROPERTY OUTPUT_DIR "${javadocdir}")
       endif()
     endif()
@@ -1508,9 +1577,13 @@ elseif(UNIX AND NOT APPLE AND NOT RISCOS AND NOT HAIKU)
     CheckOpenGL()
     CheckOpenGLES()
     CheckWayland()
+    CheckOpenVR()
     CheckVivante()
     CheckVulkan()
     CheckQNXScreen()
+
+    sdl_glob_sources("${SDL3_SOURCE_DIR}/src/tray/unix/*.c")
+    set(HAVE_SDL_TRAY TRUE)
   endif()
 
   if(UNIX)
@@ -1623,6 +1696,16 @@ elseif(UNIX AND NOT APPLE AND NOT RISCOS AND NOT HAIKU)
         set(SDL_USE_IME 1)
       endif()
 
+      if(SDL_LIBURING)
+        pkg_search_module(LIBURING liburing-ffi)
+        find_path(HAVE_LIBURING_H NAMES liburing.h)
+        if(LIBURING_FOUND AND HAVE_LIBURING_H)
+          set(HAVE_LIBURING_LIBURING_H TRUE)
+          sdl_include_directories(PRIVATE SYSTEM ${LIBURING_INCLUDE_DIRS})
+          set(HAVE_LIBURING TRUE)
+        endif()
+      endif()
+
       if((FREEBSD OR NETBSD) AND NOT HAVE_INOTIFY)
         set(LibInotify_PKG_CONFIG_SPEC libinotify)
         pkg_check_modules(PC_LIBINOTIFY IMPORTED_TARGET ${LibInotify_PKG_CONFIG_SPEC})
@@ -1676,11 +1759,24 @@ elseif(UNIX AND NOT APPLE AND NOT RISCOS AND NOT HAIKU)
       )
     endif()
 
+    if(SDL_GPU AND SDL_GPU_DXVK)
+      if(PKG_CONFIG_FOUND)
+        pkg_search_module(DXVK_NATIVE dxvk-dxgi)
+        if(DXVK_NATIVE_FOUND)
+          set(HAVE_D3D11_H TRUE)
+          sdl_include_directories(PRIVATE SYSTEM ${DXVK_NATIVE_INCLUDE_DIRS})
+        endif()
+      endif()
+    endif()
+
+    if(HAVE_LIBURING_H)
+      sdl_sources("${SDL3_SOURCE_DIR}/src/file/io_uring/SDL_asyncio_liburing.c")
+    endif()
+
     # Always compiled for Linux, unconditionally:
     sdl_sources(
       "${SDL3_SOURCE_DIR}/src/core/linux/SDL_evdev_capabilities.c"
       "${SDL3_SOURCE_DIR}/src/core/linux/SDL_threadprio.c"
-      "${SDL3_SOURCE_DIR}/src/core/linux/SDL_sandbox.c"
     )
 
     # src/core/unix/*.c is included in a generic if(UNIX) section, elsewhere.
@@ -1698,7 +1794,6 @@ elseif(UNIX AND NOT APPLE AND NOT RISCOS AND NOT HAIKU)
       set(SDL_JOYSTICK_LINUX 1)
       sdl_glob_sources(
         "${SDL3_SOURCE_DIR}/src/joystick/linux/*.c"
-        "${SDL3_SOURCE_DIR}/src/joystick/steam/*.c"
       )
       set(HAVE_SDL_JOYSTICK TRUE)
     endif()
@@ -1791,15 +1886,6 @@ elseif(WINDOWS)
   sdl_glob_sources("${SDL3_SOURCE_DIR}/src/core/windows/*.c")
   sdl_glob_sources("${SDL3_SOURCE_DIR}/src/main/windows/*.c")
 
-  if(WINDOWS_STORE)
-    enable_language(CXX)
-    sdl_glob_sources(
-      "${SDL3_SOURCE_DIR}/src/core/winrt/*.c"
-      "${SDL3_SOURCE_DIR}/src/core/winrt/*.cpp"
-      "${SDL3_SOURCE_DIR}/src/main/winrt/*.cpp"
-    )
-  endif()
-
   if(TARGET SDL3-shared AND MSVC AND NOT SDL_LIBC)
     # Prevent codegen that would use the VC runtime libraries.
     target_compile_options(SDL3-shared PRIVATE $<$<COMPILE_LANGUAGE:C,CXX>:/GS-> $<$<COMPILE_LANGUAGE:C,CXX>:/Gs1048576>)
@@ -1808,11 +1894,8 @@ elseif(WINDOWS)
     endif()
   endif()
 
-  if(WINDOWS_STORE)
-    sdl_glob_sources("${SDL3_SOURCE_DIR}/src/misc/winrt/*.cpp")
-  else()
-    sdl_glob_sources("${SDL3_SOURCE_DIR}/src/misc/windows/*.c")
-  endif()
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/misc/windows/*.c")
+
   set(HAVE_SDL_MISC TRUE)
 
   # Check for DirectX
@@ -1828,23 +1911,17 @@ elseif(WINDOWS)
       string(APPEND CMAKE_REQUIRED_FLAGS " /I\"$ENV{DXSDK_DIR}\\Include\"")
     endif()
 
-    check_include_file(d3d9.h HAVE_D3D_H)
+    check_include_file(d3d9.h HAVE_D3D9_H)
     check_include_file(d3d11_1.h HAVE_D3D11_H)
-    check_c_source_compiles("
-      #include <d3d12.h>
-      #include <d3d12sdklayers.h>
-      ID3D12Device1 *device;
-      int main(int argc, char **argv) { return 0; }
-      " HAVE_D3D12_H)
     check_include_file(ddraw.h HAVE_DDRAW_H)
     check_include_file(dsound.h HAVE_DSOUND_H)
     check_include_file(dinput.h HAVE_DINPUT_H)
-    if(WINDOWS_STORE OR SDL_CPU_ARM32)
+    if(SDL_CPU_ARM32)  # !!! FIXME: this should probably check if we're !(x86 or x86-64) instead of arm.
       set(HAVE_DINPUT_H 0)
     endif()
     check_include_file(dxgi.h HAVE_DXGI_H)
     cmake_pop_check_state()
-    if(HAVE_D3D_H OR HAVE_D3D11_H OR HAVE_D3D12_H OR HAVE_DDRAW_H OR HAVE_DSOUND_H OR HAVE_DINPUT_H)
+    if(HAVE_D3D9_H OR HAVE_D3D11_H OR HAVE_DDRAW_H OR HAVE_DSOUND_H OR HAVE_DINPUT_H)
       set(HAVE_DIRECTX TRUE)
       if(NOT MINGW AND NOT USE_WINSDK_DIRECTX)
         if(CMAKE_SIZEOF_VOID_P EQUAL 8)
@@ -1864,14 +1941,21 @@ elseif(WINDOWS)
       #include <windows.h>
       #include <xinput.h>
       int main(int argc, char **argv) { return 0; }" HAVE_XINPUT_H)
-    check_c_source_compiles("
-      #define COBJMACROS
-      #include <windows.gaming.input.h>
-      __x_ABI_CWindows_CGaming_CInput_CIGamepadStatics2 *s2;
-      int main(int argc, char **argv) { return 0; }" HAVE_WINDOWS_GAMING_INPUT_H)
   endif()
 
   # headers needed elsewhere
+  check_c_source_compiles("
+    #define COBJMACROS
+    #include <windows.gaming.input.h>
+    static __x_ABI_CWindows_CGaming_CInput_CIGamepadStatics2 *s2;
+    int main(int argc, char **argv) { return 0; }" HAVE_WINDOWS_GAMING_INPUT_H
+  )
+  check_c_source_compiles("
+    #include <stdbool.h>
+    #define COBJMACROS
+    #include <gameinput.h>
+    int main(int argc, char **argv) { return 0; }" HAVE_GAMEINPUT_H
+  )
   check_include_file(dxgi1_6.h HAVE_DXGI1_6_H)
   check_include_file(tpcshrd.h HAVE_TPCSHRD_H)
   check_include_file(roapi.h HAVE_ROAPI_H)
@@ -1889,7 +1973,7 @@ elseif(WINDOWS)
   )
 
   if(SDL_AUDIO)
-    if(HAVE_DSOUND_H AND NOT WINDOWS_STORE)
+    if(HAVE_DSOUND_H)
       set(SDL_AUDIO_DRIVER_DSOUND 1)
       sdl_glob_sources("${SDL3_SOURCE_DIR}/src/audio/directsound/*.c")
       set(HAVE_SDL_AUDIO TRUE)
@@ -1899,37 +1983,27 @@ elseif(WINDOWS)
       set(SDL_AUDIO_DRIVER_WASAPI 1)
       set(HAVE_WASAPI TRUE)
       sdl_glob_sources("${SDL3_SOURCE_DIR}/src/audio/wasapi/*.c")
-      if(WINDOWS_STORE)
-        sdl_sources("${SDL3_SOURCE_DIR}/src/audio/wasapi/SDL_wasapi_winrt.cpp")
-      endif()
       set(HAVE_SDL_AUDIO TRUE)
     endif()
   endif()
 
   if(SDL_VIDEO)
-    if(WINDOWS_STORE)
-      set(SDL_VIDEO_DRIVER_WINRT 1)
-      sdl_glob_sources(
-        "${SDL3_SOURCE_DIR}/src/video/winrt/*.c"
-        "${SDL3_SOURCE_DIR}/src/video/winrt/*.cpp"
-        "${SDL3_SOURCE_DIR}/src/render/direct3d11/*.cpp"
-      )
-    else()
-      set(SDL_VIDEO_DRIVER_WINDOWS 1)
-      sdl_glob_sources("${SDL3_SOURCE_DIR}/src/video/windows/*.c")
-    endif()
+    set(SDL_VIDEO_DRIVER_WINDOWS 1)
+    sdl_glob_sources("${SDL3_SOURCE_DIR}/src/video/windows/*.c")
 
-    if(SDL_RENDER_D3D AND HAVE_D3D_H AND NOT WINDOWS_STORE)
+    CheckOpenVR()
+
+    if(SDL_RENDER_D3D AND HAVE_D3D9_H)
       set(SDL_VIDEO_RENDER_D3D 1)
       set(HAVE_RENDER_D3D TRUE)
     endif()
-    if(SDL_RENDER_D3D AND HAVE_D3D11_H)
+    if(SDL_RENDER_D3D11 AND HAVE_D3D11_H)
       set(SDL_VIDEO_RENDER_D3D11 1)
-      set(HAVE_RENDER_D3D TRUE)
+      set(HAVE_RENDER_D3D11 TRUE)
     endif()
-    if(SDL_RENDER_D3D AND HAVE_D3D12_H AND NOT WINDOWS_STORE)
+    if(SDL_RENDER_D3D12)
       set(SDL_VIDEO_RENDER_D3D12 1)
-      set(HAVE_RENDER_D3D TRUE)
+      set(HAVE_RENDER_D3D12 TRUE)
     endif()
     set(HAVE_SDL_VIDEO TRUE)
   endif()
@@ -1937,60 +2011,36 @@ elseif(WINDOWS)
   set(SDL_THREAD_GENERIC_COND_SUFFIX 1)
   set(SDL_THREAD_GENERIC_RWLOCK_SUFFIX 1)
   set(SDL_THREAD_WINDOWS 1)
-  if(WINDOWS_STORE)
-    sdl_sources(
-      "${SDL3_SOURCE_DIR}/src/thread/stdcpp/SDL_syscond.cpp"
-      "${SDL3_SOURCE_DIR}/src/thread/stdcpp/SDL_sysmutex.cpp"
-      "${SDL3_SOURCE_DIR}/src/thread/stdcpp/SDL_sysrwlock.cpp"
-      "${SDL3_SOURCE_DIR}/src/thread/stdcpp/SDL_systhread.cpp"
-      "${SDL3_SOURCE_DIR}/src/thread/generic/SDL_syssem.c"
-    )
-  else()
-    sdl_sources(
-      "${SDL3_SOURCE_DIR}/src/thread/generic/SDL_syscond.c"
-      "${SDL3_SOURCE_DIR}/src/thread/generic/SDL_sysrwlock.c"
-      "${SDL3_SOURCE_DIR}/src/thread/windows/SDL_syscond_cv.c"
-      "${SDL3_SOURCE_DIR}/src/thread/windows/SDL_sysmutex.c"
-      "${SDL3_SOURCE_DIR}/src/thread/windows/SDL_sysrwlock_srw.c"
-      "${SDL3_SOURCE_DIR}/src/thread/windows/SDL_syssem.c"
-      "${SDL3_SOURCE_DIR}/src/thread/windows/SDL_systhread.c"
-      "${SDL3_SOURCE_DIR}/src/thread/windows/SDL_systls.c"
-    )
-  endif()
+  sdl_sources(
+    "${SDL3_SOURCE_DIR}/src/thread/generic/SDL_syscond.c"
+    "${SDL3_SOURCE_DIR}/src/thread/generic/SDL_sysrwlock.c"
+    "${SDL3_SOURCE_DIR}/src/thread/windows/SDL_syscond_cv.c"
+    "${SDL3_SOURCE_DIR}/src/thread/windows/SDL_sysmutex.c"
+    "${SDL3_SOURCE_DIR}/src/thread/windows/SDL_sysrwlock_srw.c"
+    "${SDL3_SOURCE_DIR}/src/thread/windows/SDL_syssem.c"
+    "${SDL3_SOURCE_DIR}/src/thread/windows/SDL_systhread.c"
+    "${SDL3_SOURCE_DIR}/src/thread/windows/SDL_systls.c"
+  )
 
   set(HAVE_SDL_THREADS TRUE)
 
-  if(SDL_SENSOR AND HAVE_SENSORSAPI_H AND NOT WINDOWS_STORE)
+  if(SDL_SENSOR AND HAVE_SENSORSAPI_H)
     set(SDL_SENSOR_WINDOWS 1)
     set(HAVE_SDL_SENSORS TRUE)
     sdl_glob_sources("${SDL3_SOURCE_DIR}/src/sensor/windows/*.c")
   endif()
 
   if(SDL_POWER)
-    if(WINDOWS_STORE)
-      set(SDL_POWER_WINRT 1)
-      sdl_sources("${SDL3_SOURCE_DIR}/src/power/winrt/SDL_syspower.cpp")
-    else()
-      set(SDL_POWER_WINDOWS 1)
-      sdl_sources("${SDL3_SOURCE_DIR}/src/power/windows/SDL_syspower.c")
-      set(HAVE_SDL_POWER TRUE)
-    endif()
+    set(SDL_POWER_WINDOWS 1)
+    sdl_sources("${SDL3_SOURCE_DIR}/src/power/windows/SDL_syspower.c")
+    set(HAVE_SDL_POWER TRUE)
   endif()
 
-  if(WINDOWS_STORE)
-    sdl_glob_sources("${SDL3_SOURCE_DIR}/src/locale/winrt/*.c")
-  else()
-    sdl_glob_sources("${SDL3_SOURCE_DIR}/src/locale/windows/*.c")
-  endif()
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/locale/windows/*.c")
   set(HAVE_SDL_LOCALE TRUE)
 
   set(SDL_FILESYSTEM_WINDOWS 1)
-  if(WINDOWS_STORE)
-    sdl_glob_sources("${SDL3_SOURCE_DIR}/src/filesystem/winrt/*.cpp")
-    sdl_sources("${SDL3_SOURCE_DIR}/src/filesystem/windows/SDL_sysfsops.c")
-  else()
-    sdl_glob_sources("${SDL3_SOURCE_DIR}/src/filesystem/windows/*.c")
-  endif()
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/filesystem/windows/*.c")
   set(HAVE_SDL_FILESYSTEM TRUE)
 
   set(SDL_FSOPS_WINDOWS 1)
@@ -1998,27 +2048,12 @@ elseif(WINDOWS)
 
   set(SDL_STORAGE_GENERIC 1)
   sdl_glob_sources("${SDL3_SOURCE_DIR}/src/storage/generic/*.c")
-  if(NOT WINDOWS_STORE)
-    set(SDL_STORAGE_STEAM 1)
-    sdl_glob_sources("${SDL3_SOURCE_DIR}/src/storage/steam/*.c")
-  endif()
+  set(SDL_STORAGE_STEAM 1)
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/storage/steam/*.c")
   set(HAVE_SDL_STORAGE 1)
 
   # Libraries for Win32 native and MinGW
-  if(NOT WINDOWS_STORE)
-    sdl_link_dependency(base LIBS kernel32 user32 gdi32 winmm imm32 ole32 oleaut32 version uuid advapi32 setupapi shell32)
-  endif()
-
-  if(WINDOWS_STORE)
-    sdl_link_dependency(windows
-      LIBS
-        vccorlib$<$<CONFIG:Debug>:d>.lib
-        msvcrt$<$<CONFIG:Debug>:d>.lib
-      LINK_OPTIONS
-        /nodefaultlib:vccorlib$<$<CONFIG:Debug>:d>
-        /nodefaultlib:msvcrt$<$<CONFIG:Debug>:d>
-    )
-  endif()
+  sdl_link_dependency(base LIBS kernel32 user32 gdi32 winmm imm32 ole32 oleaut32 version uuid advapi32 setupapi shell32)
 
   set(SDL_TIME_WINDOWS 1)
   sdl_glob_sources("${SDL3_SOURCE_DIR}/src/time/windows/*.c")
@@ -2035,7 +2070,7 @@ elseif(WINDOWS)
   sdl_glob_sources("${SDL3_SOURCE_DIR}/src/core/windows/*.c")
 
   if(SDL_VIDEO)
-    if(SDL_OPENGL AND NOT WINDOWS_STORE)
+    if(SDL_OPENGL)
       set(SDL_VIDEO_OPENGL 1)
       set(SDL_VIDEO_OPENGL_WGL 1)
       set(SDL_VIDEO_RENDER_OGL 1)
@@ -2057,6 +2092,9 @@ elseif(WINDOWS)
         set(HAVE_RENDER_VULKAN TRUE)
       endif()
     endif()
+
+    sdl_glob_sources("${SDL3_SOURCE_DIR}/src/tray/windows/*.c")
+    set(HAVE_SDL_TRAY TRUE)
   endif()
 
   if(SDL_HIDAPI)
@@ -2066,26 +2104,26 @@ elseif(WINDOWS)
   if(SDL_JOYSTICK)
     sdl_glob_sources("${SDL3_SOURCE_DIR}/src/joystick/windows/*.c")
 
-    if(NOT WINDOWS_STORE)
-      set(SDL_JOYSTICK_RAWINPUT 1)
-    endif()
+    set(SDL_JOYSTICK_RAWINPUT 1)
     if(HAVE_DINPUT_H)
       set(SDL_JOYSTICK_DINPUT 1)
       sdl_link_dependency(joystick LIBS dinput8)
     endif()
     if(HAVE_XINPUT_H)
-      if(NOT WINDOWS_STORE)
-        set(SDL_JOYSTICK_XINPUT 1)
-        set(HAVE_XINPUT TRUE)
-      endif()
-      if(HAVE_WINDOWS_GAMING_INPUT_H)
-        set(SDL_JOYSTICK_WGI 1)
-      endif()
+      set(SDL_JOYSTICK_XINPUT 1)
+      set(HAVE_XINPUT TRUE)
+    endif()
+    if(HAVE_WINDOWS_GAMING_INPUT_H)
+      set(SDL_JOYSTICK_WGI 1)
+    endif()
+    if(HAVE_GAMEINPUT_H)
+      sdl_glob_sources("${SDL3_SOURCE_DIR}/src/joystick/gdk/*.c")
+      set(SDL_JOYSTICK_GAMEINPUT 1)
     endif()
     set(HAVE_SDL_JOYSTICK TRUE)
 
     if(SDL_HAPTIC)
-      if(HAVE_DINPUT_H AND NOT WINDOWS_STORE)
+      if(HAVE_DINPUT_H)
         sdl_glob_sources("${SDL3_SOURCE_DIR}/src/haptic/windows/*.c")
         set(SDL_HAPTIC_DINPUT 1)
         set(HAVE_SDL_HAPTIC TRUE)
@@ -2094,7 +2132,7 @@ elseif(WINDOWS)
   endif()
 
   if(SDL_CAMERA)
-    if(HAVE_MFAPI_H AND NOT WINDOWS_STORE)
+    if(HAVE_MFAPI_H)
       set(HAVE_CAMERA TRUE)
       set(SDL_CAMERA_DRIVER_MEDIAFOUNDATION 1)
       sdl_glob_sources("${SDL3_SOURCE_DIR}/src/camera/mediafoundation/*.c")
@@ -2130,8 +2168,6 @@ elseif(APPLE)
     set(HAVE_SDL_MAIN_CALLBACKS TRUE)
   endif()
 
-  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/file/cocoa/*.m")
-
   if(SDL_CAMERA)
     if(MACOS OR IOS)
       set(SDL_CAMERA_DRIVER_COREMEDIA 1)
@@ -2163,7 +2199,6 @@ elseif(APPLE)
   if(SDL_JOYSTICK)
     sdl_glob_sources("${SDL3_SOURCE_DIR}/src/joystick/apple/*.m")
     if(IOS OR TVOS OR VISIONOS OR WATCHOS)
-      sdl_glob_sources("${SDL3_SOURCE_DIR}/src/joystick/steam/*.c")
       set(SDL_JOYSTICK_MFI 1)
       if(IOS OR VISIONOS OR WATCHOS)
         set(SDL_FRAMEWORK_COREMOTION 1)
@@ -2330,81 +2365,93 @@ elseif(APPLE)
           set(SDL_VIDEO_RENDER_METAL 1)
           set(HAVE_RENDER_METAL TRUE)
         endif()
+        if (SDL_GPU)
+          set(SDL_GPU_METAL 1)
+          sdl_glob_sources("${SDL3_SOURCE_DIR}/src/gpu/metal/*.m")
+        endif()
       endif()
     endif()
+
+    if(MACOS)
+      sdl_glob_sources("${SDL3_SOURCE_DIR}/src/tray/cocoa/*.m")
+      set(HAVE_SDL_TRAY TRUE)
+    endif()
   endif()
+
+  # Minimum version for $<LINK_LIBRARY:feature,library-list>
+  cmake_minimum_required(VERSION 3.24)
 
   # Actually load the frameworks at the end so we don't duplicate include.
   if(SDL_FRAMEWORK_COREVIDEO)
     find_library(COREMEDIA CoreMedia)
     if(COREMEDIA)
-      sdl_link_dependency(corevideo LINK_OPTIONS "-Wl,-framework,CoreMedia")
+      sdl_link_dependency(corevideo LIBS "$<LINK_LIBRARY:FRAMEWORK,CoreMedia>" PKG_CONFIG_LINK_OPTIONS "-Wl,-framework,CoreMedia")
     endif()
-    sdl_link_dependency(corevideo LINK_OPTIONS "-Wl,-framework,CoreVideo")
+    sdl_link_dependency(corevideo LIBS "$<LINK_LIBRARY:FRAMEWORK,CoreVideo>" PKG_CONFIG_LINK_OPTIONS "-Wl,-framework,CoreVideo")
   endif()
   if(SDL_FRAMEWORK_COCOA)
-    sdl_link_dependency(cocoa LINK_OPTIONS "-Wl,-framework,Cocoa")
+    sdl_link_dependency(cocoa LIBS "$<LINK_LIBRARY:FRAMEWORK,Cocoa>" PKG_CONFIG_LINK_OPTIONS "-Wl,-framework,Cocoa")
   endif()
   if(SDL_FRAMEWORK_IOKIT)
-    sdl_link_dependency(iokit LINK_OPTIONS "-Wl,-framework,IOKit")
+    sdl_link_dependency(iokit LIBS "$<LINK_LIBRARY:FRAMEWORK,IOKit>" PKG_CONFIG_LINK_OPTIONS "-Wl,-framework,IOKit")
   endif()
   if(SDL_FRAMEWORK_FF)
-    sdl_link_dependency(ff LINK_OPTIONS "-Wl,-framework,ForceFeedback")
+    sdl_link_dependency(ff LIBS "$<LINK_LIBRARY:FRAMEWORK,ForceFeedback>" PKG_CONFIG_LINK_OPTIONS "-Wl,-framework,ForceFeedback")
   endif()
   if(SDL_FRAMEWORK_CARBON)
-    sdl_link_dependency(carbon LINK_OPTIONS "-Wl,-framework,Carbon")
+    sdl_link_dependency(carbon LIBS "$<LINK_LIBRARY:FRAMEWORK,Carbon>" PKG_CONFIG_LINK_OPTIONS "-Wl,-framework,Carbon")
   endif()
   if(SDL_FRAMEWORK_COREAUDIO)
-    sdl_link_dependency(core_audio LINK_OPTIONS "-Wl,-framework,CoreAudio")
+    sdl_link_dependency(core_audio LIBS "$<LINK_LIBRARY:FRAMEWORK,CoreAudio>" PKG_CONFIG_LINK_OPTIONS "-Wl,-framework,CoreAudio")
   endif()
   if(SDL_FRAMEWORK_AUDIOTOOLBOX)
-    sdl_link_dependency(audio_toolbox LINK_OPTIONS "-Wl,-framework,AudioToolbox")
+    sdl_link_dependency(audio_toolbox LIBS "$<LINK_LIBRARY:FRAMEWORK,AudioToolbox>" PKG_CONFIG_LINK_OPTIONS "-Wl,-framework,AudioToolbox")
   endif()
   if(SDL_FRAMEWORK_AVFOUNDATION)
-    sdl_link_dependency(av_foundation LINK_OPTIONS "-Wl,-framework,AVFoundation")
+    sdl_link_dependency(av_foundation LIBS "$<LINK_LIBRARY:FRAMEWORK,AVFoundation>" PKG_CONFIG_LINK_OPTIONS "-Wl,-framework,AVFoundation")
   endif()
   if(SDL_FRAMEWORK_COREBLUETOOTH)
-    sdl_link_dependency(core_bluetooth LINK_OPTIONS "-Wl,-framework,CoreBluetooth")
+    sdl_link_dependency(core_bluetooth LIBS "$<LINK_LIBRARY:FRAMEWORK,CoreBluetooth>" PKG_CONFIG_LINK_OPTIONS "-Wl,-framework,CoreBluetooth")
   endif()
   if(SDL_FRAMEWORK_COREGRAPHICS)
-    sdl_link_dependency(core_graphics LINK_OPTIONS "-Wl,-framework,CoreGraphics")
+    sdl_link_dependency(core_graphics LIBS "$<LINK_LIBRARY:FRAMEWORK,CoreGraphics>" PKG_CONFIG_LINK_OPTIONS "-Wl,-framework,CoreGraphics")
   endif()
   if(SDL_FRAMEWORK_COREMOTION)
-    sdl_link_dependency(core_motion LINK_OPTIONS "-Wl,-framework,CoreMotion")
+    sdl_link_dependency(core_motion LIBS "$<LINK_LIBRARY:FRAMEWORK,CoreMotion>" PKG_CONFIG_LINK_OPTIONS "-Wl,-framework,CoreMotion")
   endif()
   if(SDL_FRAMEWORK_FOUNDATION)
-    sdl_link_dependency(foundation LINK_OPTIONS "-Wl,-framework,Foundation")
+    sdl_link_dependency(foundation LIBS "$<LINK_LIBRARY:FRAMEWORK,Foundation>" PKG_CONFIG_LINK_OPTIONS "-Wl,-framework,Foundation")
   endif()
   if(SDL_FRAMEWORK_GAMECONTROLLER)
     find_library(GAMECONTROLLER GameController)
     if(GAMECONTROLLER)
-      sdl_link_dependency(game_controller LINK_OPTIONS "-Wl,-weak_framework,GameController")
+      sdl_link_dependency(game_controller LIBS "$<LINK_LIBRARY:WEAK_FRAMEWORK,GameController>" PKG_CONFIG_LINK_OPTIONS "-Wl,-weak_framework,GameController")
     endif()
   endif()
   if(SDL_FRAMEWORK_METAL)
     if(IOS OR TVOS OR VISIONOS OR WATCHOS)
-      sdl_link_dependency(metal LINK_OPTIONS "-Wl,-framework,Metal")
+      sdl_link_dependency(metal LIBS "$<LINK_LIBRARY:FRAMEWORK,Metal>" PKG_CONFIG_LINK_OPTIONS "-Wl,-framework,Metal")
     else()
-      sdl_link_dependency(metal LINK_OPTIONS "-Wl,-weak_framework,Metal")
+      sdl_link_dependency(metal LIBS "$<LINK_LIBRARY:WEAK_FRAMEWORK,Metal>" PKG_CONFIG_LINK_OPTIONS "-Wl,-weak_framework,Metal")
     endif()
   endif()
   if(SDL_FRAMEWORK_OPENGLES)
-    sdl_link_dependency(opengles LINK_OPTIONS "-Wl,-framework,OpenGLES")
+    sdl_link_dependency(opengles LIBS "$<LINK_LIBRARY:FRAMEWORK,OpenGLES>" PKG_CONFIG_LINK_OPTIONS "-Wl,-framework,OpenGLES")
   endif()
   if(SDL_FRAMEWORK_QUARTZCORE)
     if(IOS OR TVOS OR VISIONOS OR WATCHOS)
-      sdl_link_dependency(quartz_core LINK_OPTIONS "-Wl,-framework,QuartzCore")
+      sdl_link_dependency(quartz_core LIBS "$<LINK_LIBRARY:FRAMEWORK,QuartzCore>" PKG_CONFIG_LINK_OPTIONS "-Wl,-framework,QuartzCore")
     else()
-      sdl_link_dependency(metal LINK_OPTIONS "-Wl,-weak_framework,QuartzCore")
+      sdl_link_dependency(metal LIBS "$<LINK_LIBRARY:WEAK_FRAMEWORK,QuartzCore>" PKG_CONFIG_LINK_OPTIONS "-Wl,-weak_framework,QuartzCore")
     endif()
   endif()
   if(SDL_FRAMEWORK_UIKIT)
-    sdl_link_dependency(ui_kit LINK_OPTIONS "-Wl,-framework,UIKit")
+    sdl_link_dependency(ui_kit LIBS "$<LINK_LIBRARY:FRAMEWORK,UIKit>" PKG_CONFIG_LINK_OPTIONS "-Wl,-framework,UIKit")
   endif()
   if(SDL_FRAMEWORK_COREHAPTICS)
     find_library(COREHAPTICS CoreHaptics)
     if(COREHAPTICS)
-      sdl_link_dependency(core_haptics LINK_OPTIONS "-Wl,-framework,CoreHaptics")
+      sdl_link_dependency(core_haptics LIBS "$<LINK_LIBRARY:FRAMEWORK,CoreHaptics>" PKG_CONFIG_LINK_OPTIONS "-Wl,-framework,CoreHaptics")
     endif()
   endif()
 
@@ -2536,7 +2583,9 @@ elseif(VITA)
   sdl_glob_sources("${SDL3_SOURCE_DIR}/src/filesystem/vita/*.c")
   set(HAVE_SDL_FILESYSTEM TRUE)
 
-  # !!! FIXME: do we need a FSops implementation for this?
+  set(SDL_FSOPS_POSIX 1)
+  sdl_sources("${SDL3_SOURCE_DIR}/src/filesystem/posix/SDL_sysfsops.c")
+  set(HAVE_SDL_FSOPS TRUE)
 
   if(SDL_JOYSTICK)
     set(SDL_JOYSTICK_VITA 1)
@@ -2576,6 +2625,12 @@ elseif(VITA)
     set(SDL_SENSOR_VITA 1)
     set(HAVE_SDL_SENSORS TRUE)
     sdl_glob_sources("${SDL3_SOURCE_DIR}/src/sensor/vita/*.c")
+  endif()
+
+  if(SDL_CAMERA)
+    set(SDL_CAMERA_DRIVER_VITA 1)
+    set(HAVE_CAMERA TRUE)
+    sdl_glob_sources("${SDL3_SOURCE_DIR}/src/camera/vita/*.c")
   endif()
 
   if(SDL_VIDEO)
@@ -2658,6 +2713,7 @@ elseif(VITA)
         SceMotion_stub
         ScePower_stub
         SceProcessmgr_stub
+        SceCamera_stub
     )
   endif()
 
@@ -2676,7 +2732,9 @@ elseif(PSP)
   sdl_glob_sources("${SDL3_SOURCE_DIR}/src/filesystem/psp/*.c")
   set(HAVE_SDL_FILESYSTEM TRUE)
 
-  # !!! FIXME: do we need a FSops implementation for this?
+  set(SDL_FSOPS_POSIX 1)
+  sdl_sources("${SDL3_SOURCE_DIR}/src/filesystem/posix/SDL_sysfsops.c")
+  set(HAVE_SDL_FSOPS TRUE)
 
   if(SDL_JOYSTICK)
     set(SDL_JOYSTICK_PSP 1)
@@ -2698,6 +2756,9 @@ elseif(PSP)
     "${SDL3_SOURCE_DIR}/src/thread/psp/*.c"
   )
   set(HAVE_SDL_THREADS TRUE)
+
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/locale/psp/*.c")
+  set(HAVE_SDL_LOCALE TRUE)
 
   set(SDL_TIME_PSP 1)
   sdl_glob_sources("${SDL3_SOURCE_DIR}/src/time/psp/*.c")
@@ -2730,9 +2791,6 @@ elseif(PSP)
   )
 
 elseif(PS2)
-  sdl_compile_definitions(PRIVATE "PS2" "__PS2__")
-  sdl_include_directories(PRIVATE SYSTEM "$ENV{PS2SDK}/ports/include" "$ENV{PS2DEV}/gsKit/include")
-
   sdl_glob_sources("${SDL3_SOURCE_DIR}/src/main/ps2/*.c")
 
   if(SDL_AUDIO)
@@ -2745,7 +2803,9 @@ elseif(PS2)
   sdl_glob_sources("${SDL3_SOURCE_DIR}/src/filesystem/ps2/*.c")
   set(HAVE_SDL_FILESYSTEM TRUE)
 
-  # !!! FIXME: do we need a FSops implementation for this?
+  set(SDL_FSOPS_POSIX 1)
+  sdl_sources("${SDL3_SOURCE_DIR}/src/filesystem/posix/SDL_sysfsops.c")
+  set(HAVE_SDL_FSOPS TRUE)
 
   if(SDL_JOYSTICK)
     set(SDL_JOYSTICK_PS2 1)
@@ -2854,6 +2914,7 @@ elseif(N3DS)
   sdl_glob_sources("${SDL3_SOURCE_DIR}/src/file/n3ds/*.c")
 endif()
 
+sdl_sources(${SDL3_SOURCE_DIR}/src/dialog/SDL_dialog.c)
 if (SDL_DIALOG)
   sdl_sources(${SDL3_SOURCE_DIR}/src/dialog/SDL_dialog_utils.c)
   if(ANDROID)
@@ -2867,13 +2928,62 @@ if (SDL_DIALOG)
   elseif(HAIKU)
     sdl_sources(${SDL3_SOURCE_DIR}/src/dialog/haiku/SDL_haikudialog.cc)
     set(HAVE_SDL_DIALOG TRUE)
-  elseif(WINDOWS AND NOT WINDOWS_STORE)
+  elseif(WINDOWS)
     sdl_sources(${SDL3_SOURCE_DIR}/src/dialog/windows/SDL_windowsdialog.c)
     set(HAVE_SDL_DIALOG TRUE)
   elseif(MACOS)
     sdl_sources(${SDL3_SOURCE_DIR}/src/dialog/cocoa/SDL_cocoadialog.m)
-    sdl_link_dependency(uniformtypeidentifiers LINK_OPTIONS "-Wl,-weak_framework,UniformTypeIdentifiers")
+    sdl_link_dependency(uniformtypeidentifiers LIBS "$<LINK_LIBRARY:WEAK_FRAMEWORK,UniformTypeIdentifiers>" PKG_CONFIG_LINK_OPTIONS "-Wl,-weak_framework,UniformTypeIdentifiers")
     set(HAVE_SDL_DIALOG TRUE)
+  endif()
+endif()
+
+sdl_sources("${SDL3_SOURCE_DIR}/src/process/SDL_process.c")
+if(WINDOWS)
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/process/windows/*.c")
+  set(SDL_PROCESS_WINDOWS 1)
+  set(HAVE_SDL_PROCESS TRUE)
+else()
+  check_c_source_compiles("
+#include <spawn.h>
+#include <unistd.h>
+
+int main(void)
+{
+    int pipes[2];
+    int pid;
+
+    const char * args[] = {
+      \"/bin/false\",
+      NULL
+    };
+
+    const char * env[] = { NULL };
+
+    pipe(pipes);
+
+    posix_spawnattr_t attr;
+    posix_spawn_file_actions_t fa;
+
+    posix_spawnattr_init(&attr);
+    posix_spawn_file_actions_init(&fa);
+
+    posix_spawn_file_actions_addclose(&fa, pipes[0]);
+    posix_spawn_file_actions_adddup2(&fa, pipes[1], STDOUT_FILENO);
+
+    posix_spawn(&pid, args[0], &fa, &attr, (char * const *) args, (char * const *) env);
+    posix_spawnp(&pid, args[0], &fa, &attr, (char * const *) args, (char * const *) env);
+
+    posix_spawn_file_actions_destroy(&fa);
+    posix_spawnattr_destroy(&attr);
+
+    return 0;
+}
+" HAVE_POSIX_SPAWN)
+  if(HAVE_POSIX_SPAWN)
+    sdl_glob_sources("${SDL3_SOURCE_DIR}/src/process/posix/*.c")
+    set(SDL_PROCESS_POSIX 1)
+    set(HAVE_SDL_PROCESS TRUE)
   endif()
 endif()
 
@@ -2885,6 +2995,30 @@ if(SDL_VIDEO)
     sdl_glob_sources("${SDL3_SOURCE_DIR}/src/video/offscreen/*.c")
     set(HAVE_OFFSCREEN TRUE)
     set(HAVE_SDL_VIDEO TRUE)
+  endif()
+endif()
+
+sdl_glob_sources(${SDL3_SOURCE_DIR}/src/tray/*.c)
+
+if(SDL_GPU)
+  if(HAVE_D3D11_H)
+    sdl_glob_sources("${SDL3_SOURCE_DIR}/src/gpu/d3d11/*.c")
+    set(SDL_GPU_D3D11 1)
+    set(HAVE_SDL_GPU TRUE)
+  endif()
+  if(SDL_RENDER_D3D12)
+    sdl_glob_sources("${SDL3_SOURCE_DIR}/src/gpu/d3d12/*.c")
+    set(SDL_GPU_D3D12 1)
+    set(HAVE_SDL_GPU TRUE)
+  endif()
+  if(SDL_VIDEO_VULKAN)
+    sdl_glob_sources("${SDL3_SOURCE_DIR}/src/gpu/vulkan/*.c")
+    set(SDL_GPU_VULKAN 1)
+    set(HAVE_SDL_GPU TRUE)
+  endif()
+  if(SDL_RENDER_GPU)
+    set(SDL_VIDEO_RENDER_GPU 1)
+    set(HAVE_RENDER_GPU TRUE)
   endif()
 endif()
 
@@ -2944,6 +3078,14 @@ if(NOT HAVE_SDL_DIALOG)
   set(SDL_DIALOG_DUMMY 1)
   sdl_sources(${SDL3_SOURCE_DIR}/src/dialog/dummy/SDL_dummydialog.c)
 endif()
+if(NOT HAVE_SDL_PROCESS)
+  set(SDL_PROCESS_DUMMY 1)
+  sdl_glob_sources(${SDL3_SOURCE_DIR}/src/process/dummy/*.c)
+endif()
+if(NOT HAVE_SDL_TRAY)
+  set(SDL_TRAY_DUMMY 1)
+  sdl_glob_sources(${SDL3_SOURCE_DIR}/src/tray/dummy/*.c)
+endif()
 if(NOT HAVE_CAMERA)
   set(SDL_CAMERA_DRIVER_DUMMY 1)
   sdl_glob_sources("${SDL3_SOURCE_DIR}/src/camera/dummy/*.c")
@@ -2971,11 +3113,11 @@ endif()
 # config variables may contain generator expression, so we need to generate SDL_build_config.h in 2 steps:
 # 1. replace all `#cmakedefine`'s and `@abc@`
 configure_file("${SDL3_SOURCE_DIR}/include/build_config/SDL_build_config.h.cmake"
-  "${SDL3_BINARY_DIR}/SDL_build_config.h.intermediate")
+  "${SDL3_BINARY_DIR}/CMakeFiles/SDL_build_config.h.intermediate")
 # 2. generate SDL_build_config.h in an build_type-dependent folder (which should be first in the include search path)
 file(GENERATE
   OUTPUT "${SDL3_BINARY_DIR}/include-config-$<LOWER_CASE:$<CONFIG>>/build_config/SDL_build_config.h"
-  INPUT "${SDL3_BINARY_DIR}/SDL_build_config.h.intermediate"
+  INPUT "${SDL3_BINARY_DIR}/CMakeFiles/SDL_build_config.h.intermediate"
 )
 
 file(GLOB SDL3_INCLUDE_FILES "${SDL3_SOURCE_DIR}/include/SDL3/*.h")
@@ -2986,26 +3128,24 @@ foreach(_hdr IN LISTS SDL3_INCLUDE_FILES)
   endif()
 endforeach()
 
-set(SDL_REVISION "" CACHE STRING "Custom SDL revision (overrides SDL_REVISION_SUFFIX)")
+# If REVISION.txt exists, then we are building from a SDL release.
+# SDL_revision.h(.cmake) in source releases have SDL_REVISION baked into them.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/REVISION.txt")
+  file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/REVISION.txt" revisions)
+  list(GET revisions 0 revisions_0)
+  string(STRIP "${revisions_0}" SDL_REVISION)
+else()
+  set(SDL_REVISION "" CACHE STRING "Custom SDL revision (only used when REVISION.txt does not exist)")
+endif()
 if(NOT SDL_REVISION)
-  set(SDL_REVISION_SUFFIX "" CACHE STRING "Suffix for the SDL revision")
-  if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION.txt")
-    # If VERSION.txt exists, it contains the SDL version
-    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION.txt" SDL_REVISION_CENTER)
-    string(STRIP "${SDL_REVISION_CENTER}" SDL_REVISION_CENTER)
-  else()
-    # If VERSION does not exist, use git to calculate a version
-    git_describe(SDL_REVISION_CENTER)
-    if(NOT SDL_REVISION_CENTER)
-      set(SDL_REVISION_CENTER "${SDL3_VERSION}-no-vcs")
-    endif()
-  endif()
-  set(SDL_REVISION "SDL-${SDL_REVISION_CENTER}${SDL_REVISION_SUFFIX}")
+  # If SDL_REVISION is not overrided, use git to describe
+  git_describe(SDL_REVISION_GIT)
+  set(SDL_REVISION "SDL3-${SDL3_VERSION}-${SDL_REVISION_GIT}")
 endif()
 
-execute_process(COMMAND "${CMAKE_COMMAND}" -E make_directory "${SDL3_BINARY_DIR}/include/SDL3")
-configure_file(include/build_config/SDL_revision.h.cmake include/SDL3/SDL_revision.h @ONLY)
-list(APPEND SDL3_INCLUDE_FILES "${SDL3_BINARY_DIR}/include/SDL3/SDL_revision.h")
+execute_process(COMMAND "${CMAKE_COMMAND}" -E make_directory "${SDL3_BINARY_DIR}/include-revision/SDL3")
+configure_file(include/build_config/SDL_revision.h.cmake include-revision/SDL3/SDL_revision.h @ONLY)
+list(APPEND SDL3_INCLUDE_FILES "${SDL3_BINARY_DIR}/include-revision/SDL3/SDL_revision.h")
 
 if(SDL_FRAMEWORK)
   # With Apple frameworks, headers in the PUBLIC_HEADER property also need to be added as sources
@@ -3202,7 +3342,7 @@ add_library(SDL3::Headers ALIAS SDL3_Headers)
 set_property(TARGET SDL3_Headers PROPERTY EXPORT_NAME "Headers")
 target_include_directories(SDL3_Headers
   INTERFACE
-    "$<BUILD_INTERFACE:${SDL3_BINARY_DIR}/include>"
+    "$<BUILD_INTERFACE:${SDL3_BINARY_DIR}/include-revision>"
     "$<BUILD_INTERFACE:${SDL3_SOURCE_DIR}/include>"
 )
 if(SDL_FRAMEWORK)
@@ -3239,7 +3379,7 @@ if(SDL_SHARED)
     )
   endif()
   if(NOT SDL_LIBC)
-    if(MSVC AND (NOT MSVC_CLANG AND NOT WINDOWS_STORE))
+    if(MSVC AND NOT MSVC_CLANG)
       # Don't try to link with the default set of libraries.
       # Note: The clang toolset for Visual Studio does not support /NODEFAULTLIB.
       target_link_options(SDL3-shared PRIVATE "/NODEFAULTLIB")
@@ -3285,7 +3425,7 @@ if(SDL_SHARED)
   target_link_libraries(SDL3-shared PRIVATE ${SDL_CMAKE_DEPENDS})
   target_include_directories(SDL3-shared
     PRIVATE
-      "$<BUILD_INTERFACE:${SDL3_BINARY_DIR}/include-config-$<LOWER_CASE:$<CONFIG>>>"
+      "$<BUILD_INTERFACE:${SDL3_BINARY_DIR}/include-config-$<LOWER_CASE:$<CONFIG>>>/build_config"
       "$<BUILD_INTERFACE:${SDL3_SOURCE_DIR}/src>"
   )
   target_link_libraries(SDL3-shared PUBLIC $<TARGET_NAME:SDL3::Headers>)
@@ -3312,7 +3452,7 @@ if(SDL_STATIC)
   target_link_libraries(SDL3-static PRIVATE ${SDL_CMAKE_DEPENDS})
   target_include_directories(SDL3-static
     PRIVATE
-      "$<BUILD_INTERFACE:${SDL3_BINARY_DIR}/include-config-$<LOWER_CASE:$<CONFIG>>>"
+      "$<BUILD_INTERFACE:${SDL3_BINARY_DIR}/include-config-$<LOWER_CASE:$<CONFIG>>>/build_config"
       "$<BUILD_INTERFACE:${SDL3_SOURCE_DIR}/src>"
   )
   target_link_libraries(SDL3-static PUBLIC $<TARGET_NAME:SDL3::Headers>)
@@ -3364,7 +3504,7 @@ endif()
 if(WINDOWS AND NOT MINGW)
   set(SDL_INSTALL_CMAKEDIR_ROOT_DEFAULT "cmake")
 else()
-  set(SDL_INSTALL_CMAKEDIR_ROOT_DEFAULT "${CMAKE_INSTALL_LIBDIR}/cmake")
+  set(SDL_INSTALL_CMAKEDIR_ROOT_DEFAULT "${CMAKE_INSTALL_LIBDIR}/cmake/SDL3")
 endif()
 set(SDL_INSTALL_CMAKEDIR_ROOT "${SDL_INSTALL_CMAKEDIR_ROOT_DEFAULT}" CACHE STRING "Root folder where to install SDL3Config.cmake related files (SDL3 subfolder for MSVC projects)")
 
@@ -3384,7 +3524,7 @@ elseif(SDL_FRAMEWORK)
   set(SDL_INSTALL_LICENSEDIR "Resources")
   set(SDL_INSTALL_HEADERSDIR "Headers")
 else()
-  set(SDL_INSTALL_CMAKEDIR "${SDL_INSTALL_CMAKEDIR_ROOT}/SDL3")
+  set(SDL_INSTALL_CMAKEDIR "${SDL_INSTALL_CMAKEDIR_ROOT}")
   set(SDL_INSTALL_LICENSEDIR "${CMAKE_INSTALL_DATAROOTDIR}/licenses/${PROJECT_NAME}")
   set(SDL_INSTALL_HEADERSDIR "${CMAKE_INSTALL_INCLUDEDIR}/SDL3")
 endif()
@@ -3570,7 +3710,11 @@ if(NOT SDL_DISABLE_INSTALL)
   if(ANDROID)
     if(TARGET SDL3-jar)
       set(SDL_INSTALL_JAVADIR "${CMAKE_INSTALL_DATAROOTDIR}/java" CACHE PATH "Path where to install java clases + java sources")
-      install(FILES $<TARGET_PROPERTY:SDL3-jar,INSTALL_FILES>
+      set(PROGUARD_RULES_PATH "${CMAKE_CURRENT_SOURCE_DIR}/android-project/app/proguard-rules.pro")
+      # install_jar or $<TARGET_PROPERTY:SDL3-jar,INSTALL_FILES> does not work on Windows: a SDL3.jar symlink is not generated
+      install(FILES "${CMAKE_CURRENT_BINARY_DIR}/SDL3-${SDL3_VERSION}.jar"
+        DESTINATION "${SDL_INSTALL_JAVADIR}/SDL3")
+      install(FILES "${PROGUARD_RULES_PATH}" RENAME "proguard.txt"
         DESTINATION "${SDL_INSTALL_JAVADIR}/SDL3")
       configure_package_config_file(cmake/SDL3jarTargets.cmake.in SDL3jarTargets.cmake
         INSTALL_DESTINATION "${SDL_SDL_INSTALL_CMAKEDIR}"
@@ -3583,7 +3727,7 @@ if(NOT SDL_DISABLE_INSTALL)
       )
     endif()
     if(TARGET SDL3-javasources)
-      install(FILES  "${SDL3_BINARY_DIR}/SDL3-${SDL3_VERSION}-sources.jar"
+      install(FILES "${SDL3_BINARY_DIR}/SDL3-${SDL3_VERSION}-sources.jar"
         DESTINATION "${SDL_INSTALL_JAVADIR}/SDL3")
     endif()
   endif()
@@ -3597,7 +3741,7 @@ if(NOT SDL_DISABLE_INSTALL)
     )
     if(TARGET SDL3-javadoc)
       set(SDL_INSTALL_JAVADOCDIR "${CMAKE_INSTALL_DATAROOTDIR}/javadoc" CACHE PATH "Path where to install SDL3 javadoc")
-      install(DIRECTORY "${SDL3_BINARY_DIR}/docs/javadoc/"
+      install(FILES "${SDL3_BINARY_DIR}/SDL3-${SDL3_VERSION}-javadoc.jar"
         DESTINATION "${SDL_INSTALL_JAVADOCDIR}/SDL3")
     endif()
   endif()
@@ -3620,6 +3764,13 @@ if(SDL_TESTS)
   set(HAVE_TESTS ON)
   enable_testing()
   add_subdirectory(test)
+endif()
+
+##### Examples subproject (must appear after the install/uninstall targets) #####
+
+if(SDL_EXAMPLES)
+  set(HAVE_EXAMPLES ON)
+  add_subdirectory(examples)
 endif()
 
 ##### Fix Objective C builds #####
