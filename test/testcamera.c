@@ -1,5 +1,5 @@
 /*
-  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2025 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -99,7 +99,7 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
             SDLTest_CommonLogUsage(state, argv[0], options);
             SDL_Quit();
             SDLTest_CommonDestroyState(state);
-            return 1;
+            return SDL_APP_FAILURE;
         }
         i += consumed;
     }
@@ -123,6 +123,8 @@ SDL_AppResult SDL_AppInit(void **appstate, int argc, char *argv[])
         /* SDL_Log("Couldn't create renderer: %s", SDL_GetError()); */
         return SDL_APP_FAILURE;
     }
+
+    SDL_Log("Using SDL camera driver: %s", SDL_GetCurrentCameraDriver());
 
     SDL_CameraID *devices = SDL_GetCameras(&devcount);
     if (!devices) {
@@ -257,7 +259,7 @@ SDL_AppResult SDL_AppEvent(void *appstate, SDL_Event *event)
 
         case SDL_EVENT_QUIT:
             SDL_Log("Quit!");
-            return 1;
+            return SDL_APP_SUCCESS;
 
         case SDL_EVENT_CAMERA_DEVICE_APPROVED:
             SDL_Log("Camera approved!");

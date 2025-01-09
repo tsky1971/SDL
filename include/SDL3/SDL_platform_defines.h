@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2025 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -366,7 +366,7 @@
  */
 #define SDL_WINAPI_FAMILY_PHONE (WINAPI_FAMILY == WINAPI_FAMILY_PHONE_APP)
 
-#elif HAVE_WINAPIFAMILY_H && HAVE_WINAPIFAMILY_H
+#elif defined(HAVE_WINAPIFAMILY_H) && HAVE_WINAPIFAMILY_H
     #define SDL_WINAPI_FAMILY_PHONE (WINAPI_FAMILY == WINAPI_FAMILY_PHONE_APP)
 #else
     #define SDL_WINAPI_FAMILY_PHONE 0

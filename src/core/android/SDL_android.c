@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2025 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -1063,10 +1063,7 @@ JNIEXPORT void JNICALL SDL_JAVA_INTERFACE(onNativeRotationChanged)(
         break;
     }
 
-    if (Android_Window) {
-        SDL_VideoDisplay *display = SDL_GetVideoDisplay(SDL_GetPrimaryDisplay());
-        SDL_SendDisplayEvent(display, SDL_EVENT_DISPLAY_ORIENTATION, displayCurrentOrientation, 0);
-    }
+    Android_SetOrientation(displayCurrentOrientation);
 
     SDL_UnlockMutex(Android_ActivityMutex);
 }
@@ -1077,9 +1074,7 @@ JNIEXPORT void JNICALL SDL_JAVA_INTERFACE(onNativeInsetsChanged)(
 {
     SDL_LockMutex(Android_ActivityMutex);
 
-    if (Android_Window) {
-        SDL_SetWindowSafeAreaInsets(Android_Window, left, right, top, bottom);
-    }
+    Android_SetWindowSafeAreaInsets(left, right, top, bottom);
 
     SDL_UnlockMutex(Android_ActivityMutex);
 }

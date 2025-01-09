@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2025 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -312,7 +312,7 @@ typedef enum SDL_FileDialogType
  *               callback may be invoked from the same thread or from a
  *               different one, depending on the OS's constraints.
  *
- * \since This function is available since SDL 3.2.0.
+ * \since This function is available since SDL 3.1.8.
  *
  * \sa SDL_FileDialogType
  * \sa SDL_DialogFileCallback

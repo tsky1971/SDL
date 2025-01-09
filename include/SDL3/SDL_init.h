@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2025 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -313,7 +313,7 @@ extern SDL_DECLSPEC void SDLCALL SDL_Quit(void);
  *
  * \threadsafety It is safe to call this function from any thread.
  *
- * \since This function is available since SDL 3.2.0.
+ * \since This function is available since SDL 3.1.8.
  *
  * \sa SDL_RunOnMainThread
  */
@@ -350,7 +350,7 @@ typedef void (SDLCALL *SDL_MainThreadCallback)(void *userdata);
  *
  * \threadsafety It is safe to call this function from any thread.
  *
- * \since This function is available since SDL 3.2.0.
+ * \since This function is available since SDL 3.1.8.
  *
  * \sa SDL_IsMainThread
  */

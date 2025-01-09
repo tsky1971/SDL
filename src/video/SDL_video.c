@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2025 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -24,6 +24,7 @@
 // The high-level video driver subsystem
 
 #include "SDL_sysvideo.h"
+#include "SDL_clipboard_c.h"
 #include "SDL_egl_c.h"
 #include "SDL_surface_c.h"
 #include "SDL_pixels_c.h"
@@ -519,7 +520,7 @@ static int SDLCALL cmpmodes(const void *A, const void *B)
     return 0;
 }
 
-static bool SDL_UninitializedVideo(void)
+bool SDL_UninitializedVideo(void)
 {
     return SDL_SetError("Video subsystem has not been initialized");
 }
@@ -1561,6 +1562,10 @@ void SDL_RelativeToGlobalForWindow(SDL_Window *window, int rel_x, int rel_y, int
         for (w = window->parent; w; w = w->parent) {
             rel_x += w->x;
             rel_y += w->y;
+
+            if (!SDL_WINDOW_IS_POPUP(w)) {
+                break;
+            }
         }
     }
 
@@ -1581,6 +1586,10 @@ void SDL_GlobalToRelativeForWindow(SDL_Window *window, int abs_x, int abs_y, int
         for (w = window->parent; w; w = w->parent) {
             abs_x -= w->x;
             abs_y -= w->y;
+
+            if (!SDL_WINDOW_IS_POPUP(w)) {
+                break;
+            }
         }
     }
 
@@ -4263,6 +4272,8 @@ void SDL_VideoQuit(void)
     SDL_free(_this->displays);
     _this->displays = NULL;
 
+    SDL_CancelClipboardData(0);
+
     if (_this->primary_selection_text) {
         SDL_free(_this->primary_selection_text);
         _this->primary_selection_text = NULL;
@@ -4899,7 +4910,22 @@ bool SDL_GL_GetAttribute(SDL_GLAttr attr, int *value)
             if (glBindFramebufferFunc && (current_fbo != 0)) {
                 glBindFramebufferFunc(GL_DRAW_FRAMEBUFFER, 0);
             }
-            glGetFramebufferAttachmentParameterivFunc(GL_FRAMEBUFFER, attachment, attachmentattrib, (GLint *)value);
+            // glGetFramebufferAttachmentParameterivFunc may cause GL_INVALID_OPERATION when querying depth/stencil size if the 
+            // bits is 0. From the GL docs:
+            //      If the value of GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE is GL_NONE, then either no framebuffer is bound to target;
+            //      or a default framebuffer is queried, attachment is GL_DEPTH or GL_STENCIL, and the number of depth or stencil bits,
+            //      respectively, is zero. In this case querying pname GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME will return zero, and all
+            //      other queries will generate an error. 
+            GLint fbo_type = GL_FRAMEBUFFER_DEFAULT;
+            if (attachment == GL_DEPTH || attachment == GL_STENCIL) {
+                glGetFramebufferAttachmentParameterivFunc(GL_FRAMEBUFFER, attachment, GL_FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE, &fbo_type);
+            }
+            if (fbo_type != GL_NONE) {
+                glGetFramebufferAttachmentParameterivFunc(GL_FRAMEBUFFER, attachment, attachmentattrib, (GLint *)value);
+            }
+            else {
+                *value = 0;
+            }
             if (glBindFramebufferFunc && (current_fbo != 0)) {
                 glBindFramebufferFunc(GL_DRAW_FRAMEBUFFER, current_fbo);
             }

@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2025 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -4463,6 +4463,7 @@ static Uint32 VULKAN_INTERNAL_CreateSwapchain(
             &windowData->surface)) {
         return false;
     }
+    SDL_assert(windowData->surface);
 
     if (!VULKAN_INTERNAL_QuerySwapchainSupport(
             renderer,
@@ -9471,6 +9472,9 @@ static bool VULKAN_SupportsSwapchainComposition(
     }
 
     surface = windowData->surface;
+    if (!surface) {
+        SET_STRING_ERROR_AND_RETURN("Window has no Vulkan surface", false);
+    }
 
     if (VULKAN_INTERNAL_QuerySwapchainSupport(
             renderer,
@@ -9516,6 +9520,9 @@ static bool VULKAN_SupportsPresentMode(
     }
 
     surface = windowData->surface;
+    if (!surface) {
+        SET_STRING_ERROR_AND_RETURN("Window has no Vulkan surface", false);
+    }
 
     if (VULKAN_INTERNAL_QuerySwapchainSupport(
             renderer,

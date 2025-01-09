@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2025 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -116,7 +116,7 @@ typedef enum SDL_ThreadState
     SDL_THREAD_UNKNOWN,     /**< The thread is not valid */
     SDL_THREAD_ALIVE,       /**< The thread is currently running */
     SDL_THREAD_DETACHED,    /**< The thread is detached and can't be waited on */
-    SDL_THREAD_COMPLETE,    /**< The thread has finished and should be cleaned up with SDL_WaitThread() */
+    SDL_THREAD_COMPLETE     /**< The thread has finished and should be cleaned up with SDL_WaitThread() */
 } SDL_ThreadState;
 
 /**
@@ -446,7 +446,7 @@ extern SDL_DECLSPEC void SDLCALL SDL_WaitThread(SDL_Thread *thread, int *status)
  * \returns the current state of a thread, or SDL_THREAD_UNKNOWN if the thread
  *          isn't valid.
  *
- * \since This function is available since SDL 3.2.0.
+ * \since This function is available since SDL 3.1.8.
  *
  * \sa SDL_ThreadState
  */

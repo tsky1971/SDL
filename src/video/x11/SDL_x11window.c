@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2024 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2025 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -208,7 +208,7 @@ static void X11_ConstrainPopup(SDL_Window *window, bool output_to_pending)
         int offset_x = 0, offset_y = 0;
 
         // Calculate the total offset from the parents
-        for (w = window->parent; w->parent; w = w->parent) {
+        for (w = window->parent; SDL_WINDOW_IS_POPUP(w); w = w->parent) {
             offset_x += w->x;
             offset_y += w->y;
         }
@@ -240,17 +240,20 @@ static void X11_ConstrainPopup(SDL_Window *window, bool output_to_pending)
     }
 }
 
-static void X11_SetKeyboardFocus(SDL_Window *window)
+static void X11_SetKeyboardFocus(SDL_Window *window, bool set_active_focus)
 {
-    SDL_Window *topmost = window;
+    SDL_Window *toplevel = window;
 
-    // Find the topmost parent
-    while (topmost->parent) {
-        topmost = topmost->parent;
+    // Find the toplevel parent
+    while (SDL_WINDOW_IS_POPUP(toplevel)) {
+        toplevel = toplevel->parent;
     }
 
-    topmost->internal->keyboard_focus = window;
-    SDL_SetKeyboardFocus(window);
+    toplevel->internal->keyboard_focus = window;
+
+    if (set_active_focus && !window->is_hiding && !window->is_destroying) {
+        SDL_SetKeyboardFocus(window);
+    }
 }
 
 Uint32 X11_GetNetWMState(SDL_VideoDevice *_this, SDL_Window *window, Window xwindow)
@@ -1471,9 +1474,7 @@ void X11_ShowWindow(SDL_VideoDevice *_this, SDL_Window *window)
 
     // Popup menus grab the keyboard
     if (window->flags & SDL_WINDOW_POPUP_MENU) {
-        if (window->parent == SDL_GetKeyboardFocus()) {
-            X11_SetKeyboardFocus(window);
-        }
+        X11_SetKeyboardFocus(window, window->parent == SDL_GetKeyboardFocus());
     }
 
     // Get some valid border values, if we haven't received them yet
@@ -1529,16 +1530,20 @@ void X11_HideWindow(SDL_VideoDevice *_this, SDL_Window *window)
 
     // Transfer keyboard focus back to the parent
     if (window->flags & SDL_WINDOW_POPUP_MENU) {
-        if (window == SDL_GetKeyboardFocus()) {
-            SDL_Window *new_focus = window->parent;
+        SDL_Window *new_focus = window->parent;
+        bool set_focus = window == SDL_GetKeyboardFocus();
 
-            // Find the highest level window that isn't being hidden or destroyed.
-            while (new_focus->parent && (new_focus->is_hiding || new_focus->is_destroying)) {
-                new_focus = new_focus->parent;
+        // Find the highest level window, up to the toplevel parent, that isn't being hidden or destroyed.
+        while (SDL_WINDOW_IS_POPUP(new_focus) && (new_focus->is_hiding || new_focus->is_destroying)) {
+            new_focus = new_focus->parent;
+
+            // If some window in the chain currently had focus, set it to the new lowest-level window.
+            if (!set_focus) {
+                set_focus = new_focus == SDL_GetKeyboardFocus();
             }
-
-            X11_SetKeyboardFocus(new_focus);
         }
+
+        X11_SetKeyboardFocus(new_focus, set_focus);
     }
 
     X11_XSync(display, False);
