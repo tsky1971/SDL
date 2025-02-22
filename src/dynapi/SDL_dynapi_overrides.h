@@ -1256,3 +1256,6 @@
 #define SDL_GetTrayMenuParentTray SDL_GetTrayMenuParentTray_REAL
 #define SDL_GetThreadState SDL_GetThreadState_REAL
 #define SDL_AudioStreamDevicePaused SDL_AudioStreamDevicePaused_REAL
+#define SDL_ClickTrayEntry SDL_ClickTrayEntry_REAL
+#define SDL_UpdateTrays SDL_UpdateTrays_REAL
+#define SDL_StretchSurface SDL_StretchSurface_REAL

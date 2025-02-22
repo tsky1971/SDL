@@ -32,6 +32,7 @@
 
 // Available camera drivers
 static const CameraBootStrap *const bootstrap[] = {
+#ifndef SDL_CAMERA_DISABLED
 #ifdef SDL_CAMERA_DRIVER_V4L2
     &V4L2_bootstrap,
 #endif
@@ -56,6 +57,7 @@ static const CameraBootStrap *const bootstrap[] = {
 #ifdef SDL_CAMERA_DRIVER_DUMMY
     &DUMMYCAMERA_bootstrap,
 #endif
+#endif
     NULL
 };
 
@@ -72,6 +74,7 @@ const char *SDL_GetCameraDriver(int index)
     if (index >= 0 && index < SDL_GetNumCameraDrivers()) {
         return bootstrap[index]->name;
     }
+    SDL_InvalidParamError("index");
     return NULL;
 }
 
@@ -279,21 +282,6 @@ static void ClosePhysicalCamera(SDL_Camera *device)
     device->adjust_timestamp = 0;
 }
 
-// this must not be called while `device` is still in a device list, or while a device's camera thread is still running.
-static void DestroyPhysicalCamera(SDL_Camera *device)
-{
-    if (device) {
-        // Destroy any logical devices that still exist...
-        ClosePhysicalCamera(device);
-        camera_driver.impl.FreeDeviceHandle(device);
-        SDL_DestroyMutex(device->lock);
-        SDL_free(device->all_specs);
-        SDL_free(device->name);
-        SDL_free(device);
-    }
-}
-
-
 // Don't hold the device lock when calling this, as we may destroy the device!
 void UnrefPhysicalCamera(SDL_Camera *device)
 {
@@ -304,7 +292,6 @@ void UnrefPhysicalCamera(SDL_Camera *device)
             SDL_AddAtomicInt(&camera_driver.device_count, -1);
         }
         SDL_UnlockRWLock(camera_driver.device_hash_lock);
-        DestroyPhysicalCamera(device);  // ...and nuke it.
     }
 }
 
@@ -497,7 +484,7 @@ SDL_Camera *SDL_AddCamera(const char *name, SDL_CameraPosition position, int num
     RefPhysicalCamera(device);
 
     SDL_LockRWLockForWriting(camera_driver.device_hash_lock);
-    if (SDL_InsertIntoHashTable(camera_driver.device_hash, (const void *) (uintptr_t) device->instance_id, device)) {
+    if (SDL_InsertIntoHashTable(camera_driver.device_hash, (const void *) (uintptr_t) device->instance_id, device, false)) {
         SDL_AddAtomicInt(&camera_driver.device_count, 1);
     } else {
         SDL_DestroyMutex(device->lock);
@@ -621,7 +608,25 @@ void SDL_CameraPermissionOutcome(SDL_Camera *device, bool approved)
     }
 }
 
+typedef struct FindOnePhysicalCameraByCallbackData
+{
+    bool (*callback)(SDL_Camera *device, void *userdata);
+    void *userdata;
+    SDL_Camera *device;
+} FindOnePhysicalCameraByCallbackData;
 
+static bool SDLCALL FindOnePhysicalCameraByCallback(void *userdata, const SDL_HashTable *table, const void *key, const void *value)
+{
+    FindOnePhysicalCameraByCallbackData *data = (FindOnePhysicalCameraByCallbackData *) userdata;
+    SDL_Camera *device = (SDL_Camera *) value;
+    if (data->callback(device, data->userdata)) {
+        data->device = device;
+        return false;  // stop iterating.
+    }
+    return true;  // keep iterating.
+}
+
+// !!! FIXME: this doesn't follow SDL convention of `userdata` being the first param of the callback.
 SDL_Camera *SDL_FindPhysicalCameraByCallback(bool (*callback)(SDL_Camera *device, void *userdata), void *userdata)
 {
     if (!SDL_GetCurrentCameraDriver()) {
@@ -629,28 +634,22 @@ SDL_Camera *SDL_FindPhysicalCameraByCallback(bool (*callback)(SDL_Camera *device
         return NULL;
     }
 
-    const void *key;
-    const void *value;
-    void *iter = NULL;
 
+    FindOnePhysicalCameraByCallbackData data = { callback, userdata, NULL };
     SDL_LockRWLockForReading(camera_driver.device_hash_lock);
-    while (SDL_IterateHashTable(camera_driver.device_hash, &key, &value, &iter)) {
-        SDL_Camera *device = (SDL_Camera *) value;
-        if (callback(device, userdata)) {  // found it?
-            SDL_UnlockRWLock(camera_driver.device_hash_lock);
-            return device;
-        }
-    }
-
+    SDL_IterateHashTable(camera_driver.device_hash, FindOnePhysicalCameraByCallback, &data);
     SDL_UnlockRWLock(camera_driver.device_hash_lock);
 
-    SDL_SetError("Device not found");
-    return NULL;
+    if (!data.device) {
+        SDL_SetError("Device not found");
+    }
+
+    return data.device;
 }
 
 void SDL_CloseCamera(SDL_Camera *camera)
 {
-    SDL_Camera *device = (SDL_Camera *) camera;  // currently there's no separation between physical and logical device.
+    SDL_Camera *device = camera;  // currently there's no separation between physical and logical device.
     ClosePhysicalCamera(device);
 }
 
@@ -664,7 +663,7 @@ bool SDL_GetCameraFormat(SDL_Camera *camera, SDL_CameraSpec *spec)
         return SDL_InvalidParamError("spec");
     }
 
-    SDL_Camera *device = (SDL_Camera *) camera;  // currently there's no separation between physical and logical device.
+    SDL_Camera *device = camera;  // currently there's no separation between physical and logical device.
     ObtainPhysicalCameraObj(device);
     if (device->permission > 0) {
         SDL_copyp(spec, &device->spec);
@@ -701,6 +700,19 @@ SDL_CameraPosition SDL_GetCameraPosition(SDL_CameraID instance_id)
 }
 
 
+typedef struct GetOneCameraData
+{
+    SDL_CameraID *result;
+    int devs_seen;
+} GetOneCameraData;
+
+static bool SDLCALL GetOneCamera(void *userdata, const SDL_HashTable *table, const void *key, const void *value)
+{
+    GetOneCameraData *data = (GetOneCameraData *) userdata;
+    data->result[data->devs_seen++] = (SDL_CameraID) (uintptr_t) key;
+    return true;  // keep iterating.
+}
+
 SDL_CameraID *SDL_GetCameras(int *count)
 {
     int dummy_count;
@@ -722,16 +734,10 @@ SDL_CameraID *SDL_GetCameras(int *count)
     if (!result) {
         num_devices = 0;
     } else {
-        int devs_seen = 0;
-        const void *key;
-        const void *value;
-        void *iter = NULL;
-        while (SDL_IterateHashTable(camera_driver.device_hash, &key, &value, &iter)) {
-            result[devs_seen++] = (SDL_CameraID) (uintptr_t) key;
-        }
-
-        SDL_assert(devs_seen == num_devices);
-        result[devs_seen] = 0;  // null-terminated.
+        GetOneCameraData data = { result, 0 };
+        SDL_IterateHashTable(camera_driver.device_hash, GetOneCamera, &data);
+        SDL_assert(data.devs_seen == num_devices);
+        result[num_devices] = 0;  // null-terminated.
     }
     SDL_UnlockRWLock(camera_driver.device_hash_lock);
 
@@ -886,7 +892,7 @@ bool SDL_CameraThreadIterate(SDL_Camera *device)
             SDL_Surface *srcsurf = acquired;
             if (device->needs_scaling == -1) {  // downscaling? Do it first.  -1: downscale, 0: no scaling, 1: upscale
                 SDL_Surface *dstsurf = device->needs_conversion ? device->conversion_surface : output_surface;
-                SDL_SoftStretch(srcsurf, NULL, dstsurf, NULL, SDL_SCALEMODE_NEAREST);  // !!! FIXME: linear scale? letterboxing?
+                SDL_StretchSurface(srcsurf, NULL, dstsurf, NULL, SDL_SCALEMODE_NEAREST);  // !!! FIXME: linear scale? letterboxing?
                 srcsurf = dstsurf;
             }
             if (device->needs_conversion) {
@@ -897,7 +903,7 @@ bool SDL_CameraThreadIterate(SDL_Camera *device)
                 srcsurf = dstsurf;
             }
             if (device->needs_scaling == 1) {  // upscaling? Do it last.  -1: downscale, 0: no scaling, 1: upscale
-                SDL_SoftStretch(srcsurf, NULL, output_surface, NULL, SDL_SCALEMODE_NEAREST);  // !!! FIXME: linear scale? letterboxing?
+                SDL_StretchSurface(srcsurf, NULL, output_surface, NULL, SDL_SCALEMODE_NEAREST);  // !!! FIXME: linear scale? letterboxing?
             }
 
             // we made a copy, so we can give the driver back its resources.
@@ -1202,7 +1208,7 @@ SDL_Camera *SDL_OpenCamera(SDL_CameraID instance_id, const SDL_CameraSpec *spec)
 
     ReleaseCamera(device);  // unlock, we're good to go!
 
-    return (SDL_Camera *) device;  // currently there's no separation between physical and logical device.
+    return device;  // currently there's no separation between physical and logical device.
 }
 
 SDL_Surface *SDL_AcquireCameraFrame(SDL_Camera *camera, Uint64 *timestampNS)
@@ -1216,7 +1222,7 @@ SDL_Surface *SDL_AcquireCameraFrame(SDL_Camera *camera, Uint64 *timestampNS)
         return NULL;
     }
 
-    SDL_Camera *device = (SDL_Camera *) camera;  // currently there's no separation between physical and logical device.
+    SDL_Camera *device = camera;  // currently there's no separation between physical and logical device.
 
     ObtainPhysicalCameraObj(device);
 
@@ -1258,7 +1264,7 @@ void SDL_ReleaseCameraFrame(SDL_Camera *camera, SDL_Surface *frame)
         return;
     }
 
-    SDL_Camera *device = (SDL_Camera *) camera;  // currently there's no separation between physical and logical device.
+    SDL_Camera *device = camera;  // currently there's no separation between physical and logical device.
     ObtainPhysicalCameraObj(device);
 
     SurfaceList *slistprev = &device->app_held_output_surfaces;
@@ -1300,7 +1306,7 @@ SDL_CameraID SDL_GetCameraID(SDL_Camera *camera)
     if (!camera) {
         SDL_InvalidParamError("camera");
     } else {
-        SDL_Camera *device = (SDL_Camera *) camera;  // currently there's no separation between physical and logical device.
+        SDL_Camera *device = camera;  // currently there's no separation between physical and logical device.
         ObtainPhysicalCameraObj(device);
         result = device->instance_id;
         ReleaseCamera(device);
@@ -1315,7 +1321,7 @@ SDL_PropertiesID SDL_GetCameraProperties(SDL_Camera *camera)
     if (!camera) {
         SDL_InvalidParamError("camera");
     } else {
-        SDL_Camera *device = (SDL_Camera *) camera;  // currently there's no separation between physical and logical device.
+        SDL_Camera *device = camera;  // currently there's no separation between physical and logical device.
         ObtainPhysicalCameraObj(device);
         if (device->props == 0) {
             device->props = SDL_CreateProperties();
@@ -1334,7 +1340,7 @@ int SDL_GetCameraPermissionState(SDL_Camera *camera)
         SDL_InvalidParamError("camera");
         result = -1;
     } else {
-        SDL_Camera *device = (SDL_Camera *) camera;  // currently there's no separation between physical and logical device.
+        SDL_Camera *device = camera;  // currently there's no separation between physical and logical device.
         ObtainPhysicalCameraObj(device);
         result = device->permission;
         ReleaseCamera(device);
@@ -1378,37 +1384,26 @@ void SDL_QuitCamera(void)
         SDL_free(i);
     }
 
-    const void *key;
-    const void *value;
-    void *iter = NULL;
-    while (SDL_IterateHashTable(device_hash, &key, &value, &iter)) {
-        DestroyPhysicalCamera((SDL_Camera *) value);
-    }
+    SDL_DestroyHashTable(device_hash);
 
     // Free the driver data
     camera_driver.impl.Deinitialize();
 
     SDL_DestroyRWLock(camera_driver.device_hash_lock);
-    SDL_DestroyHashTable(device_hash);
 
     SDL_zero(camera_driver);
 }
 
-
-static Uint32 HashCameraID(const void *key, void *data)
+// Physical camera objects are only destroyed when removed from the device hash.
+static void SDLCALL DestroyCameraHashItem(void *userdata, const void *key, const void *value)
 {
-    // The values are unique incrementing integers, starting at 1, so just return minus 1 to start with bucket zero.
-    return ((Uint32) ((uintptr_t) key)) - 1;
-}
-
-static bool MatchCameraID(const void *a, const void *b, void *data)
-{
-    return (a == b);  // simple integers, just compare them as pointer values.
-}
-
-static void NukeCameraHashItem(const void *key, const void *value, void *data)
-{
-    // no-op, keys and values in this hashtable are treated as Plain Old Data and don't get freed here.
+    SDL_Camera *device = (SDL_Camera *) value;
+    ClosePhysicalCamera(device);
+    camera_driver.impl.FreeDeviceHandle(device);
+    SDL_DestroyMutex(device->lock);
+    SDL_free(device->all_specs);
+    SDL_free(device->name);
+    SDL_free(device);
 }
 
 bool SDL_CameraInit(const char *driver_name)
@@ -1422,7 +1417,7 @@ bool SDL_CameraInit(const char *driver_name)
         return false;
     }
 
-    SDL_HashTable *device_hash = SDL_CreateHashTable(NULL, 8, HashCameraID, MatchCameraID, NukeCameraHashItem, false, false);
+    SDL_HashTable *device_hash = SDL_CreateHashTable(0, false, SDL_HashID, SDL_KeyMatchID, DestroyCameraHashItem, NULL);
     if (!device_hash) {
         SDL_DestroyRWLock(device_hash_lock);
         return false;

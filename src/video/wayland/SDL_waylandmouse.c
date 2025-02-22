@@ -598,6 +598,13 @@ static SDL_Cursor *Wayland_CreateDefaultCursor(void)
 
 static void Wayland_FreeCursorData(SDL_CursorData *d)
 {
+    SDL_VideoDevice *vd = SDL_GetVideoDevice();
+    struct SDL_WaylandInput *input = vd->internal->input;
+
+    if (input->current_cursor == d) {
+        input->current_cursor = NULL;
+    }
+
     // Buffers for system cursors must not be destroyed.
     if (d->is_system_cursor) {
         if (d->cursor_data.system.frame_callback) {
@@ -892,9 +899,10 @@ static SDL_MouseButtonFlags SDLCALL Wayland_GetGlobalMouseState(float *x, float 
     SDL_MouseButtonFlags result = 0;
 
     if (focus) {
+        SDL_VideoData *viddata = SDL_GetVideoDevice()->internal;
         int off_x, off_y;
 
-        result = SDL_GetMouseState(x, y);
+        result = viddata->input->buttons_pressed;
         SDL_RelativeToGlobalForWindow(focus, focus->x, focus->y, &off_x, &off_y);
         *x += off_x;
         *y += off_y;

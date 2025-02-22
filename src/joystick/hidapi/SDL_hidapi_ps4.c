@@ -298,7 +298,7 @@ static bool HIDAPI_DriverPS4_InitDevice(SDL_HIDAPI_Device *device)
         j = -1;
         for (i = 0; i < 12; i += 2) {
             j += 1;
-            SDL_memcpy(&serial[j], &device->serial[i], 2);
+            SDL_memmove(&serial[j], &device->serial[i], 2);
             j += 2;
             serial[j] = '-';
         }
@@ -323,7 +323,7 @@ static bool HIDAPI_DriverPS4_InitDevice(SDL_HIDAPI_Device *device)
             if (size > 0) {
                 HIDAPI_DumpPacket("PS4 first packet: size = %d", data, size);
             } else {
-                SDL_Log("PS4 first packet: size = %d\n", size);
+                SDL_Log("PS4 first packet: size = %d", size);
             }
 #endif
             if (size > 0 &&
@@ -468,7 +468,7 @@ static bool HIDAPI_DriverPS4_LoadOfficialCalibrationData(SDL_HIDAPI_Device *devi
 
     if (!ctx->official_controller) {
 #ifdef DEBUG_PS4_CALIBRATION
-        SDL_Log("Not an official controller, ignoring calibration\n");
+        SDL_Log("Not an official controller, ignoring calibration");
 #endif
         return false;
     }
@@ -478,7 +478,7 @@ static bool HIDAPI_DriverPS4_LoadOfficialCalibrationData(SDL_HIDAPI_Device *devi
         size = ReadFeatureReport(device->dev, k_ePS4FeatureReportIdGyroCalibration_USB, data, sizeof(data));
         if (size < 35) {
 #ifdef DEBUG_PS4_CALIBRATION
-            SDL_Log("Short read of calibration data: %d, ignoring calibration\n", size);
+            SDL_Log("Short read of calibration data: %d, ignoring calibration", size);
 #endif
             return false;
         }
@@ -487,7 +487,7 @@ static bool HIDAPI_DriverPS4_LoadOfficialCalibrationData(SDL_HIDAPI_Device *devi
             size = ReadFeatureReport(device->dev, k_ePS4FeatureReportIdGyroCalibration_BT, data, sizeof(data));
             if (size < 35) {
 #ifdef DEBUG_PS4_CALIBRATION
-                SDL_Log("Short read of calibration data: %d, ignoring calibration\n", size);
+                SDL_Log("Short read of calibration data: %d, ignoring calibration", size);
 #endif
                 return false;
             }
@@ -590,19 +590,19 @@ static bool HIDAPI_DriverPS4_LoadOfficialCalibrationData(SDL_HIDAPI_Device *devi
         ctx->hardware_calibration = true;
         for (i = 0; i < 6; ++i) {
 #ifdef DEBUG_PS4_CALIBRATION
-            SDL_Log("calibration[%d] bias = %d, sensitivity = %f\n", i, ctx->calibration[i].bias, ctx->calibration[i].scale);
+            SDL_Log("calibration[%d] bias = %d, sensitivity = %f", i, ctx->calibration[i].bias, ctx->calibration[i].scale);
 #endif
             // Some controllers have a bad calibration
             if (SDL_abs(ctx->calibration[i].bias) > 1024 || SDL_fabsf(1.0f - ctx->calibration[i].scale) > 0.5f) {
 #ifdef DEBUG_PS4_CALIBRATION
-                SDL_Log("invalid calibration, ignoring\n");
+                SDL_Log("invalid calibration, ignoring");
 #endif
                 ctx->hardware_calibration = false;
             }
         }
     } else {
 #ifdef DEBUG_PS4_CALIBRATION
-        SDL_Log("Calibration data not available\n");
+        SDL_Log("Calibration data not available");
 #endif
     }
     return ctx->hardware_calibration;
@@ -1291,7 +1291,7 @@ static bool HIDAPI_DriverPS4_UpdateDevice(SDL_HIDAPI_Device *device)
             break;
         default:
 #ifdef DEBUG_JOYSTICK
-            SDL_Log("Unknown PS4 packet: 0x%.2x\n", data[0]);
+            SDL_Log("Unknown PS4 packet: 0x%.2x", data[0]);
 #endif
             break;
         }
@@ -1353,6 +1353,10 @@ static void HIDAPI_DriverPS4_CloseJoystick(SDL_HIDAPI_Device *device, SDL_Joysti
                         SDL_PS4EnhancedReportsChanged, ctx);
 
     ctx->joystick = NULL;
+
+    ctx->report_sensors = false;
+    ctx->enhanced_mode = false;
+    ctx->enhanced_mode_available = false;
 }
 
 static void HIDAPI_DriverPS4_FreeDevice(SDL_HIDAPI_Device *device)

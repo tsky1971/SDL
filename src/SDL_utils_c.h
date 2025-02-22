@@ -61,14 +61,18 @@ typedef enum
     SDL_OBJECT_TYPE_HIDAPI_DEVICE,
     SDL_OBJECT_TYPE_HIDAPI_JOYSTICK,
     SDL_OBJECT_TYPE_THREAD,
+    SDL_OBJECT_TYPE_TRAY,
 
 } SDL_ObjectType;
 
 extern Uint32 SDL_GetNextObjectID(void);
 extern void SDL_SetObjectValid(void *object, SDL_ObjectType type, bool valid);
 extern bool SDL_ObjectValid(void *object, SDL_ObjectType type);
+extern int SDL_GetObjects(SDL_ObjectType type, void **objects, int count);
 extern void SDL_SetObjectsInvalid(void);
 
 extern const char *SDL_GetPersistentString(const char *string);
+
+extern char *SDL_CreateDeviceName(Uint16 vendor, Uint16 product, const char *vendor_name, const char *product_name);
 
 #endif // SDL_utils_h_

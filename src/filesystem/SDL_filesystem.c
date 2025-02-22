@@ -121,7 +121,7 @@ bool SDL_EnumerateDirectory(const char *path, SDL_EnumerateDirectoryCallback cal
     } else if (!callback) {
         return SDL_InvalidParamError("callback");
     }
-    return SDL_SYS_EnumerateDirectory(path, path, callback, userdata);
+    return SDL_SYS_EnumerateDirectory(path, callback, userdata);
 }
 
 bool SDL_GetPathInfo(const char *path, SDL_PathInfo *info)
@@ -307,7 +307,7 @@ static SDL_EnumerationResult SDLCALL GlobDirectoryCallback(void *userdata, const
     // !!! FIXME: and only casefold the new pieces instead of allocating and folding full paths for all of this.
 
     char *fullpath = NULL;
-    if (SDL_asprintf(&fullpath, "%s/%s", dirname, fname) < 0) {
+    if (SDL_asprintf(&fullpath, "%s%s", dirname, fname) < 0) {
         return SDL_ENUM_FAILURE;
     }
 
@@ -363,16 +363,16 @@ char **SDL_InternalGlobDirectory(const char *path, const char *pattern, SDL_Glob
         return NULL;
     }
 
-    // if path ends with any '/', chop them off, so we don't confuse the pattern matcher later.
+    // if path ends with any slash, chop them off, so we don't confuse the pattern matcher later.
     char *pathcpy = NULL;
     size_t pathlen = SDL_strlen(path);
-    if ((pathlen > 1) && (path[pathlen-1] == '/')) {
+    if ((pathlen > 1) && ((path[pathlen-1] == '/') || (path[pathlen-1] == '\\'))) {
         pathcpy = SDL_strdup(path);
         if (!pathcpy) {
             return NULL;
         }
         char *ptr = &pathcpy[pathlen-1];
-        while ((ptr >= pathcpy) && (*ptr == '/')) {
+        while ((ptr >= pathcpy) && ((*ptr == '/') || (*ptr == '\\'))) {
             *(ptr--) = '\0';
         }
         path = pathcpy;
@@ -417,7 +417,8 @@ char **SDL_InternalGlobDirectory(const char *path, const char *pattern, SDL_Glob
     data.enumerator = enumerator;
     data.getpathinfo = getpathinfo;
     data.fsuserdata = userdata;
-    data.basedirlen = SDL_strlen(path) + 1;  // +1 for the '/' we'll be adding.
+    data.basedirlen = *path ? (SDL_strlen(path) + 1) : 0;  // +1 for the '/' we'll be adding.
+
 
     char **result = NULL;
     if (data.enumerator(path, GlobDirectoryCallback, &data, data.fsuserdata)) {

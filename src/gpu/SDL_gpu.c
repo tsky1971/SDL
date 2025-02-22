@@ -605,6 +605,7 @@ Uint32 SDL_GPUTextureFormatTexelBlockSize(
     case SDL_GPU_TEXTUREFORMAT_R8_SNORM:
     case SDL_GPU_TEXTUREFORMAT_A8_UNORM:
     case SDL_GPU_TEXTUREFORMAT_R8_UINT:
+    case SDL_GPU_TEXTUREFORMAT_R8_INT:
         return 1;
     case SDL_GPU_TEXTUREFORMAT_B5G6R5_UNORM:
     case SDL_GPU_TEXTUREFORMAT_B4G4R4A4_UNORM:
@@ -613,9 +614,11 @@ Uint32 SDL_GPUTextureFormatTexelBlockSize(
     case SDL_GPU_TEXTUREFORMAT_R8G8_SNORM:
     case SDL_GPU_TEXTUREFORMAT_R8G8_UNORM:
     case SDL_GPU_TEXTUREFORMAT_R8G8_UINT:
+    case SDL_GPU_TEXTUREFORMAT_R8G8_INT:
     case SDL_GPU_TEXTUREFORMAT_R16_UNORM:
     case SDL_GPU_TEXTUREFORMAT_R16_SNORM:
     case SDL_GPU_TEXTUREFORMAT_R16_UINT:
+    case SDL_GPU_TEXTUREFORMAT_R16_INT:
     case SDL_GPU_TEXTUREFORMAT_D16_UNORM:
         return 2;
     case SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM:
@@ -628,11 +631,15 @@ Uint32 SDL_GPUTextureFormatTexelBlockSize(
     case SDL_GPU_TEXTUREFORMAT_R8G8B8A8_SNORM:
     case SDL_GPU_TEXTUREFORMAT_R10G10B10A2_UNORM:
     case SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UINT:
+    case SDL_GPU_TEXTUREFORMAT_R8G8B8A8_INT:
     case SDL_GPU_TEXTUREFORMAT_R16G16_UINT:
+    case SDL_GPU_TEXTUREFORMAT_R16G16_INT:
     case SDL_GPU_TEXTUREFORMAT_R16G16_UNORM:
     case SDL_GPU_TEXTUREFORMAT_R16G16_SNORM:
     case SDL_GPU_TEXTUREFORMAT_D24_UNORM:
     case SDL_GPU_TEXTUREFORMAT_D32_FLOAT:
+    case SDL_GPU_TEXTUREFORMAT_R32_UINT:
+    case SDL_GPU_TEXTUREFORMAT_R32_INT:
     case SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT:
         return 4;
     case SDL_GPU_TEXTUREFORMAT_D32_FLOAT_S8_UINT:
@@ -640,10 +647,15 @@ Uint32 SDL_GPUTextureFormatTexelBlockSize(
     case SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT:
     case SDL_GPU_TEXTUREFORMAT_R16G16B16A16_UNORM:
     case SDL_GPU_TEXTUREFORMAT_R16G16B16A16_SNORM:
-    case SDL_GPU_TEXTUREFORMAT_R32G32_FLOAT:
     case SDL_GPU_TEXTUREFORMAT_R16G16B16A16_UINT:
+    case SDL_GPU_TEXTUREFORMAT_R16G16B16A16_INT:
+    case SDL_GPU_TEXTUREFORMAT_R32G32_FLOAT:
+    case SDL_GPU_TEXTUREFORMAT_R32G32_UINT:
+    case SDL_GPU_TEXTUREFORMAT_R32G32_INT:
         return 8;
     case SDL_GPU_TEXTUREFORMAT_R32G32B32A32_FLOAT:
+    case SDL_GPU_TEXTUREFORMAT_R32G32B32A32_INT:
+    case SDL_GPU_TEXTUREFORMAT_R32G32B32A32_UINT:
         return 16;
     case SDL_GPU_TEXTUREFORMAT_ASTC_4x4_UNORM:
     case SDL_GPU_TEXTUREFORMAT_ASTC_5x4_UNORM:
@@ -801,6 +813,10 @@ SDL_GPUGraphicsPipeline *SDL_CreateGPUGraphicsPipeline(
                 SDL_assert_release(!"Color target formats cannot be a depth format!");
                 return NULL;
             }
+            if (!SDL_GPUTextureSupportsFormat(device, graphicsPipelineCreateInfo->target_info.color_target_descriptions[i].format, SDL_GPU_TEXTURETYPE_2D, SDL_GPU_TEXTUREUSAGE_COLOR_TARGET)) {
+                SDL_assert_release(!"Format is not supported for color targets on this device!");
+                return NULL;
+            }
             if (graphicsPipelineCreateInfo->target_info.color_target_descriptions[i].blend_state.enable_blend) {
                 const SDL_GPUColorTargetBlendState *blend_state = &graphicsPipelineCreateInfo->target_info.color_target_descriptions[i].blend_state;
                 CHECK_BLENDFACTOR_ENUM_INVALID(blend_state->src_color_blendfactor, NULL)
@@ -815,6 +831,10 @@ SDL_GPUGraphicsPipeline *SDL_CreateGPUGraphicsPipeline(
             CHECK_TEXTUREFORMAT_ENUM_INVALID(graphicsPipelineCreateInfo->target_info.depth_stencil_format, NULL);
             if (!IsDepthFormat(graphicsPipelineCreateInfo->target_info.depth_stencil_format)) {
                 SDL_assert_release(!"Depth-stencil target format must be a depth format!");
+                return NULL;
+            }
+            if (!SDL_GPUTextureSupportsFormat(device, graphicsPipelineCreateInfo->target_info.depth_stencil_format, SDL_GPU_TEXTURETYPE_2D, SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET)) {
+                SDL_assert_release(!"Format is not supported for depth targets on this device!");
                 return NULL;
             }
         }
@@ -1055,10 +1075,13 @@ SDL_GPUBuffer *SDL_CreateGPUBuffer(
         return NULL;
     }
 
+    const char *debugName = SDL_GetStringProperty(createinfo->props, SDL_PROP_GPU_BUFFER_CREATE_NAME_STRING, NULL);
+
     return device->CreateBuffer(
         device->driverData,
         createinfo->usage,
-        createinfo->size);
+        createinfo->size,
+        debugName);
 }
 
 SDL_GPUTransferBuffer *SDL_CreateGPUTransferBuffer(
@@ -1071,10 +1094,13 @@ SDL_GPUTransferBuffer *SDL_CreateGPUTransferBuffer(
         return NULL;
     }
 
+    const char *debugName = SDL_GetStringProperty(createinfo->props, SDL_PROP_GPU_TRANSFERBUFFER_CREATE_NAME_STRING, NULL);
+
     return device->CreateTransferBuffer(
         device->driverData,
         createinfo->usage,
-        createinfo->size);
+        createinfo->size,
+        debugName);
 }
 
 // Debug Naming

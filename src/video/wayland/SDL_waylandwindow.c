@@ -23,6 +23,8 @@
 
 #ifdef SDL_VIDEO_DRIVER_WAYLAND
 
+#include <sys/mman.h>
+
 #include "../SDL_sysvideo.h"
 #include "../../events/SDL_events_c.h"
 #include "../../core/unix/SDL_appid.h"
@@ -31,6 +33,7 @@
 #include "SDL_waylandwindow.h"
 #include "SDL_waylandvideo.h"
 #include "../../SDL_hints_c.h"
+#include "SDL_waylandcolor.h"
 
 #include "alpha-modifier-v1-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
@@ -43,6 +46,7 @@
 #include "xdg-dialog-v1-client-protocol.h"
 #include "frog-color-management-v1-client-protocol.h"
 #include "xdg-toplevel-icon-v1-client-protocol.h"
+#include "color-management-v1-client-protocol.h"
 
 #ifdef HAVE_LIBDECOR_H
 #include <libdecor.h>
@@ -1435,10 +1439,16 @@ static void decoration_frame_commit(struct libdecor_frame *frame, void *user_dat
     }
 }
 
+static void decoration_dismiss_popup(struct libdecor_frame *frame, const char *seat_name, void *user_data)
+{
+    // NOP
+}
+
 static struct libdecor_frame_interface libdecor_frame_interface = {
     decoration_frame_configure,
     decoration_frame_close,
     decoration_frame_commit,
+    decoration_dismiss_popup
 };
 #endif
 
@@ -1639,6 +1649,28 @@ static void frog_preferred_metadata_handler(void *data, struct frog_color_manage
 
 static const struct frog_color_managed_surface_listener frog_surface_listener = {
     frog_preferred_metadata_handler
+};
+
+static void feedback_surface_preferred_changed(void *data,
+                                               struct wp_color_management_surface_feedback_v1 *wp_color_management_surface_feedback_v1,
+                                               uint32_t identity)
+{
+    SDL_WindowData *wind = (SDL_WindowData *)data;
+    Wayland_ColorInfo info;
+    SDL_zero(info);
+
+    if (Wayland_GetColorInfoForWindow(wind, &info)) {
+        SDL_SetWindowHDRProperties(wind->sdlwindow, &info.HDR, true);
+        if (info.icc_size) {
+            wind->icc_fd = info.icc_fd;
+            wind->icc_size = info.icc_size;
+            SDL_SendWindowEvent(wind->sdlwindow, SDL_EVENT_WINDOW_ICCPROF_CHANGED, 0, 0);
+        }
+    }
+}
+
+static const struct wp_color_management_surface_feedback_v1_listener color_management_surface_feedback_listener = {
+    feedback_surface_preferred_changed
 };
 
 static void SetKeyboardFocus(SDL_Window *window, bool set_focus)
@@ -1917,6 +1949,14 @@ void Wayland_ShowWindow(SDL_VideoDevice *_this, SDL_Window *window)
             xdg_toplevel_set_app_id(data->shell_surface.xdg.toplevel.xdg_toplevel, data->app_id);
             xdg_toplevel_add_listener(data->shell_surface.xdg.toplevel.xdg_toplevel, &toplevel_listener_xdg, data);
 
+            // Create the window decorations
+            if (c->decoration_manager) {
+                data->server_decoration = zxdg_decoration_manager_v1_get_toplevel_decoration(c->decoration_manager, data->shell_surface.xdg.toplevel.xdg_toplevel);
+                zxdg_toplevel_decoration_v1_add_listener(data->server_decoration, &decoration_listener, window);
+                const enum zxdg_toplevel_decoration_v1_mode mode = !(window->flags & SDL_WINDOW_BORDERLESS) ? ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE : ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE;
+                zxdg_toplevel_decoration_v1_set_mode(data->server_decoration, mode);
+            }
+
             if (c->zxdg_exporter_v2) {
                 data->exported = zxdg_exporter_v2_export_toplevel(c->zxdg_exporter_v2, data->surface);
                 zxdg_exported_v2_add_listener(data->exported, &exported_v2_listener, data);
@@ -1955,13 +1995,6 @@ void Wayland_ShowWindow(SDL_VideoDevice *_this, SDL_Window *window)
     } else
 #endif
         if (data->shell_surface_type == WAYLAND_SHELL_SURFACE_TYPE_XDG_POPUP || data->shell_surface_type == WAYLAND_SHELL_SURFACE_TYPE_XDG_TOPLEVEL) {
-
-        // Create the window decorations
-        if (data->shell_surface_type != WAYLAND_SHELL_SURFACE_TYPE_XDG_POPUP && data->shell_surface.xdg.toplevel.xdg_toplevel && c->decoration_manager) {
-            data->server_decoration = zxdg_decoration_manager_v1_get_toplevel_decoration(c->decoration_manager, data->shell_surface.xdg.toplevel.xdg_toplevel);
-            zxdg_toplevel_decoration_v1_add_listener(data->server_decoration, &decoration_listener, window);
-        }
-
         /* Unlike libdecor we need to call this explicitly to prevent a deadlock.
          * libdecor will call this as part of their configure event!
          * -flibit
@@ -2004,7 +2037,6 @@ void Wayland_ShowWindow(SDL_VideoDevice *_this, SDL_Window *window)
     }
 #endif
     Wayland_SetWindowResizable(_this, window, !!(window->flags & SDL_WINDOW_RESIZABLE));
-    Wayland_SetWindowBordered(_this, window, !(window->flags & SDL_WINDOW_BORDERLESS));
 
     // We're finally done putting the window together, raise if possible
     if (c->activation_manager) {
@@ -2587,7 +2619,10 @@ bool Wayland_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_Proper
     }
 
     if (!custom_surface_role) {
-        if (c->frog_color_management_factory_v1) {
+        if (c->wp_color_manager_v1) {
+            data->wp_color_management_surface_feedback = wp_color_manager_v1_get_surface_feedback(c->wp_color_manager_v1, data->surface);
+            wp_color_management_surface_feedback_v1_add_listener(data->wp_color_management_surface_feedback, &color_management_surface_feedback_listener, data);
+        } else if (c->frog_color_management_factory_v1) {
             data->frog_color_managed_surface = frog_color_management_factory_v1_get_color_managed_surface(c->frog_color_management_factory_v1, data->surface);
             frog_color_managed_surface_add_listener(data->frog_color_managed_surface, &frog_surface_listener, data);
         }
@@ -2830,28 +2865,56 @@ bool Wayland_SetWindowIcon(SDL_VideoDevice *_this, SDL_Window *window, SDL_Surfa
     struct xdg_toplevel *toplevel = NULL;
 
     if (!_this->internal->xdg_toplevel_icon_manager_v1) {
-        return SDL_SetError("wayland: cannot set icon; xdg_toplevel_icon_v1 protocol not supported");
+        return SDL_SetError("wayland: cannot set icon; required xdg_toplevel_icon_v1 protocol not supported");
     }
 
     if (icon->w != icon->h) {
         return SDL_SetError("wayland: icon width and height must be equal, got %ix%i", icon->w, icon->h);
     }
 
+    int image_count = 0;
+    SDL_Surface **images = SDL_GetSurfaceImages(icon, &image_count);
+    if (!images || !image_count) {
+        return false;
+    }
+
+    // Release the old icon resources.
     if (wind->xdg_toplevel_icon_v1) {
         xdg_toplevel_icon_v1_destroy(wind->xdg_toplevel_icon_v1);
         wind->xdg_toplevel_icon_v1 = NULL;
     }
 
-    // TODO: Add high-DPI icon support
-    Wayland_ReleaseSHMBuffer(&wind->icon);
-    if (Wayland_AllocSHMBuffer(icon->w, icon->h, &wind->icon) != 0) {
-        return SDL_SetError("wayland: failed to allocate SHM buffer for the icon");
+    for (int i = 0; i < wind->icon_buffer_count; ++i) {
+        Wayland_ReleaseSHMBuffer(&wind->icon_buffers[i]);
     }
-
-    SDL_PremultiplyAlpha(icon->w, icon->h, icon->format, icon->pixels, icon->pitch, SDL_PIXELFORMAT_ARGB8888, wind->icon.shm_data, icon->w * 4, true);
+    SDL_free(wind->icon_buffers);
+    wind->icon_buffer_count = 0;
 
     wind->xdg_toplevel_icon_v1 = xdg_toplevel_icon_manager_v1_create_icon(_this->internal->xdg_toplevel_icon_manager_v1);
-    xdg_toplevel_icon_v1_add_buffer(wind->xdg_toplevel_icon_v1, wind->icon.wl_buffer, 1);
+    wind->icon_buffers = SDL_calloc(image_count, sizeof(struct Wayland_SHMBuffer));
+    if (!wind->icon_buffers) {
+        goto failure_cleanup;
+    }
+
+    for (int i = 0; i < image_count; ++i) {
+        if (images[i]->w == images[i]->h) {
+            struct Wayland_SHMBuffer *buffer = &wind->icon_buffers[wind->icon_buffer_count];
+
+            if (!Wayland_AllocSHMBuffer(images[i]->w, images[i]->h, buffer)) {
+                SDL_SetError("wayland: failed to allocate SHM buffer for the icon");
+                goto failure_cleanup;
+            }
+
+            SDL_PremultiplyAlpha(images[i]->w, images[i]->h, images[i]->format, images[i]->pixels, images[i]->pitch, SDL_PIXELFORMAT_ARGB8888, buffer->shm_data, images[i]->w * 4, true);
+            const int scale = (int)SDL_ceil((double)images[i]->w / (double)icon->w);
+            xdg_toplevel_icon_v1_add_buffer(wind->xdg_toplevel_icon_v1, buffer->wl_buffer, scale);
+            wind->icon_buffer_count++;
+        } else {
+            SDL_LogWarn(SDL_LOG_CATEGORY_VIDEO, "wayland: icon width and height must be equal, got %ix%i for image level %i; skipping", images[i]->w, images[i]->h, i);
+        }
+    }
+
+    SDL_free(images);
 
 #ifdef HAVE_LIBDECOR_H
     if (wind->shell_surface_type == WAYLAND_SHELL_SURFACE_TYPE_LIBDECOR && wind->shell_surface.libdecor.frame) {
@@ -2867,6 +2930,42 @@ bool Wayland_SetWindowIcon(SDL_VideoDevice *_this, SDL_Window *window, SDL_Surfa
     }
 
     return true;
+
+failure_cleanup:
+
+    if (wind->xdg_toplevel_icon_v1) {
+        xdg_toplevel_icon_v1_destroy(wind->xdg_toplevel_icon_v1);
+        wind->xdg_toplevel_icon_v1 = NULL;
+    }
+
+    for (int i = 0; i < wind->icon_buffer_count; ++i) {
+        Wayland_ReleaseSHMBuffer(&wind->icon_buffers[i]);
+    }
+    SDL_free(wind->icon_buffers);
+    wind->icon_buffers = NULL;
+    wind->icon_buffer_count = 0;
+
+    return false;
+}
+
+void *Wayland_GetWindowICCProfile(SDL_VideoDevice *_this, SDL_Window *window, size_t *size)
+{
+    SDL_WindowData *wind = window->internal;
+    void *ret = NULL;
+
+    if (wind->icc_size > 0) {
+        void *icc_map = mmap(NULL, wind->icc_size, PROT_READ, MAP_PRIVATE, wind->icc_fd, 0);
+        if (icc_map != MAP_FAILED) {
+            ret = SDL_malloc(wind->icc_size);
+            if (ret) {
+                *size = wind->icc_size;
+                SDL_memcpy(ret, icc_map, *size);
+            }
+            munmap(icc_map, wind->icc_size);
+        }
+    }
+
+    return ret;
 }
 
 bool Wayland_SyncWindow(SDL_VideoDevice *_this, SDL_Window *window)
@@ -2988,6 +3087,10 @@ void Wayland_DestroyWindow(SDL_VideoDevice *_this, SDL_Window *window)
             frog_color_managed_surface_destroy(wind->frog_color_managed_surface);
         }
 
+        if (wind->wp_color_management_surface_feedback) {
+            wp_color_management_surface_feedback_v1_destroy(wind->wp_color_management_surface_feedback);
+        }
+
         SDL_free(wind->outputs);
         SDL_free(wind->app_id);
 
@@ -3011,7 +3114,11 @@ void Wayland_DestroyWindow(SDL_VideoDevice *_this, SDL_Window *window)
             xdg_toplevel_icon_v1_destroy(wind->xdg_toplevel_icon_v1);
         }
 
-        Wayland_ReleaseSHMBuffer(&wind->icon);
+        for (int i = 0; i < wind->icon_buffer_count; ++i) {
+            Wayland_ReleaseSHMBuffer(&wind->icon_buffers[i]);
+        }
+        SDL_free(wind->icon_buffers);
+        wind->icon_buffer_count = 0;
 
         SDL_free(wind);
         WAYLAND_wl_display_flush(data->display);

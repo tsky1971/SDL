@@ -115,6 +115,7 @@
       <TypeLibraryName>.\Debug/SDL.tlb</TypeLibraryName>
     </Midl>
     <ClCompile>
+      <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
       <Optimization>Disabled</Optimization>
       <AdditionalIncludeDirectories>$(ProjectDir)\..\..\include;$(ProjectDir)\..\..\include\build_config;$(ProjectDir)\..\..\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalUsingDirectories>%(AdditionalUsingDirectories)</AdditionalUsingDirectories>
@@ -145,6 +146,7 @@
       <TypeLibraryName>.\Debug/SDL.tlb</TypeLibraryName>
     </Midl>
     <ClCompile>
+      <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
       <Optimization>Disabled</Optimization>
       <AdditionalIncludeDirectories>$(ProjectDir)\..\..\include;$(ProjectDir)\..\..\include\build_config;$(ProjectDir)\..\..\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalUsingDirectories>%(AdditionalUsingDirectories)</AdditionalUsingDirectories>
@@ -182,6 +184,7 @@
       <TypeLibraryName>.\Debug/SDL.tlb</TypeLibraryName>
     </Midl>
     <ClCompile>
+      <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
       <Optimization>Disabled</Optimization>
       <AdditionalIncludeDirectories>$(ProjectDir)\..\..\include;$(ProjectDir)\..\..\include\build_config;$(ProjectDir)\..\..\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalUsingDirectories>%(AdditionalUsingDirectories)</AdditionalUsingDirectories>
@@ -219,6 +222,7 @@
       <TypeLibraryName>.\Release/SDL.tlb</TypeLibraryName>
     </Midl>
     <ClCompile>
+      <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
       <AdditionalIncludeDirectories>$(ProjectDir)\..\..\include;$(ProjectDir)\..\..\include\build_config;$(ProjectDir)\..\..\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalUsingDirectories>%(AdditionalUsingDirectories)</AdditionalUsingDirectories>
       <PreprocessorDefinitions>DLL_EXPORT;NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -250,6 +254,7 @@
       <TypeLibraryName>.\Release/SDL.tlb</TypeLibraryName>
     </Midl>
     <ClCompile>
+      <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
       <AdditionalIncludeDirectories>$(ProjectDir)\..\..\include;$(ProjectDir)\..\..\include\build_config;$(ProjectDir)\..\..\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalUsingDirectories>%(AdditionalUsingDirectories)</AdditionalUsingDirectories>
       <PreprocessorDefinitions>DLL_EXPORT;NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -288,6 +293,7 @@
       <TypeLibraryName>.\Release/SDL.tlb</TypeLibraryName>
     </Midl>
     <ClCompile>
+      <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
       <AdditionalIncludeDirectories>$(ProjectDir)\..\..\include;$(ProjectDir)\..\..\include\build_config;$(ProjectDir)\..\..\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalUsingDirectories>%(AdditionalUsingDirectories)</AdditionalUsingDirectories>
       <PreprocessorDefinitions>DLL_EXPORT;NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -320,6 +326,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(TreatWarningsAsError)'!=''">
     <ClCompile>
+      <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
       <TreatWarningAsError>$(TreatWarningsAsError)</TreatWarningAsError>
     </ClCompile>
   </ItemDefinitionGroup>
@@ -418,6 +425,7 @@
     <ClInclude Include="..\..\src\camera\SDL_syscamera.h" />
     <ClInclude Include="..\..\src\core\gdk\SDL_gdk.h" />
     <ClInclude Include="..\..\src\core\windows\SDL_directx.h" />
+    <ClInclude Include="..\..\src\core\windows\SDL_gameinput.h" />
     <ClInclude Include="..\..\src\core\windows\SDL_hid.h" />
     <ClInclude Include="..\..\src\core\windows\SDL_immdevice.h" />
     <ClInclude Include="..\..\src\core\windows\SDL_windows.h" />
@@ -441,8 +449,8 @@
     <ClInclude Include="..\..\src\events\SDL_windowevents_c.h" />
     <ClInclude Include="..\..\src\filesystem\SDL_sysfilesystem.h" />
     <ClInclude Include="..\..\src\gpu\SDL_sysgpu.h" />
-    <ClInclude Include="..\..\src\file\SDL_asyncio_c.h" />
-    <ClInclude Include="..\..\src\file\SDL_sysasyncio.h" />
+    <ClInclude Include="..\..\src\io\SDL_asyncio_c.h" />
+    <ClInclude Include="..\..\src\io\SDL_sysasyncio.h" />
     <ClInclude Include="..\..\src\haptic\SDL_haptic_c.h" />
     <ClInclude Include="..\..\src\haptic\SDL_syshaptic.h" />
     <ClInclude Include="..\..\src\haptic\windows\SDL_dinputhaptic_c.h" />
@@ -529,9 +537,9 @@
     <ClCompile Include="..\..\src\dialog\SDL_dialog_utils.c" />
     <ClCompile Include="..\..\src\filesystem\SDL_filesystem.c" />
     <ClCompile Include="..\..\src\filesystem\windows\SDL_sysfsops.c" />
-    <ClCompile Include="..\..\src\file\generic\SDL_asyncio_generic.c" />
-    <ClCompile Include="..\..\src\file\SDL_asyncio.c" />
-    <ClCompile Include="..\..\src\file\windows\SDL_asyncio_windows_ioring.c" />
+    <ClCompile Include="..\..\src\io\generic\SDL_asyncio_generic.c" />
+    <ClCompile Include="..\..\src\io\SDL_asyncio.c" />
+    <ClCompile Include="..\..\src\io\windows\SDL_asyncio_windows_ioring.c" />
     <ClCompile Include="..\..\src\main\gdk\SDL_sysmain_runapp.cpp" />
     <ClCompile Include="..\..\src\main\generic\SDL_sysmain_callbacks.c" />
     <ClCompile Include="..\..\src\main\SDL_main_callbacks.c" />
@@ -587,6 +595,7 @@
     <ClInclude Include="..\..\src\video\SDL_pixels_c.h" />
     <ClInclude Include="..\..\src\video\SDL_rect_c.h" />
     <ClInclude Include="..\..\src\video\SDL_RLEaccel_c.h" />
+    <ClInclude Include="..\..\src\video\SDL_stb_c.h" />
     <ClInclude Include="..\..\src\video\SDL_surface_c.h" />
     <ClInclude Include="..\..\src\video\SDL_sysvideo.h" />
     <ClInclude Include="..\..\src\video\SDL_vulkan_internal.h" />
@@ -633,6 +642,7 @@
     <ClCompile Include="..\..\src\audio\SDL_wave.c" />
     <ClCompile Include="..\..\src\audio\wasapi\SDL_wasapi.c" />
     <ClCompile Include="..\..\src\core\SDL_core_unsupported.c" />
+    <ClCompile Include="..\..\src\core\windows\SDL_gameinput.c"/>
     <ClCompile Include="..\..\src\core\windows\SDL_hid.c" />
     <ClCompile Include="..\..\src\core\windows\SDL_immdevice.c" />
     <ClCompile Include="..\..\src\core\windows\SDL_windows.c" />
@@ -673,7 +683,7 @@
     <ClCompile Include="..\..\src\events\SDL_quit.c" />
     <ClCompile Include="..\..\src\events\SDL_touch.c" />
     <ClCompile Include="..\..\src\events\SDL_windowevents.c" />
-    <ClCompile Include="..\..\src\file\SDL_iostream.c" />
+    <ClCompile Include="..\..\src\io\SDL_iostream.c" />
     <ClCompile Include="..\..\src\filesystem\gdk\SDL_sysfilesystem.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Gaming.Desktop.x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Gaming.Desktop.x64'">true</ExcludedFromBuild>
@@ -861,6 +871,7 @@
     <ClCompile Include="..\..\src\video\SDL_pixels.c" />
     <ClCompile Include="..\..\src\video\SDL_rect.c" />
     <ClCompile Include="..\..\src\video\SDL_RLEaccel.c" />
+    <ClCompile Include="..\..\src\video\SDL_stb.c" />
     <ClCompile Include="..\..\src\video\SDL_stretch.c" />
     <ClCompile Include="..\..\src\video\SDL_surface.c" />
     <ClCompile Include="..\..\src\video\SDL_video.c" />

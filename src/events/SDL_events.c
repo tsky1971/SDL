@@ -52,6 +52,52 @@
 // Make sure the type in the SDL_Event aligns properly across the union
 SDL_COMPILE_TIME_ASSERT(SDL_Event_type, sizeof(Uint32) == sizeof(SDL_EventType));
 
+#define SDL2_SYSWMEVENT 0x201
+
+#ifdef SDL_VIDEO_DRIVER_WINDOWS
+#include "../core/windows/SDL_windows.h"
+#endif
+
+#ifdef SDL_VIDEO_DRIVER_X11
+#include <X11/Xlib.h>
+#endif
+
+typedef struct SDL2_version
+{
+    Uint8 major;
+    Uint8 minor;
+    Uint8 patch;
+} SDL2_version;
+
+typedef enum
+{
+  SDL2_SYSWM_UNKNOWN
+} SDL2_SYSWM_TYPE;
+
+typedef struct SDL2_SysWMmsg
+{
+    SDL2_version version;
+    SDL2_SYSWM_TYPE subsystem;
+    union
+    {
+#ifdef SDL_VIDEO_DRIVER_WINDOWS
+        struct {
+            HWND hwnd;                  /**< The window for the message */
+            UINT msg;                   /**< The type of message */
+            WPARAM wParam;              /**< WORD message parameter */
+            LPARAM lParam;              /**< LONG message parameter */
+        } win;
+#endif
+#ifdef SDL_VIDEO_DRIVER_X11
+        struct {
+            XEvent event;
+        } x11;
+#endif
+        /* Can't have an empty union */
+        int dummy;
+    } msg;
+} SDL2_SysWMmsg;
+
 typedef struct SDL_EventWatcher
 {
     SDL_EventFilter callback;
@@ -214,6 +260,17 @@ static void SDL_LinkTemporaryMemoryToEvent(SDL_EventEntry *event, const void *me
     }
 }
 
+static void SDL_TransferSysWMMemoryToEvent(SDL_EventEntry *event)
+{
+    SDL2_SysWMmsg **wmmsg = (SDL2_SysWMmsg **)((&event->event.common)+1);
+    SDL2_SysWMmsg *mem = SDL_AllocateTemporaryMemory(sizeof(*mem));
+    if (mem) {
+        SDL_copyp(mem, *wmmsg);
+        *wmmsg = mem;
+        SDL_LinkTemporaryMemoryToEvent(event, mem);
+    }
+}
+
 // Transfer the event memory from the thread-local event memory list to the event
 static void SDL_TransferTemporaryMemoryToEvent(SDL_EventEntry *event)
 {
@@ -237,6 +294,10 @@ static void SDL_TransferTemporaryMemoryToEvent(SDL_EventEntry *event)
         break;
     case SDL_EVENT_CLIPBOARD_UPDATE:
         SDL_LinkTemporaryMemoryToEvent(event, event->event.clipboard.mime_types);
+        break;
+    case SDL2_SYSWMEVENT:
+        // We need to copy the stack pointer into temporary memory
+        SDL_TransferSysWMMemoryToEvent(event);
         break;
     default:
         break;
@@ -847,7 +908,7 @@ void SDL_StopEventLoop(void)
     SDL_EventQ.active = false;
 
     if (report && SDL_atoi(report)) {
-        SDL_Log("SDL EVENT QUEUE: Maximum events in-flight: %d\n",
+        SDL_Log("SDL EVENT QUEUE: Maximum events in-flight: %d",
                 SDL_EventQ.max_events_seen);
     }
 
@@ -1354,6 +1415,35 @@ bool SDL_RunOnMainThread(SDL_MainThreadCallback callback, void *userdata, bool w
     }
 }
 
+void SDL_PumpEventMaintenance(void)
+{
+#ifndef SDL_AUDIO_DISABLED
+    SDL_UpdateAudio();
+#endif
+
+#ifndef SDL_CAMERA_DISABLED
+    SDL_UpdateCamera();
+#endif
+
+#ifndef SDL_SENSOR_DISABLED
+    // Check for sensor state change
+    if (SDL_update_sensors) {
+        SDL_UpdateSensors();
+    }
+#endif
+
+#ifndef SDL_JOYSTICK_DISABLED
+    // Check for joystick state change
+    if (SDL_update_joysticks) {
+        SDL_UpdateJoysticks();
+    }
+#endif
+
+    SDL_UpdateTrays();
+
+    SDL_SendPendingSignalEvents(); // in case we had a signal handler fire, etc.
+}
+
 // Run the system dependent event loops
 static void SDL_PumpEventsInternal(bool push_sentinel)
 {
@@ -1377,29 +1467,7 @@ static void SDL_PumpEventsInternal(bool push_sentinel)
     }
 #endif
 
-#ifndef SDL_AUDIO_DISABLED
-    SDL_UpdateAudio();
-#endif
-
-#ifndef SDL_CAMERA_DISABLED
-    SDL_UpdateCamera();
-#endif
-
-#ifndef SDL_SENSOR_DISABLED
-    // Check for sensor state change
-    if (SDL_update_sensors) {
-        SDL_UpdateSensors();
-    }
-#endif
-
-#ifndef SDL_JOYSTICK_DISABLED
-    // Check for joystick state change
-    if (SDL_update_joysticks) {
-        SDL_UpdateJoysticks();
-    }
-#endif
-
-    SDL_SendPendingSignalEvents(); // in case we had a signal handler fire, etc.
+    SDL_PumpEventMaintenance();
 
     if (push_sentinel && SDL_EventEnabled(SDL_EVENT_POLL_SENTINEL)) {
         SDL_Event sentinel;
