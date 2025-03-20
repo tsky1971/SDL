@@ -234,6 +234,17 @@ static void SDLCALL SDL_MouseRelativeCursorVisibleChanged(void *userdata, const 
     SDL_SetCursor(NULL); // Update cursor visibility
 }
 
+static void SDLCALL SDL_MouseIntegerModeChanged(void *userdata, const char *name, const char *oldValue, const char *hint)
+{
+    SDL_Mouse *mouse = (SDL_Mouse *)userdata;
+
+    if (hint && *hint) {
+        mouse->integer_mode = (Uint8)SDL_atoi(hint);
+    } else {
+        mouse->integer_mode = 0;
+    }
+}
+
 // Public functions
 bool SDL_PreInitMouse(void)
 {
@@ -287,6 +298,9 @@ bool SDL_PreInitMouse(void)
 
     SDL_AddHintCallback(SDL_HINT_MOUSE_RELATIVE_CURSOR_VISIBLE,
                         SDL_MouseRelativeCursorVisibleChanged, mouse);
+
+    SDL_AddHintCallback("SDL_MOUSE_INTEGER_MODE",
+                        SDL_MouseIntegerModeChanged, mouse);
 
     mouse->was_touch_mouse_events = false; // no touch to mouse movement event pending
 
@@ -631,7 +645,7 @@ void SDL_SendMouseMotion(Uint64 timestamp, SDL_Window *window, SDL_MouseID mouse
 {
     if (window && !relative) {
         SDL_Mouse *mouse = SDL_GetMouse();
-        if (!SDL_UpdateMouseFocus(window, x, y, SDL_GetMouseButtonState(mouse, mouseID, true), (mouseID != SDL_TOUCH_MOUSEID))) {
+        if (!SDL_UpdateMouseFocus(window, x, y, SDL_GetMouseButtonState(mouse, mouseID, true), (mouseID != SDL_TOUCH_MOUSEID && mouseID != SDL_PEN_MOUSEID))) {
             return;
         }
     }
@@ -689,7 +703,7 @@ static void SDL_PrivateSendMouseMotion(Uint64 timestamp, SDL_Window *window, SDL
 
     // SDL_HINT_MOUSE_TOUCH_EVENTS: controlling whether mouse events should generate synthetic touch events
     if (mouse->mouse_touch_events) {
-        if (mouseID != SDL_TOUCH_MOUSEID && !relative && track_mouse_down) {
+        if (mouseID != SDL_TOUCH_MOUSEID && mouseID != SDL_PEN_MOUSEID && !relative && track_mouse_down) {
             if (window) {
                 float normalized_x = x / (float)window->w;
                 float normalized_y = y / (float)window->h;
@@ -705,14 +719,19 @@ static void SDL_PrivateSendMouseMotion(Uint64 timestamp, SDL_Window *window, SDL
 
     if (relative) {
         if (mouse->relative_mode) {
-            if (mouse->enable_relative_system_scale) {
-                if (mouse->ApplySystemScale) {
-                    mouse->ApplySystemScale(mouse->system_scale_data, timestamp, window, mouseID, &x, &y);
+            if (mouse->InputTransform) {
+                void *data = mouse->input_transform_data;
+                mouse->InputTransform(data, timestamp, window, mouseID, &x, &y);
+            } else {
+                if (mouse->enable_relative_system_scale) {
+                    if (mouse->ApplySystemScale) {
+                        mouse->ApplySystemScale(mouse->system_scale_data, timestamp, window, mouseID, &x, &y);
+                    }
                 }
-            }
-            if (mouse->enable_relative_speed_scale) {
-                x *= mouse->relative_speed_scale;
-                y *= mouse->relative_speed_scale;
+                if (mouse->enable_relative_speed_scale) {
+                    x *= mouse->relative_speed_scale;
+                    y *= mouse->relative_speed_scale;
+                }
             }
         } else {
             if (mouse->enable_normal_speed_scale) {
@@ -720,12 +739,22 @@ static void SDL_PrivateSendMouseMotion(Uint64 timestamp, SDL_Window *window, SDL
                 y *= mouse->normal_speed_scale;
             }
         }
+        if (mouse->integer_mode >= 1) {
+            // Accumulate the fractional relative motion and only process the integer portion
+            mouse->xrel_frac = SDL_modff(mouse->xrel_frac + x, &x);
+            mouse->yrel_frac = SDL_modff(mouse->yrel_frac + y, &y);
+        }
         xrel = x;
         yrel = y;
         x = (mouse->last_x + xrel);
         y = (mouse->last_y + yrel);
         ConstrainMousePosition(mouse, window, &x, &y);
     } else {
+        if (mouse->integer_mode >= 1) {
+            // Discard the fractional component from absolute coordinates
+            x = SDL_truncf(x);
+            y = SDL_truncf(y);
+        }
         ConstrainMousePosition(mouse, window, &x, &y);
         if (mouse->has_position) {
             xrel = x - mouse->last_x;
@@ -777,7 +806,7 @@ static void SDL_PrivateSendMouseMotion(Uint64 timestamp, SDL_Window *window, SDL
 
     // Post the event, if desired
     if (SDL_EventEnabled(SDL_EVENT_MOUSE_MOTION)) {
-        if ((!mouse->relative_mode || mouse->warp_emulation_active) && mouseID != SDL_TOUCH_MOUSEID) {
+        if ((!mouse->relative_mode || mouse->warp_emulation_active) && mouseID != SDL_TOUCH_MOUSEID && mouseID != SDL_PEN_MOUSEID) {
             // We're not in relative mode, so all mouse events are global mouse events
             mouseID = SDL_GLOBAL_MOUSE_ID;
         }
@@ -880,7 +909,7 @@ static void SDL_PrivateSendMouseButton(Uint64 timestamp, SDL_Window *window, SDL
 
     // SDL_HINT_MOUSE_TOUCH_EVENTS: controlling whether mouse events should generate synthetic touch events
     if (mouse->mouse_touch_events) {
-        if (mouseID != SDL_TOUCH_MOUSEID && button == SDL_BUTTON_LEFT) {
+        if (mouseID != SDL_TOUCH_MOUSEID && mouseID != SDL_PEN_MOUSEID && button == SDL_BUTTON_LEFT) {
             if (down) {
                 track_mouse_down = true;
             } else {
@@ -948,7 +977,7 @@ static void SDL_PrivateSendMouseButton(Uint64 timestamp, SDL_Window *window, SDL
 
     // Post the event, if desired
     if (SDL_EventEnabled(type)) {
-        if ((!mouse->relative_mode || mouse->warp_emulation_active) && mouseID != SDL_TOUCH_MOUSEID) {
+        if ((!mouse->relative_mode || mouse->warp_emulation_active) && mouseID != SDL_TOUCH_MOUSEID && mouseID != SDL_PEN_MOUSEID) {
             // We're not in relative mode, so all mouse events are global mouse events
             mouseID = SDL_GLOBAL_MOUSE_ID;
         } else {
@@ -996,6 +1025,12 @@ void SDL_SendMouseWheel(Uint64 timestamp, SDL_Window *window, SDL_MouseID mouseI
 
     if (window) {
         SDL_SetMouseFocus(window);
+    }
+
+    // Accumulate fractional wheel motion if integer mode is enabled
+    if (mouse->integer_mode >= 2) {
+        mouse->wheel_x_frac = SDL_modff(mouse->wheel_x_frac + x, &x);
+        mouse->wheel_y_frac = SDL_modff(mouse->wheel_y_frac + y, &y);
     }
 
     if (x == 0.0f && y == 0.0f) {
@@ -1108,11 +1143,25 @@ void SDL_QuitMouse(void)
     SDL_RemoveHintCallback(SDL_HINT_MOUSE_RELATIVE_CURSOR_VISIBLE,
                         SDL_MouseRelativeCursorVisibleChanged, mouse);
 
+    SDL_RemoveHintCallback("SDL_MOUSE_INTEGER_MODE",
+                        SDL_MouseIntegerModeChanged, mouse);
+
     for (int i = SDL_mouse_count; i--; ) {
         SDL_RemoveMouse(SDL_mice[i].instance_id, false);
     }
     SDL_free(SDL_mice);
     SDL_mice = NULL;
+}
+
+bool SDL_SetRelativeMouseTransform(SDL_MouseMotionTransformCallback transform, void *userdata)
+{
+    SDL_Mouse *mouse = SDL_GetMouse();
+    if (mouse->relative_mode) {
+        return SDL_SetError("Can't set mouse transform while relative mode is active");
+    }
+    mouse->InputTransform = transform;
+    mouse->input_transform_data = userdata;
+    return true;
 }
 
 SDL_MouseButtonFlags SDL_GetMouseState(float *x, float *y)

@@ -2107,7 +2107,7 @@ extern SDL_DECLSPEC int SDLCALL SDL_abs(int x);
  *
  * \param x the first value to compare.
  * \param y the second value to compare.
- * \returns the lesser of `x` and `y`.
+ * \returns the greater of `x` and `y`.
  *
  * \threadsafety It is safe to call this macro from any thread.
  *
@@ -5969,7 +5969,6 @@ char *strdup(const char *str);
    their prototype defined (clang-diagnostic-implicit-function-declaration) */
 #include <stdio.h>
 #include <stdlib.h>
-#include <strings.h>
 
 #define SDL_malloc malloc
 #define SDL_calloc calloc

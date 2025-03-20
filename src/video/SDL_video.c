@@ -1435,6 +1435,11 @@ void SDL_SetDesktopDisplayMode(SDL_VideoDisplay *display, const SDL_DisplayMode 
 {
     SDL_DisplayMode last_mode;
 
+    if (display->fullscreen_active) {
+        // This is a temporary mode change, don't save the desktop mode
+        return;
+    }
+
     SDL_copyp(&last_mode, &display->desktop_mode);
 
     if (display->desktop_mode.internal) {
@@ -1849,6 +1854,7 @@ bool SDL_UpdateFullscreenMode(SDL_Window *window, SDL_FullscreenOp fullscreen, b
     CHECK_WINDOW_MAGIC(window, false);
 
     window->fullscreen_exclusive = false;
+    window->update_fullscreen_on_display_changed = false;
 
     // If we are in the process of hiding don't go back to fullscreen
     if (window->is_destroying || window->is_hiding) {
@@ -1944,6 +1950,8 @@ bool SDL_UpdateFullscreenMode(SDL_Window *window, SDL_FullscreenOp fullscreen, b
             SDL_MinimizeWindow(display->fullscreen_window);
         }
 
+        display->fullscreen_active = window->fullscreen_exclusive;
+
         if (!SDL_SetDisplayModeForDisplay(display, mode)) {
             goto error;
         }
@@ -1961,6 +1969,7 @@ bool SDL_UpdateFullscreenMode(SDL_Window *window, SDL_FullscreenOp fullscreen, b
                     SDL_SendWindowEvent(window, SDL_EVENT_WINDOW_ENTER_FULLSCREEN, 0, 0);
                 }
             } else if (ret == SDL_FULLSCREEN_FAILED) {
+                display->fullscreen_active = false;
                 goto error;
             }
         }
@@ -1976,17 +1985,23 @@ bool SDL_UpdateFullscreenMode(SDL_Window *window, SDL_FullscreenOp fullscreen, b
              * This is also unnecessary on Cocoa, Wayland, Win32, and X11 (will send SDL_EVENT_WINDOW_RESIZED).
              */
             if (!SDL_SendsFullscreenDimensions(_this)) {
+                SDL_Rect displayRect;
+
                 if (mode) {
                     mode_w = mode->w;
                     mode_h = mode->h;
+                    SDL_GetDisplayBounds(mode->displayID, &displayRect);
                 } else {
                     mode_w = display->desktop_mode.w;
                     mode_h = display->desktop_mode.h;
+                    SDL_GetDisplayBounds(display->id, &displayRect);
                 }
 
                 if (window->w != mode_w || window->h != mode_h) {
                     resized = true;
                 }
+
+                SDL_SendWindowEvent(window, SDL_EVENT_WINDOW_MOVED, displayRect.x, displayRect.y);
 
                 if (resized) {
                     SDL_SendWindowEvent(window, SDL_EVENT_WINDOW_RESIZED, mode_w, mode_h);
@@ -2005,6 +2020,8 @@ bool SDL_UpdateFullscreenMode(SDL_Window *window, SDL_FullscreenOp fullscreen, b
 
         // Restore the desktop mode
         if (display) {
+            display->fullscreen_active = false;
+
             SDL_SetDisplayModeForDisplay(display, NULL);
         }
         if (commit) {
@@ -2034,6 +2051,7 @@ bool SDL_UpdateFullscreenMode(SDL_Window *window, SDL_FullscreenOp fullscreen, b
             }
 
             if (!SDL_SendsFullscreenDimensions(_this)) {
+                SDL_SendWindowEvent(window, SDL_EVENT_WINDOW_MOVED, window->windowed.x, window->windowed.y);
                 if (resized) {
                     SDL_SendWindowEvent(window, SDL_EVENT_WINDOW_RESIZED, window->windowed.w, window->windowed.h);
                 } else {
@@ -2767,9 +2785,16 @@ bool SDL_SetWindowTitle(SDL_Window *window, const char *title)
     if (title == window->title) {
         return true;
     }
+    if (!title) {
+        title = "";
+    }
+    if (window->title && SDL_strcmp(title, window->title) == 0) {
+        return true;
+    }
+
     SDL_free(window->title);
 
-    window->title = SDL_strdup(title ? title : "");
+    window->title = SDL_strdup(title);
 
     if (_this->SetWindowTitle) {
         _this->SetWindowTitle(_this, window);
@@ -2900,11 +2925,12 @@ bool SDL_GetWindowPosition(SDL_Window *window, int *x, int *y)
             }
         }
     } else {
+        const bool use_current = !(window->flags & SDL_WINDOW_HIDDEN) && !window->last_position_pending;
         if (x) {
-            *x = window->x;
+            *x = use_current ? window->x : window->pending.x;
         }
         if (y) {
-            *y = window->y;
+            *y = use_current ? window->y : window->pending.y;
         }
     }
     return true;
@@ -3916,16 +3942,26 @@ void SDL_OnWindowHidden(SDL_Window *window)
 
 void SDL_OnWindowDisplayChanged(SDL_Window *window)
 {
-    if (window->flags & SDL_WINDOW_FULLSCREEN) {
-        SDL_DisplayID displayID = SDL_GetDisplayForWindowPosition(window);
+    // Don't run this if a fullscreen change was made in an event watcher callback in response to a display changed event.
+    if (window->update_fullscreen_on_display_changed && (window->flags & SDL_WINDOW_FULLSCREEN)) {
+        const bool auto_mode_switch = SDL_GetHintBoolean(SDL_HINT_VIDEO_MATCH_EXCLUSIVE_MODE_ON_MOVE, true);
 
-        if (window->requested_fullscreen_mode.w != 0 || window->requested_fullscreen_mode.h != 0) {
+        if (auto_mode_switch && (window->requested_fullscreen_mode.w != 0 || window->requested_fullscreen_mode.h != 0)) {
+            SDL_DisplayID displayID = SDL_GetDisplayForWindowPosition(window);
             bool include_high_density_modes = false;
 
             if (window->requested_fullscreen_mode.pixel_density > 1.0f) {
                 include_high_density_modes = true;
             }
-            SDL_GetClosestFullscreenDisplayMode(displayID, window->requested_fullscreen_mode.w, window->requested_fullscreen_mode.h, window->requested_fullscreen_mode.refresh_rate, include_high_density_modes, &window->current_fullscreen_mode);
+            const bool found_match = SDL_GetClosestFullscreenDisplayMode(displayID, window->requested_fullscreen_mode.w, window->requested_fullscreen_mode.h,
+                                                                         window->requested_fullscreen_mode.refresh_rate, include_high_density_modes, &window->current_fullscreen_mode);
+
+            // If a mode without matching dimensions was not found, just go to fullscreen desktop.
+            if (!found_match ||
+                window->requested_fullscreen_mode.w != window->current_fullscreen_mode.w ||
+                window->requested_fullscreen_mode.h != window->current_fullscreen_mode.h) {
+                SDL_zero(window->current_fullscreen_mode);
+            }
         } else {
             SDL_zero(window->current_fullscreen_mode);
         }

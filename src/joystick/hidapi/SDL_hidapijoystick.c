@@ -85,6 +85,9 @@ static SDL_HIDAPI_DeviceDriver *SDL_HIDAPI_drivers[] = {
 #ifdef SDL_JOYSTICK_HIDAPI_XBOXONE
     &SDL_HIDAPI_DriverXboxOne,
 #endif
+#ifdef SDL_JOYSTICK_HIDAPI_LG4FF
+    &SDL_HIDAPI_DriverLg4ff,
+#endif
 };
 static int SDL_HIDAPI_numdrivers = 0;
 static SDL_AtomicInt SDL_HIDAPI_updating_devices;
@@ -363,7 +366,7 @@ static SDL_HIDAPI_Device *HIDAPI_GetDeviceByIndex(int device_index, SDL_Joystick
     SDL_AssertJoysticksLocked();
 
     for (device = SDL_HIDAPI_devices; device; device = device->next) {
-        if (device->parent) {
+        if (device->parent || device->broken) {
             continue;
         }
         if (device->driver) {
@@ -685,7 +688,7 @@ bool HIDAPI_HasConnectedUSBDevice(const char *serial)
     }
 
     for (device = SDL_HIDAPI_devices; device; device = device->next) {
-        if (!device->driver) {
+        if (!device->driver || device->broken) {
             continue;
         }
 
@@ -711,7 +714,7 @@ void HIDAPI_DisconnectBluetoothDevice(const char *serial)
     }
 
     for (device = SDL_HIDAPI_devices; device; device = device->next) {
-        if (!device->driver) {
+        if (!device->driver || device->broken) {
             continue;
         }
 
@@ -868,10 +871,8 @@ static SDL_HIDAPI_Device *HIDAPI_AddDevice(const struct SDL_hid_device_info *inf
         return NULL;
     }
     SDL_SetObjectValid(device, SDL_OBJECT_TYPE_HIDAPI_JOYSTICK, true);
-    device->path = SDL_strdup(info->path);
-    if (!device->path) {
-        SDL_free(device);
-        return NULL;
+    if (info->path) {
+        device->path = SDL_strdup(info->path);
     }
     device->seen = true;
     device->vendor_id = info->vendor_id;
@@ -1016,6 +1017,10 @@ static bool HIDAPI_CreateCombinedJoyCons(void)
             // This device is already part of a combined device
             continue;
         }
+        if (device->broken) {
+            // This device can't be used
+            continue;
+        }
 
         SDL_GetJoystickGUIDInfo(device->guid, &vendor, &product, NULL, NULL);
 
@@ -1131,10 +1136,17 @@ check_removed:
                 goto check_removed;
             } else {
                 HIDAPI_DelDevice(device);
+                device = NULL;
 
                 // Update the device list again in case this device comes back
                 SDL_HIDAPI_change_count = 0;
             }
+        }
+        if (device && device->broken && device->parent) {
+            HIDAPI_DelDevice(device->parent);
+
+            // We deleted a different device here, restart the loop
+            goto check_removed;
         }
         device = next;
     }
@@ -1478,7 +1490,7 @@ static bool HIDAPI_JoystickOpen(SDL_Joystick *joystick, int device_index)
 
     SDL_AssertJoysticksLocked();
 
-    if (!device || !device->driver) {
+    if (!device || !device->driver || device->broken) {
         // This should never happen - validated before being called
         return SDL_SetError("Couldn't find HIDAPI device at index %d", device_index);
     }

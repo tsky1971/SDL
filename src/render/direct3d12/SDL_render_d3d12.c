@@ -80,9 +80,10 @@ static const float TONEMAP_CHROME = 2;
 
 //static const float TEXTURETYPE_NONE = 0;
 static const float TEXTURETYPE_RGB = 1;
-static const float TEXTURETYPE_NV12 = 2;
-static const float TEXTURETYPE_NV21 = 3;
-static const float TEXTURETYPE_YUV = 4;
+static const float TEXTURETYPE_RGB_PIXELART = 2;
+static const float TEXTURETYPE_NV12 = 3;
+static const float TEXTURETYPE_NV21 = 4;
+static const float TEXTURETYPE_YUV = 5;
 
 static const float INPUTTYPE_UNSPECIFIED = 0;
 static const float INPUTTYPE_SRGB = 1;
@@ -95,6 +96,11 @@ typedef struct
     float texture_type;
     float input_type;
     float color_scale;
+
+    float texel_width;
+    float texel_height;
+    float texture_width;
+    float texture_height;
 
     float tonemap_method;
     float tonemap_factor1;
@@ -124,7 +130,6 @@ typedef struct
     DXGI_FORMAT mainTextureFormat;
     ID3D12Resource *stagingBuffer;
     D3D12_RESOURCE_STATES stagingResourceState;
-    D3D12_FILTER scaleMode;
     D3D12_Shader shader;
     const float *YCbCr_matrix;
 #ifdef SDL_HAVE_YUV
@@ -1574,7 +1579,6 @@ static bool D3D12_CreateTexture(SDL_Renderer *renderer, SDL_Texture *texture, SD
     if (!textureData) {
         return false;
     }
-    textureData->scaleMode = (texture->scaleMode == SDL_SCALEMODE_NEAREST) ? D3D12_FILTER_MIN_MAG_MIP_POINT : D3D12_FILTER_MIN_MAG_MIP_LINEAR;
 
     texture->internal = textureData;
     textureData->mainTextureFormat = textureFormat;
@@ -2244,17 +2248,6 @@ static void D3D12_UnlockTexture(SDL_Renderer *renderer, SDL_Texture *texture)
     D3D_SAFE_RELEASE(textureData->stagingBuffer);
 }
 
-static void D3D12_SetTextureScaleMode(SDL_Renderer *renderer, SDL_Texture *texture, SDL_ScaleMode scaleMode)
-{
-    D3D12_TextureData *textureData = (D3D12_TextureData *)texture->internal;
-
-    if (!textureData) {
-        return;
-    }
-
-    textureData->scaleMode = (scaleMode == SDL_SCALEMODE_NEAREST) ? D3D12_FILTER_MIN_MAG_MIP_POINT : D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-}
-
 static bool D3D12_SetRenderTarget(SDL_Renderer *renderer, SDL_Texture *texture)
 {
     D3D12_RenderData *rendererData = (D3D12_RenderData *)renderer->internal;
@@ -2549,7 +2542,15 @@ static void D3D12_SetupShaderConstants(SDL_Renderer *renderer, const SDL_RenderC
             constants->input_type = INPUTTYPE_HDR10;
             break;
         default:
-            constants->texture_type = TEXTURETYPE_RGB;
+            if (cmd->data.draw.texture_scale_mode == SDL_SCALEMODE_PIXELART) {
+                constants->texture_type = TEXTURETYPE_RGB_PIXELART;
+                constants->texture_width = texture->w;
+                constants->texture_height = texture->h;
+                constants->texel_width = 1.0f / constants->texture_width;
+                constants->texel_height = 1.0f / constants->texture_height;
+            } else {
+                constants->texture_type = TEXTURETYPE_RGB;
+            }
             if (texture->colorspace == SDL_COLORSPACE_SRGB_LINEAR) {
                 constants->input_type = INPUTTYPE_SCRGB;
             } else if (texture->colorspace == SDL_COLORSPACE_HDR10) {
@@ -2745,8 +2746,8 @@ static bool D3D12_SetCopyState(SDL_Renderer *renderer, const SDL_RenderCommand *
 
     D3D12_SetupShaderConstants(renderer, cmd, texture, &constants);
 
-    switch (textureData->scaleMode) {
-    case D3D12_FILTER_MIN_MAG_MIP_POINT:
+    switch (cmd->data.draw.texture_scale_mode) {
+    case SDL_SCALEMODE_NEAREST:
         switch (cmd->data.draw.texture_address_mode) {
         case SDL_TEXTURE_ADDRESS_CLAMP:
             textureSampler = &rendererData->samplers[D3D12_SAMPLER_NEAREST_CLAMP];
@@ -2758,7 +2759,8 @@ static bool D3D12_SetCopyState(SDL_Renderer *renderer, const SDL_RenderCommand *
             return SDL_SetError("Unknown texture address mode: %d", cmd->data.draw.texture_address_mode);
         }
         break;
-    case D3D12_FILTER_MIN_MAG_MIP_LINEAR:
+    case SDL_SCALEMODE_PIXELART:    // Uses linear sampling
+    case SDL_SCALEMODE_LINEAR:
         switch (cmd->data.draw.texture_address_mode) {
         case SDL_TEXTURE_ADDRESS_CLAMP:
             textureSampler = &rendererData->samplers[D3D12_SAMPLER_LINEAR_CLAMP];
@@ -2771,7 +2773,7 @@ static bool D3D12_SetCopyState(SDL_Renderer *renderer, const SDL_RenderCommand *
         }
         break;
     default:
-        return SDL_SetError("Unknown scale mode: %d", textureData->scaleMode);
+        return SDL_SetError("Unknown scale mode: %d", cmd->data.draw.texture_scale_mode);
     }
 #ifdef SDL_HAVE_YUV
     if (textureData->yuv) {
@@ -3248,7 +3250,6 @@ bool D3D12_CreateRenderer(SDL_Renderer *renderer, SDL_Window *window, SDL_Proper
 #endif
     renderer->LockTexture = D3D12_LockTexture;
     renderer->UnlockTexture = D3D12_UnlockTexture;
-    renderer->SetTextureScaleMode = D3D12_SetTextureScaleMode;
     renderer->SetRenderTarget = D3D12_SetRenderTarget;
     renderer->QueueSetViewport = D3D12_QueueNoOp;
     renderer->QueueSetDrawColor = D3D12_QueueNoOp;

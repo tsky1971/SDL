@@ -112,7 +112,7 @@ static void testBlitBlendModeWithFormats(int mode, SDL_PixelFormat src_format, S
     int deltaR, deltaG, deltaB, deltaA;
 
     /* Create dst surface */
-    dst = SDL_CreateSurface(1, 1, dst_format);
+    dst = SDL_CreateSurface(9, 1, dst_format);
     SDLTest_AssertCheck(dst != NULL, "Verify dst surface is not NULL");
     if (dst == NULL) {
         return;
@@ -137,7 +137,7 @@ static void testBlitBlendModeWithFormats(int mode, SDL_PixelFormat src_format, S
     SDL_GetRGBA(color, SDL_GetPixelFormatDetails(dst->format), SDL_GetSurfacePalette(dst), &dstR, &dstG, &dstB, &dstA);
 
     /* Create src surface */
-    src = SDL_CreateSurface(1, 1, src_format);
+    src = SDL_CreateSurface(9, 1, src_format);
     SDLTest_AssertCheck(src != NULL, "Verify src surface is not NULL");
     if (src == NULL) {
         return;
@@ -1488,7 +1488,7 @@ static int SDLCALL surface_testScale(void *arg)
         SDL_PIXELFORMAT_ARGB128_FLOAT, SDL_PIXELFORMAT_RGBA128_FLOAT,
     };
     SDL_ScaleMode modes[] = {
-        SDL_SCALEMODE_NEAREST, SDL_SCALEMODE_LINEAR
+        SDL_SCALEMODE_NEAREST, SDL_SCALEMODE_LINEAR, SDL_SCALEMODE_PIXELART
     };
     SDL_Surface *surface, *result;
     SDL_PixelFormat format;
@@ -1525,7 +1525,9 @@ static int SDLCALL surface_testScale(void *arg)
                 deltaA <= MAXIMUM_ERROR,
                 "Checking %s %s scaling results, expected %.4f,%.4f,%.4f,%.4f got %.4f,%.4f,%.4f,%.4f",
                 SDL_GetPixelFormatName(format),
-                mode == SDL_SCALEMODE_NEAREST ? "nearest" : "linear",
+                mode == SDL_SCALEMODE_NEAREST ? "nearest" :
+                mode == SDL_SCALEMODE_LINEAR ? "linear" :
+                mode == SDL_SCALEMODE_PIXELART ? "pixelart" : "unknown",
                 srcR, srcG, srcB, srcA, actualR, actualG, actualB, actualA);
 
             SDL_DestroySurface(surface);
