@@ -707,6 +707,9 @@ static void surface_frame_done(void *data, struct wl_callback *cb, uint32_t time
             }
         }
 
+        // Create the pointer confinement region, if necessary.
+        Wayland_input_confine_pointer(wind->waylandData->input, wind->sdlwindow);
+
         /* If the window was initially set to the suspended state, send the occluded event now,
          * as we don't want to mark the window as occluded until at least one frame has been submitted.
          */
@@ -2052,6 +2055,10 @@ void Wayland_ShowWindow(SDL_VideoDevice *_this, SDL_Window *window)
     struct wl_callback *cb = wl_display_sync(_this->internal->display);
     wl_callback_add_listener(cb, &show_hide_sync_listener, (void*)((uintptr_t)window->id));
 
+    data->showing_window = true;
+    SDL_SendWindowEvent(window, SDL_EVENT_WINDOW_SHOWN, 0, 0);
+    data->showing_window = false;
+
     // Send an exposure event to signal that the client should draw.
     if (data->shell_surface_status == WAYLAND_SHELL_SURFACE_STATUS_WAITING_FOR_FRAME) {
         SDL_SendWindowEvent(window, SDL_EVENT_WINDOW_EXPOSED, 0, 0);
@@ -2274,6 +2281,11 @@ SDL_FullscreenResult Wayland_SetWindowFullscreen(SDL_VideoDevice *_this, SDL_Win
         return SDL_FULLSCREEN_FAILED;
     }
 
+    // Drop fullscreen leave requests when showing the window.
+    if (wind->showing_window && fullscreen == SDL_FULLSCREEN_OP_LEAVE) {
+        return SDL_FULLSCREEN_SUCCEEDED;
+    }
+
     if (wind->show_hide_sync_required) {
         WAYLAND_wl_display_roundtrip(_this->internal->display);
     }
@@ -2327,6 +2339,11 @@ SDL_FullscreenResult Wayland_SetWindowFullscreen(SDL_VideoDevice *_this, SDL_Win
 void Wayland_RestoreWindow(SDL_VideoDevice *_this, SDL_Window *window)
 {
     SDL_WindowData *wind = window->internal;
+
+    // Drop restore requests when showing the window.
+    if (wind->showing_window) {
+        return;
+    }
 
     // Not currently fullscreen or maximized, and no state pending; nothing to do.
     if (!(window->flags & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_MAXIMIZED)) &&

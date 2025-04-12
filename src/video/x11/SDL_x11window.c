@@ -534,7 +534,7 @@ bool X11_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_Properties
     }
 
     const bool force_override_redirect = SDL_GetHintBoolean(SDL_HINT_X11_FORCE_OVERRIDE_REDIRECT, false);
-    const bool use_resize_sync = (window->flags & SDL_WINDOW_VULKAN); /* doesn't work well with Vulkan */
+    const bool use_resize_sync = !!(window->flags & SDL_WINDOW_OPENGL); // Doesn't work well with Vulkan
     SDL_WindowData *windowdata;
     Display *display = data->display;
     int screen = displaydata->screen;
@@ -1516,7 +1516,6 @@ void X11_ShowWindow(SDL_VideoDevice *_this, SDL_Window *window)
     SDL_WindowData *data = window->internal;
     Display *display = data->videodata->display;
     bool bActivate = SDL_GetHintBoolean(SDL_HINT_WINDOW_ACTIVATE_WHEN_SHOWN, true);
-    bool position_is_absolute = false;
     bool set_position = false;
     XEvent event;
 
@@ -1524,9 +1523,6 @@ void X11_ShowWindow(SDL_VideoDevice *_this, SDL_Window *window)
         // Update the position in case the parent moved while we were hidden
         X11_ConstrainPopup(window, true);
         data->pending_position = true;
-
-        // Coordinates after X11_ConstrainPopup() are already in the global space.
-        position_is_absolute = true;
         set_position = true;
     }
 
@@ -1569,14 +1565,11 @@ void X11_ShowWindow(SDL_VideoDevice *_this, SDL_Window *window)
         const int tx = data->pending_position ? window->pending.x : window->x;
         const int ty = data->pending_position ? window->pending.y : window->y;
         int x, y;
-        if (position_is_absolute) {
-            x = tx;
-            y = ty;
-        } else {
-            SDL_RelativeToGlobalForWindow(window,
-                                          tx - data->border_left, ty - data->border_top,
-                                          &x, &y);
-        }
+
+        SDL_RelativeToGlobalForWindow(window,
+                                      tx - data->border_left, ty - data->border_top,
+                                      &x, &y);
+
         data->pending_position = false;
         X11_XMoveWindow(display, data->xwindow, x, y);
     }
@@ -1780,6 +1773,11 @@ void X11_MinimizeWindow(SDL_VideoDevice *_this, SDL_Window *window)
 
 void X11_RestoreWindow(SDL_VideoDevice *_this, SDL_Window *window)
 {
+    // Don't restore the window the first time it is being shown.
+    if (!window->internal->was_shown) {
+        return;
+    }
+
     if (window->internal->pending_operation & (X11_PENDING_OP_FULLSCREEN | X11_PENDING_OP_MAXIMIZE | X11_PENDING_OP_MINIMIZE)) {
         SDL_SyncWindow(window);
     }
@@ -1813,6 +1811,10 @@ static SDL_FullscreenResult X11_SetWindowFullscreenViaWM(SDL_VideoDevice *_this,
     Display *display = data->videodata->display;
     Atom _NET_WM_STATE = data->videodata->atoms._NET_WM_STATE;
     Atom _NET_WM_STATE_FULLSCREEN = data->videodata->atoms._NET_WM_STATE_FULLSCREEN;
+
+    if (!data->was_shown && fullscreen == SDL_FULLSCREEN_OP_LEAVE) {
+        return SDL_FULLSCREEN_SUCCEEDED;
+    }
 
     if (X11_IsWindowMapped(_this, window)) {
         XEvent e;
@@ -2095,6 +2097,33 @@ bool X11_SetWindowKeyboardGrab(SDL_VideoDevice *_this, SDL_Window *window, bool 
            appropriate. */
         if (window->flags & SDL_WINDOW_HIDDEN) {
             return true;
+        }
+
+        /* GNOME needs the _XWAYLAND_MAY_GRAB_KEYBOARD message on XWayland:
+         *
+         * - message_type set to "_XWAYLAND_MAY_GRAB_KEYBOARD"
+         * - window set to the xid of the window on which the grab is to be issued
+         * - data.l[0] to a non-zero value
+         *
+         * The dconf setting `org/gnome/mutter/wayland/xwayland-allow-grabs` must be enabled as well.
+         *
+         * https://gitlab.gnome.org/GNOME/mutter/-/commit/5f132f39750f684c3732b4346dec810cd218d609
+         */
+        if (_this->internal->is_xwayland) {
+            Atom _XWAYLAND_MAY_GRAB_ATOM = X11_XInternAtom(display, "_XWAYLAND_MAY_GRAB_KEYBOARD", False);
+
+            if (_XWAYLAND_MAY_GRAB_ATOM != None) {
+                XClientMessageEvent client_message;
+                client_message.type = ClientMessage;
+                client_message.window = data->xwindow;
+                client_message.format = 32;
+                client_message.message_type = _XWAYLAND_MAY_GRAB_ATOM;
+                client_message.data.l[0] = 1;
+                client_message.data.l[1] = CurrentTime;
+
+                X11_XSendEvent(display, DefaultRootWindow(display), False, SubstructureNotifyMask | SubstructureRedirectMask, (XEvent *)&client_message);
+                X11_XFlush(display);
+            }
         }
 
         X11_XGrabKeyboard(display, data->xwindow, True, GrabModeAsync,
