@@ -30,6 +30,10 @@
 // this checks for HAVE_DBUS_DBUS_H internally.
 #include "core/linux/SDL_dbus.h"
 
+#if defined(SDL_PLATFORM_UNIX) && !defined(SDL_PLATFORM_ANDROID)
+#include "core/unix/SDL_gtk.h"
+#endif
+
 #ifdef SDL_PLATFORM_EMSCRIPTEN
 #include <emscripten.h>
 #endif
@@ -65,7 +69,7 @@
 
 // Initialization/Cleanup routines
 #include "timer/SDL_timer_c.h"
-#ifdef SDL_VIDEO_DRIVER_WINDOWS
+#ifdef SDL_PLATFORM_WINDOWS
 extern bool SDL_HelperWindowCreate(void);
 extern void SDL_HelperWindowDestroy(void);
 #endif
@@ -317,7 +321,7 @@ bool SDL_InitSubSystem(SDL_InitFlags flags)
     SDL_DBus_Init();
 #endif
 
-#ifdef SDL_VIDEO_DRIVER_WINDOWS
+#ifdef SDL_PLATFORM_WINDOWS
     if (flags & (SDL_INIT_HAPTIC | SDL_INIT_JOYSTICK)) {
         if (!SDL_HelperWindowCreate()) {
             goto quit_and_error;
@@ -653,7 +657,7 @@ void SDL_Quit(void)
     SDL_bInMainQuit = true;
 
     // Quit all subsystems
-#ifdef SDL_VIDEO_DRIVER_WINDOWS
+#ifdef SDL_PLATFORM_WINDOWS
     SDL_HelperWindowDestroy();
 #endif
     SDL_QuitSubSystem(SDL_INIT_EVERYTHING);
@@ -661,6 +665,10 @@ void SDL_Quit(void)
 
 #ifdef SDL_USE_LIBDBUS
     SDL_DBus_Quit();
+#endif
+
+#if defined(SDL_PLATFORM_UNIX) && !defined(SDL_PLATFORM_ANDROID) && !defined(SDL_PLATFORM_EMSCRIPTEN)
+    SDL_Gtk_Quit();
 #endif
 
     SDL_QuitTimers();
@@ -728,6 +736,8 @@ const char *SDL_GetPlatform(void)
     return "macOS";
 #elif defined(SDL_PLATFORM_NETBSD)
     return "NetBSD";
+#elif defined(SDL_PLATFORM_NGAGE)
+    return "Nokia N-Gage";
 #elif defined(SDL_PLATFORM_OPENBSD)
     return "OpenBSD";
 #elif defined(SDL_PLATFORM_OS2)

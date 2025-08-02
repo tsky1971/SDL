@@ -65,10 +65,15 @@ static bool AAUDIO_LoadFunctions(AAUDIO_Data *data)
 {
 #define SDL_PROC(ret, func, params)                                                             \
     do {                                                                                        \
-        data->func = (ret (*) params)SDL_LoadFunction(data->handle, #func);                                     \
+        data->func = (ret (*) params)SDL_LoadFunction(data->handle, #func);                     \
         if (!data->func) {                                                                      \
             return SDL_SetError("Couldn't load AAUDIO function %s: %s", #func, SDL_GetError()); \
         }                                                                                       \
+    } while (0);
+
+#define SDL_PROC_OPTIONAL(ret, func, params)                                                          \
+    do {                                                                                              \
+        data->func = (ret (*) params)SDL_LoadFunction(data->handle, #func);  /* if it fails, okay. */ \
     } while (0);
 #include "SDL_aaudiofuncs.h"
     return true;
@@ -308,6 +313,12 @@ static bool BuildAAudioStream(SDL_AudioDevice *device)
     ctx.AAudioStreamBuilder_setFormat(builder, format);
     ctx.AAudioStreamBuilder_setSampleRate(builder, device->spec.freq);
     ctx.AAudioStreamBuilder_setChannelCount(builder, device->spec.channels);
+	
+    // If no specific buffer size has been requested, the device will pick the optimal 
+	if(SDL_GetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES)) {
+	    ctx.AAudioStreamBuilder_setBufferCapacityInFrames(builder, 2 * device->sample_frames); // AAudio requires that the buffer capacity is at least
+	    ctx.AAudioStreamBuilder_setFramesPerDataCallback(builder, device->sample_frames);      // twice the size of the data callback buffer size
+	}
 
     const aaudio_direction_t direction = (recording ? AAUDIO_DIRECTION_INPUT : AAUDIO_DIRECTION_OUTPUT);
     ctx.AAudioStreamBuilder_setDirection(builder, direction);
@@ -319,6 +330,12 @@ static bool BuildAAudioStream(SDL_AudioDevice *device)
         ctx.AAudioStreamBuilder_setPerformanceMode(builder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
     } else {
         SDL_Log("Low latency audio disabled");
+    }
+
+    if (recording && ctx.AAudioStreamBuilder_setInputPreset) {    // optional API: requires Android 28
+        // try to use a microphone that is for recording external audio. Otherwise Android might choose the mic used for talking
+        // on the telephone when held to the user's ear, which is often not useful at any distance from the device.
+        ctx.AAudioStreamBuilder_setInputPreset(builder, AAUDIO_INPUT_PRESET_CAMCORDER);
     }
 
     LOGI("AAudio Try to open %u hz %s %u channels samples %u",
@@ -366,7 +383,7 @@ static bool BuildAAudioStream(SDL_AudioDevice *device)
     hidden->processed_bytes = 0;
     hidden->callback_bytes = 0;
 
-    hidden->semaphore = SDL_CreateSemaphore(recording ? 0 : hidden->num_buffers);
+    hidden->semaphore = SDL_CreateSemaphore(recording ? 0 : hidden->num_buffers - 1);
     if (!hidden->semaphore) {
         LOGI("SDL Failed SDL_CreateSemaphore %s recording:%d", SDL_GetError(), recording);
         return false;

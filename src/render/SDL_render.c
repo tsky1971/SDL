@@ -120,6 +120,9 @@ static const SDL_RenderDriver *render_drivers[] = {
 #ifdef SDL_VIDEO_RENDER_METAL
     &METAL_RenderDriver,
 #endif
+#ifdef SDL_VIDEO_RENDER_NGAGE
+    &NGAGE_RenderDriver,
+#endif
 #ifdef SDL_VIDEO_RENDER_OGL
     &GL_RenderDriver,
 #endif
@@ -1060,7 +1063,9 @@ SDL_Renderer *SDL_CreateRendererWithProperties(SDL_PropertiesID props)
             }
         }
 
-        if (!rc) {
+        if (rc) {
+            SDL_DebugLogBackend("render", renderer->name);
+        } else {
             if (driver_name) {
                 SDL_SetError("%s not available", driver_name);
             } else {
@@ -2627,11 +2632,12 @@ static void UpdateLogicalPresentation(SDL_Renderer *renderer)
     const float logical_h = view->logical_h;
     int iwidth, iheight;
 
-    if (renderer->target) {
+    if (is_main_view) {
+        SDL_GetRenderOutputSize(renderer, &iwidth, &iheight);
+    } else {
+        SDL_assert(renderer->target != NULL);
         iwidth = (int)renderer->target->w;
         iheight = (int)renderer->target->h;
-    } else {
-        SDL_GetRenderOutputSize(renderer, &iwidth, &iheight);
     }
 
     view->logical_src_rect.x = 0.0f;
@@ -2739,6 +2745,8 @@ static void UpdateLogicalPresentation(SDL_Renderer *renderer)
     view->pixel_h = (int) view->logical_dst_rect.h;
     UpdatePixelViewport(renderer, view);
     UpdatePixelClipRect(renderer, view);
+    QueueCmdSetViewport(renderer);
+    QueueCmdSetClipRect(renderer);
 }
 
 bool SDL_SetRenderLogicalPresentation(SDL_Renderer *renderer, int w, int h, SDL_RendererLogicalPresentation mode)
@@ -3659,7 +3667,7 @@ bool SDL_RenderLines(SDL_Renderer *renderer, const SDL_FPoint *points, int count
 #endif
 
     SDL_RenderViewState *view = renderer->view;
-    const bool islogical = ((view == &renderer->main_view) && (view->logical_presentation_mode != SDL_LOGICAL_PRESENTATION_DISABLED));
+    const bool islogical = (view->logical_presentation_mode != SDL_LOGICAL_PRESENTATION_DISABLED);
 
     if (islogical || (renderer->line_method == SDL_RENDERLINEMETHOD_GEOMETRY)) {
         const float scale_x = view->current_scale.x;
@@ -3678,7 +3686,7 @@ bool SDL_RenderLines(SDL_Renderer *renderer, const SDL_FPoint *points, int count
             int num_indices = 0;
             const int size_indices = 4;
             int cur_index = -4;
-            const int is_looping = (points[0].x == points[count - 1].x && points[0].y == points[count - 1].y);
+            const bool is_looping = (points[0].x == points[count - 1].x && points[0].y == points[count - 1].y);
             SDL_FPoint p; // previous point
             p.x = p.y = 0.0f;
             /*       p            q
@@ -3710,7 +3718,7 @@ bool SDL_RenderLines(SDL_Renderer *renderer, const SDL_FPoint *points, int count
     num_indices += 3;
 
                 // closed polyline, don´t draw twice the point
-                if (i || is_looping == 0) {
+                if (i || !is_looping) {
                     ADD_TRIANGLE(4, 5, 6)
                     ADD_TRIANGLE(4, 6, 7)
                 }
@@ -3985,8 +3993,7 @@ bool SDL_RenderTexture(SDL_Renderer *renderer, SDL_Texture *texture, const SDL_F
     real_srcrect.w = (float)texture->w;
     real_srcrect.h = (float)texture->h;
     if (srcrect) {
-        if (!SDL_GetRectIntersectionFloat(srcrect, &real_srcrect, &real_srcrect) ||
-            real_srcrect.w == 0.0f || real_srcrect.h == 0.0f) {
+        if (!SDL_GetRectIntersectionFloat(srcrect, &real_srcrect, &real_srcrect)) {
             return true;
         }
     }
@@ -4865,7 +4872,7 @@ static bool SDLCALL SDL_SW_RenderGeometryRaw(SDL_Renderer *renderer,
             continue;
         }
 
-        /* Two triangles forming a quadialateral,
+        /* Two triangles forming a quadrilateral,
          * prev and current triangles must have exactly 2 common vertices */
         {
             int cnt = 0, j = 3;
@@ -4991,6 +4998,22 @@ static bool SDLCALL SDL_SW_RenderGeometryRaw(SDL_Renderer *renderer,
 #if DEBUG_SW_RENDER_GEOMETRY
                 is_uniform = 0;
 #endif
+            }
+        }
+
+        // Check if UVs within range
+        if (is_quad) {
+            const float *uv0_ = (const float *)((const char *)uv + A * color_stride);
+            const float *uv1_ = (const float *)((const char *)uv + B * color_stride);
+            const float *uv2_ = (const float *)((const char *)uv + C * color_stride);
+            const float *uv3_ = (const float *)((const char *)uv + C2 * color_stride);
+            if (uv0_[0] >= 0.0f && uv0_[0] <= 1.0f &&
+                uv1_[0] >= 0.0f && uv1_[0] <= 1.0f &&
+                uv2_[0] >= 0.0f && uv2_[0] <= 1.0f &&
+                uv3_[0] >= 0.0f && uv3_[0] <= 1.0f) {
+                // ok
+            } else {
+                is_quad = 0;
             }
         }
 
@@ -5173,7 +5196,7 @@ bool SDL_RenderGeometryRaw(SDL_Renderer *renderer,
     texture_address_mode_v = renderer->texture_address_mode_v;
     if (texture &&
         (texture_address_mode_u == SDL_TEXTURE_ADDRESS_AUTO ||
-         texture_address_mode_u == SDL_TEXTURE_ADDRESS_AUTO)) {
+         texture_address_mode_v == SDL_TEXTURE_ADDRESS_AUTO)) {
         for (i = 0; i < num_vertices; ++i) {
             const float *uv_ = (const float *)((const char *)uv + i * uv_stride);
             float u = uv_[0];

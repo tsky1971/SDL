@@ -1072,8 +1072,8 @@ extern "C" {
  *
  * By default, SDL will try all available GPU backends in a reasonable order
  * until it finds one that can work, but this hint allows the app or user to
- * force a specific target, such as "direct3d11" if, say, your hardware
- * supports D3D12 but want to try using D3D11 instead.
+ * force a specific target, such as "direct3d12" if, say, your hardware
+ * supports Vulkan but you want to try using D3D12 instead.
  *
  * This hint should be set before any GPU functions are called.
  *
@@ -1747,6 +1747,32 @@ extern "C" {
 #define SDL_HINT_JOYSTICK_HIDAPI_8BITDO "SDL_JOYSTICK_HIDAPI_8BITDO"
 
 /**
+ * A variable controlling whether the HIDAPI driver for SInput controllers
+ * should be used.
+ *
+ * More info - https://github.com/HandHeldLegend/SInput-HID
+ *
+ * This variable can be set to the following values:
+ *
+ * "0" - HIDAPI driver is not used. "1" - HIDAPI driver is used.
+ *
+ * The default is the value of SDL_HINT_JOYSTICK_HIDAPI
+ */
+#define SDL_HINT_JOYSTICK_HIDAPI_SINPUT "SDL_JOYSTICK_HIDAPI_SINPUT"
+
+/**
+ * A variable controlling whether the HIDAPI driver for Flydigi controllers
+ * should be used.
+ *
+ * This variable can be set to the following values:
+ *
+ * "0" - HIDAPI driver is not used. "1" - HIDAPI driver is used.
+ *
+ * The default is the value of SDL_HINT_JOYSTICK_HIDAPI
+ */
+#define SDL_HINT_JOYSTICK_HIDAPI_FLYDIGI "SDL_JOYSTICK_HIDAPI_FLYDIGI"
+
+/**
  * A variable controlling whether the HIDAPI driver for Nintendo Switch
  * controllers should be used.
  *
@@ -1950,6 +1976,41 @@ extern "C" {
 #define SDL_HINT_JOYSTICK_HIDAPI_XBOX_ONE_HOME_LED "SDL_JOYSTICK_HIDAPI_XBOX_ONE_HOME_LED"
 
 /**
+ * A variable controlling whether the new HIDAPI driver for wired Xbox One
+ * (GIP) controllers should be used.
+ *
+ * The variable can be set to the following values:
+ *
+ * - "0": HIDAPI driver is not used.
+ * - "1": HIDAPI driver is used.
+ *
+ * The default is the value of SDL_HINT_JOYSTICK_HIDAPI_XBOX_ONE.
+ *
+ * This hint should be set before initializing joysticks and gamepads.
+ *
+ * \since This hint is available since SDL 3.4.0.
+ */
+#define SDL_HINT_JOYSTICK_HIDAPI_GIP "SDL_JOYSTICK_HIDAPI_GIP"
+
+/**
+ * A variable controlling whether the new HIDAPI driver for wired Xbox One
+ * (GIP) controllers should reset the controller if it can't get the metadata
+ * from the controller.
+ *
+ * The variable can be set to the following values:
+ *
+ * - "0": Assume this is a generic controller.
+ * - "1": Reset the controller to get metadata.
+ *
+ * By default the controller is not reset.
+ *
+ * This hint should be set before initializing joysticks and gamepads.
+ *
+ * \since This hint is available since SDL 3.4.0.
+ */
+#define SDL_HINT_JOYSTICK_HIDAPI_GIP_RESET_FOR_METADATA "SDL_JOYSTICK_HIDAPI_GIP_RESET_FOR_METADATA"
+
+/**
  * A variable controlling whether IOKit should be used for controller
  * handling.
  *
@@ -2049,8 +2110,8 @@ extern "C" {
  *
  * The variable can be set to the following values:
  *
- * - "0": RAWINPUT drivers are not used.
- * - "1": RAWINPUT drivers are used. (default)
+ * - "0": RAWINPUT drivers are not used. (default)
+ * - "1": RAWINPUT drivers are used.
  *
  * This hint should be set before SDL is initialized.
  *
@@ -2452,6 +2513,10 @@ extern "C" {
  *
  * This defaults to 0, and specifying NULL for the hint's value will restore
  * the default.
+ *
+ * This doesn't have to be an integer value. For example, "59.94" won't be
+ * rounded to an integer rate; the digits after the decimal are actually
+ * respected.
  *
  * This hint can be set anytime.
  *
@@ -4330,6 +4395,30 @@ extern "C" {
  */
 #define SDL_HINT_PEN_TOUCH_EVENTS "SDL_PEN_TOUCH_EVENTS"
 
+/**
+ * A variable controlling whether SDL logs some debug information.
+ *
+ * The variable can be set to the following values:
+ *
+ * - "0": SDL debug information will not be logged. (default)
+ * - "1": SDL debug information will be logged.
+ *
+ * This is generally meant to be used as an environment variable to let
+ * end-users report what subsystems were chosen on their system, perhaps what
+ * sort of hardware they are running on, etc, to aid in debugging. Logged
+ * information is sent through SDL_Log(), which means by default they appear
+ * on stdout on most platforms, or maybe OutputDebugString() on Windows, and
+ * can be funneled by the app with SDL_SetLogOutputFunction(), etc.
+ *
+ * The specific output might change between SDL versions; more information
+ * might be deemed useful in the future.
+ *
+ * This hint can be set anytime, but the specific logs are generated during
+ * subsystem init.
+ *
+ * \since This hint is available since SDL 3.4.0.
+ */
+#define SDL_HINT_DEBUG_LOGGING "SDL_DEBUG_LOGGING"
 
 /**
  * An enumeration of hint priorities.

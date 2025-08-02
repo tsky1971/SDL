@@ -76,6 +76,7 @@ include("${SDL3_SOURCE_DIR}/cmake/GetGitRevisionDescription.cmake")
 include("${SDL3_SOURCE_DIR}/cmake/3rdparty.cmake")
 include("${SDL3_SOURCE_DIR}/cmake/PreseedMSVCCache.cmake")
 include("${SDL3_SOURCE_DIR}/cmake/PreseedEmscriptenCache.cmake")
+include("${SDL3_SOURCE_DIR}/cmake/PreseedNokiaNGageCache.cmake")
 
 SDL_DetectCompiler()
 SDL_DetectTargetCPUArchitectures(SDL_CPUS)
@@ -155,7 +156,7 @@ endif()
 # The hidraw support doesn't catch Xbox, PS4 and Nintendo controllers,
 #  so we'll just use libusb when it's available. libusb does not support iOS,
 #  so we default to yes on iOS.
-if(IOS OR TVOS OR VISIONOS OR WATCHOS OR ANDROID)
+if(IOS OR TVOS OR VISIONOS OR WATCHOS OR ANDROID OR NGAGE)
   set(SDL_HIDAPI_LIBUSB_AVAILABLE FALSE)
 else()
   set(SDL_HIDAPI_LIBUSB_AVAILABLE TRUE)
@@ -188,9 +189,12 @@ if(MSVC)
     # Make sure /RTC1 is disabled, otherwise it will use functions from the CRT
     foreach(flag_var
         CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
-        CMAKE_C_FLAGS_MINSIZEREL CMAKE_C_FLAGS_RELWITHDEBINFO)
+        CMAKE_C_FLAGS_MINSIZEREL CMAKE_C_FLAGS_RELWITHDEBINFO
+        CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
+        CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
       string(REGEX REPLACE "/RTC(su|[1su])" "" ${flag_var} "${${flag_var}}")
     endforeach(flag_var)
+    set(CMAKE_MSVC_RUNTIME_CHECKS "")
   endif()
 
   if(MSVC_CLANG)
@@ -219,7 +223,7 @@ if(EMSCRIPTEN)
   set(SDL_SHARED_AVAILABLE OFF)
 endif()
 
-if(VITA OR PSP OR PS2 OR N3DS OR RISCOS)
+if(VITA OR PSP OR PS2 OR N3DS OR RISCOS OR NGAGE)
   set(SDL_SHARED_AVAILABLE OFF)
 endif()
 
@@ -414,6 +418,24 @@ if(VITA)
   set_option(VIDEO_VITA_PVR  "Build with PSVita PVR gles/gles2 support" OFF)
 endif()
 
+if (NGAGE)
+  set(SDL_GPU              OFF)
+  set(SDL_CAMERA           OFF)
+  set(SDL_JOYSTICK         OFF)
+  set(SDL_HAPTIC           OFF)
+  set(SDL_HIDAPI           OFF)
+  set(SDL_POWER            OFF)
+  set(SDL_SENSOR           OFF)
+  set(SDL_DIALOG           OFF)
+  set(SDL_DISKAUDIO        OFF)
+  set(SDL_DUMMYAUDIO       OFF)
+  set(SDL_DUMMYCAMERA      OFF)
+  set(SDL_DUMMYVIDEO       OFF)
+  set(SDL_OFFSCREEN        OFF)
+  set(SDL_RENDER_GPU       OFF)
+  set(SDL_VIRTUAL_JOYSTICK OFF)
+endif()
+
 if(NOT (SDL_SHARED OR SDL_STATIC))
   message(FATAL_ERROR "SDL_SHARED and SDL_STATIC cannot both be disabled")
 endif()
@@ -426,6 +448,7 @@ if(SDL_SHARED)
   add_library(SDL3-shared SHARED)
   add_library(SDL3::SDL3-shared ALIAS SDL3-shared)
   SDL_AddCommonCompilerFlags(SDL3-shared)
+  set_property(TARGET SDL3-shared PROPERTY UNITY_BUILD OFF)
   if ("c_std_99" IN_LIST CMAKE_C_COMPILE_FEATURES)
     target_compile_features(SDL3-shared PRIVATE c_std_99)
   else()
@@ -437,6 +460,7 @@ if(SDL_STATIC)
   add_library(SDL3-static STATIC)
   add_library(SDL3::SDL3-static ALIAS SDL3-static)
   SDL_AddCommonCompilerFlags(SDL3-static)
+  set_property(TARGET SDL3-static PROPERTY UNITY_BUILD OFF)
   if ("c_std_99" IN_LIST CMAKE_C_COMPILE_FEATURES)
     target_compile_features(SDL3-static PRIVATE c_std_99)
   else()
@@ -634,6 +658,11 @@ if(MSVC)
   if(MSVC_VERSION GREATER 1926 AND CMAKE_GENERATOR_PLATFORM MATCHES "Win32|x64")
     # Mark SDL3.dll as compatible with Control-flow Enforcement Technology (CET)
     sdl_shared_link_options("-CETCOMPAT")
+  endif()
+
+  # for VS >= 17.14 targeting ARM64: inline the Interlocked funcs
+  if(MSVC_VERSION GREATER 1943 AND SDL_CPU_ARM64 AND NOT SDL_LIBC)
+    sdl_compile_options(PRIVATE "/forceInterlockedFunctions-")
   endif()
 endif()
 
@@ -1201,6 +1230,7 @@ target_include_directories(SDL_uclibc PRIVATE "${SDL3_SOURCE_DIR}/src")
 target_include_directories(SDL_uclibc PRIVATE "${SDL3_SOURCE_DIR}/include")
 SDL_AddCommonCompilerFlags(SDL_uclibc)
 sdl_sources(STATIC "$<TARGET_OBJECTS:SDL_uclibc>")
+set_property(TARGET SDL_uclibc PROPERTY UNITY_BUILD OFF)
 if(TARGET SDL3-shared)
   target_link_libraries(SDL3-shared PRIVATE SDL_uclibc)
 endif()
@@ -1294,8 +1324,8 @@ if(ANDROID)
   list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake/android")
 
   sdl_glob_sources("${SDL3_SOURCE_DIR}/src/core/android/*.c")
-  sdl_sources("${ANDROID_NDK}/sources/android/cpufeatures/cpu-features.c")
-  set_property(SOURCE "${ANDROID_NDK}/sources/android/cpufeatures/cpu-features.c" APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-declaration-after-statement")
+  sdl_sources("${CMAKE_ANDROID_NDK}/sources/android/cpufeatures/cpu-features.c")
+  set_property(SOURCE "${CMAKE_ANDROID_NDK}/sources/android/cpufeatures/cpu-features.c" APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-declaration-after-statement")
 
   sdl_glob_sources("${SDL3_SOURCE_DIR}/src/misc/android/*.c")
   set(HAVE_SDL_MISC TRUE)
@@ -1339,9 +1369,7 @@ if(ANDROID)
     set(HAVE_SDL_HAPTIC TRUE)
   endif()
 
-  if(SDL_HIDAPI)
-    CheckHIDAPI()
-  endif()
+  CheckHIDAPI()
 
   if(SDL_JOYSTICK)
     set(SDL_JOYSTICK_ANDROID 1)
@@ -1483,6 +1511,11 @@ if(ANDROID)
       endif()
     endif()
   endif()
+
+if(TARGET SDL3-shared)
+  target_link_options(SDL3-shared PRIVATE "-Wl,-z,max-page-size=16384")
+  target_link_options(SDL3-shared PRIVATE "-Wl,-z,common-page-size=16384")
+endif()
 
 elseif(EMSCRIPTEN)
   # Hide noisy warnings that intend to aid mostly during initial stages of porting a new
@@ -1736,6 +1769,7 @@ elseif(UNIX AND NOT APPLE AND NOT RISCOS AND NOT HAIKU)
       sdl_sources(
         "${SDL3_SOURCE_DIR}/src/core/linux/SDL_dbus.c"
         "${SDL3_SOURCE_DIR}/src/core/linux/SDL_system_theme.c"
+        "${SDL3_SOURCE_DIR}/src/core/linux/SDL_progressbar.c"
       )
     endif()
 
@@ -1982,7 +2016,6 @@ elseif(WINDOWS)
   check_include_file(audioclient.h HAVE_AUDIOCLIENT_H)
   check_include_file(sensorsapi.h HAVE_SENSORSAPI_H)
   check_include_file(shellscalingapi.h HAVE_SHELLSCALINGAPI_H)
-  check_include_file(shobjidl_core.h HAVE_SHOBJIDL_CORE_H)
   check_c_source_compiles("
     #include <windows.h>
     #include <mfapi.h>
@@ -2930,6 +2963,81 @@ elseif(N3DS)
   set(HAVE_SDL_LOCALE TRUE)
 
   sdl_glob_sources("${SDL3_SOURCE_DIR}/src/io/n3ds/*.c")
+
+elseif(NGAGE)
+
+  enable_language(CXX)
+
+  set(SDL_MAIN_USE_CALLBACKS 1)
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/main/ngage/*.c")
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/main/ngage/*.cpp")
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/core/ngage/*.cpp")
+  set(HAVE_SDL_MAIN_CALLBACKS TRUE)
+
+  if(SDL_AUDIO)
+    set(SDL_AUDIO_DRIVER_NGAGE 1)
+    sdl_glob_sources("${SDL3_SOURCE_DIR}/src/audio/ngage/*.c")
+    sdl_glob_sources("${SDL3_SOURCE_DIR}/src/audio/ngage/*.cpp")
+    set(HAVE_SDL_AUDIO TRUE)
+  endif()
+
+  set(SDL_FILESYSTEM_NGAGE 1)
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/filesystem/ngage/*.c")
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/filesystem/ngage/*.cpp")
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/filesystem/posix/*.c")
+  set(HAVE_SDL_FILESYSTEM TRUE)
+
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/locale/ngage/*.cpp")
+
+  if(SDL_RENDER)
+    set(SDL_VIDEO_RENDER_NGAGE 1)
+    sdl_glob_sources("${SDL3_SOURCE_DIR}/src/render/ngage/*.c")
+  endif()
+
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/time/ngage/*.cpp")
+  set(SDL_TIME_NGAGE 1)
+
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/render/ngage/*.cpp")
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/time/unix/*.c")
+
+  set(SDL_TIMER_NGAGE 1)
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/timer/ngage/*.cpp")
+
+  set(SDL_FSOPS_POSIX        1)
+
+  set(SDL_VIDEO_DRIVER_NGAGE 1)
+  sdl_glob_sources("${SDL3_SOURCE_DIR}/src/video/ngage/*.c")
+  set(HAVE_SDL_TIMERS TRUE)
+
+  set_option(SDL_LEAN_AND_MEAN "Enable lean and mean" ON)
+  if(SDL_LEAN_AND_MEAN)
+    sdl_compile_definitions(
+      PRIVATE
+      SDL_LEAN_AND_MEAN
+    )
+  endif()
+
+  sdl_link_dependency(ngage
+    LINK_OPTIONS "SHELL:-s MAIN_COMPAT=0"
+    PKG_CONFIG_LINK_OPTIONS "-s;MAIN_COMPAT=0"
+    LIBS
+      NRenderer
+      3dtypes
+      cone
+      libgcc
+      libgcc_ngage
+      mediaclientaudiostream
+      charconv
+      bitgdi
+      euser
+      estlib
+      ws32
+      hal
+      fbscli
+      efsrv
+      scdv
+      gdi
+  )
 endif()
 
 sdl_sources(${SDL3_SOURCE_DIR}/src/dialog/SDL_dialog.c)
@@ -3023,7 +3131,7 @@ if(SDL_GPU)
     set(SDL_GPU_D3D11 1)
     set(HAVE_SDL_GPU TRUE)
   endif()
-  if(SDL_RENDER_D3D12)
+  if(WINDOWS)
     sdl_glob_sources("${SDL3_SOURCE_DIR}/src/gpu/d3d12/*.c")
     set(SDL_GPU_D3D12 1)
     set(HAVE_SDL_GPU TRUE)
@@ -3110,8 +3218,8 @@ endif()
 
 # We always need to have threads and timers around
 if(NOT HAVE_SDL_THREADS)
-  # The emscripten platform has been carefully vetted to work without threads
-  if(EMSCRIPTEN)
+  # The Emscripten and N-Gage platform has been carefully vetted to work without threads
+  if(EMSCRIPTEN OR NGAGE)
     set(SDL_THREADS_DISABLED 1)
     sdl_glob_sources("${SDL3_SOURCE_DIR}/src/thread/generic/*.c")
   else()
@@ -3294,7 +3402,7 @@ else()
 endif()
 
 if(ANDROID)
-  sdl_include_directories(PRIVATE SYSTEM "${ANDROID_NDK}/sources/android/cpufeatures")
+  sdl_include_directories(PRIVATE SYSTEM "${CMAKE_ANDROID_NDK}/sources/android/cpufeatures")
 endif()
 
 if(APPLE)

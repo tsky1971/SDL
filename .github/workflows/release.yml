@@ -256,7 +256,7 @@ jobs:
 
   msvc:
     needs: [src]
-    runs-on: windows-2019
+    runs-on: windows-2025
     outputs:
       VC-x86: ${{ steps.releaser.outputs.VC-x86 }}
       VC-x64: ${{ steps.releaser.outputs.VC-x64 }}
@@ -562,7 +562,7 @@ jobs:
         run: |
           python build-scripts/build-release.py \
             --actions android \
-            --android-api 23 \
+            --android-api 21 \
             --android-ndk-home "${{ steps.setup-ndk.outputs.ndk-path }}" \
             --commit ${{ inputs.commit }} \
             --root "${{ steps.tar.outputs.path }}" \

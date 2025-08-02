@@ -216,6 +216,16 @@ void SDL_UpdateTrays(void)
 {
 }
 
+bool SDL_IsTraySupported(void)
+{
+    if (!SDL_IsMainThread()) {
+        SDL_SetError("This function should be called on the main thread");
+        return false;
+    }
+
+    return true;
+}
+
 SDL_Tray *SDL_CreateTray(SDL_Surface *icon, const char *tooltip)
 {
     if (!SDL_IsMainThread()) {
@@ -544,7 +554,7 @@ void SDL_SetTrayEntryLabel(SDL_TrayEntry *entry, const char *label)
     mii.dwTypeData = label_w;
     mii.cch = (UINT) SDL_wcslen(label_w);
 
-    if (!SetMenuItemInfoW(entry->parent->hMenu, (UINT) entry->id, TRUE, &mii)) {
+    if (!SetMenuItemInfoW(entry->parent->hMenu, (UINT) entry->id, FALSE, &mii)) {
         SDL_SetError("Couldn't update tray entry label");
     }
 
