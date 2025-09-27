@@ -148,7 +148,7 @@ static bool SDL_ValidMetadataProperty(const char *name)
 
 bool SDL_SetAppMetadataProperty(const char *name, const char *value)
 {
-    if (!SDL_ValidMetadataProperty(name)) {
+    CHECK_PARAM(!SDL_ValidMetadataProperty(name)) {
         return SDL_InvalidParamError("name");
     }
 
@@ -157,7 +157,7 @@ bool SDL_SetAppMetadataProperty(const char *name, const char *value)
 
 const char *SDL_GetAppMetadataProperty(const char *name)
 {
-    if (!SDL_ValidMetadataProperty(name)) {
+    CHECK_PARAM(!SDL_ValidMetadataProperty(name)) {
         SDL_InvalidParamError("name");
         return NULL;
     }
@@ -237,6 +237,7 @@ static bool SDL_ShouldQuitSubsystem(Uint32 subsystem)
     return (((subsystem_index >= 0) && (SDL_SubsystemRefCount[subsystem_index] == 1)) || SDL_bInMainQuit);
 }
 
+#if !defined(SDL_VIDEO_DISABLED) || !defined(SDL_AUDIO_DISABLED) || !defined(SDL_JOYSTICK_DISABLED)
 /* Private helper to either increment's existing ref counter,
  * or fully init a new subsystem. */
 static bool SDL_InitOrIncrementSubsystem(Uint32 subsystem)
@@ -252,6 +253,7 @@ static bool SDL_InitOrIncrementSubsystem(Uint32 subsystem)
     }
     return SDL_InitSubSystem(subsystem);
 }
+#endif // !SDL_VIDEO_DISABLED || !SDL_AUDIO_DISABLED || !SDL_JOYSTICK_DISABLED
 
 void SDL_SetMainReady(void)
 {
@@ -770,6 +772,8 @@ const char *SDL_GetPlatform(void)
     return "PlayStation Vita";
 #elif defined(SDL_PLATFORM_3DS)
     return "Nintendo 3DS";
+#elif defined(SDL_PLATFORM_HURD)
+    return "GNU/Hurd";
 #elif defined(__managarm__)
     return "Managarm";
 #else
@@ -841,9 +845,7 @@ SDL_Sandbox SDL_GetSandbox(void)
 
 #ifdef SDL_PLATFORM_WIN32
 
-#if (!defined(HAVE_LIBC) || defined(__WATCOMC__)) && !defined(SDL_STATIC_LIB)
-// FIXME: Still need to include DllMain() on Watcom C ?
-
+#if !defined(HAVE_LIBC) && !defined(SDL_STATIC_LIB)
 BOOL APIENTRY MINGW32_FORCEALIGN _DllMainCRTStartup(HANDLE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
 {
     switch (ul_reason_for_call) {

@@ -18,21 +18,10 @@
      misrepresented as being the original software.
   3. This notice may not be removed or altered from any source distribution.
 */
-#include "SDL_internal.h"
 
-#ifndef SDL_surface_utils_h_
-#define SDL_surface_utils_h_
+#ifndef SDL_zenitymessagebox_h_
+#define SDL_zenitymessagebox_h_
 
-#include "../../core/windows/SDL_windows.h"
+extern bool SDL_Zenity_ShowMessageBox(const SDL_MessageBoxData *messageboxdata, int *buttonID);
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-extern HICON CreateIconFromSurface(SDL_Surface *surface);
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif
+#endif // SDL_waylandmessagebox_h_

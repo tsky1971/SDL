@@ -86,7 +86,7 @@ typedef enum SDL_ScaleMode
     SDL_SCALEMODE_INVALID = -1,
     SDL_SCALEMODE_NEAREST,  /**< nearest pixel sampling */
     SDL_SCALEMODE_LINEAR,   /**< linear filtering */
-    SDL_SCALEMODE_PIXELART  /**< nearest pixel sampling with improved scaling for pixel art */
+    SDL_SCALEMODE_PIXELART  /**< nearest pixel sampling with improved scaling for pixel art, available since SDL 3.4.0 */
 } SDL_ScaleMode;
 
 /**
@@ -96,9 +96,10 @@ typedef enum SDL_ScaleMode
  */
 typedef enum SDL_FlipMode
 {
-    SDL_FLIP_NONE,          /**< Do not flip */
-    SDL_FLIP_HORIZONTAL,    /**< flip horizontally */
-    SDL_FLIP_VERTICAL       /**< flip vertically */
+    SDL_FLIP_NONE,                                                                  /**< Do not flip */
+    SDL_FLIP_HORIZONTAL,                                                            /**< flip horizontally */
+    SDL_FLIP_VERTICAL,                                                              /**< flip vertically */
+    SDL_FLIP_HORIZONTAL_AND_VERTICAL = (SDL_FLIP_HORIZONTAL | SDL_FLIP_VERTICAL)    /**< flip horizontally and vertically (not a diagonal flip) */
 } SDL_FlipMode;
 
 #ifndef SDL_INTERNAL

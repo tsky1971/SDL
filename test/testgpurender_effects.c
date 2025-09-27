@@ -46,7 +46,7 @@ typedef enum
     NUM_EFFECTS
 } FullscreenEffect;
 
-typedef struct 
+typedef struct
 {
     const char *name;
     const unsigned char *dxil_shader_source;
@@ -61,7 +61,7 @@ typedef struct
     SDL_GPURenderState *state;
 } FullscreenEffectData;
 
-typedef struct  
+typedef struct
 {
     float texture_width;
     float texture_height;
@@ -83,12 +83,12 @@ static FullscreenEffectData effects[] = {
     },
     {
         "Grayscale",
-        testgpu_effects_grayscale_frag_dxil,
-        sizeof(testgpu_effects_grayscale_frag_dxil),
-        testgpu_effects_grayscale_frag_msl,
-        sizeof(testgpu_effects_grayscale_frag_msl),
-        testgpu_effects_grayscale_frag_spv,
-        sizeof(testgpu_effects_grayscale_frag_spv),
+        testgpurender_effects_grayscale_frag_dxil,
+        sizeof(testgpurender_effects_grayscale_frag_dxil),
+        testgpurender_effects_grayscale_frag_msl,
+        sizeof(testgpurender_effects_grayscale_frag_msl),
+        testgpurender_effects_grayscale_frag_spv,
+        sizeof(testgpurender_effects_grayscale_frag_spv),
         1,
         0,
         NULL,
@@ -96,12 +96,12 @@ static FullscreenEffectData effects[] = {
     },
     {
         "CRT monitor",
-        testgpu_effects_CRT_frag_dxil,
-        sizeof(testgpu_effects_CRT_frag_dxil),
-        testgpu_effects_CRT_frag_msl,
-        sizeof(testgpu_effects_CRT_frag_msl),
-        testgpu_effects_CRT_frag_spv,
-        sizeof(testgpu_effects_CRT_frag_spv),
+        testgpurender_effects_CRT_frag_dxil,
+        sizeof(testgpurender_effects_CRT_frag_dxil),
+        testgpurender_effects_CRT_frag_msl,
+        sizeof(testgpurender_effects_CRT_frag_msl),
+        testgpurender_effects_CRT_frag_spv,
+        sizeof(testgpurender_effects_CRT_frag_spv),
         1,
         1,
         NULL,
@@ -145,7 +145,7 @@ static bool InitGPURenderState(void)
 {
     SDL_GPUShaderFormat formats;
     SDL_GPUShaderCreateInfo info;
-    SDL_GPURenderStateDesc desc;
+    SDL_GPURenderStateCreateInfo createinfo;
     int i;
 
     formats = SDL_GetGPUShaderFormats(device);
@@ -187,9 +187,9 @@ static bool InitGPURenderState(void)
             return false;
         }
 
-        SDL_INIT_INTERFACE(&desc);
-        desc.fragment_shader = data->shader;
-        data->state = SDL_CreateGPURenderState(renderer, &desc);
+        SDL_zero(createinfo);
+        createinfo.fragment_shader = data->shader;
+        data->state = SDL_CreateGPURenderState(renderer, &createinfo);
         if (!data->state) {
             SDL_Log("Couldn't create render state: %s", SDL_GetError());
             return false;

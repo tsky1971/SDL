@@ -44,19 +44,20 @@
 {
     static NSCursor *invisibleCursor = NULL;
     if (!invisibleCursor) {
-        // RAW 16x16 transparent GIF
-        static unsigned char cursorBytes[] = {
-            0x47, 0x49, 0x46, 0x38, 0x37, 0x61, 0x10, 0x00, 0x10, 0x00, 0x80,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x21, 0xF9, 0x04,
-            0x01, 0x00, 0x00, 0x01, 0x00, 0x2C, 0x00, 0x00, 0x00, 0x00, 0x10,
-            0x00, 0x10, 0x00, 0x00, 0x02, 0x0E, 0x8C, 0x8F, 0xA9, 0xCB, 0xED,
-            0x0F, 0xA3, 0x9C, 0xB4, 0xDA, 0x8B, 0xB3, 0x3E, 0x05, 0x00, 0x3B
-        };
+        const int size = 32;
+        NSImage *cursorImage = [[NSImage alloc] initWithSize:NSMakeSize(size, size)];
+        NSBitmapImageRep *imgrep = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:NULL
+                                                                           pixelsWide:size
+                                                                           pixelsHigh:size
+                                                                        bitsPerSample:8
+                                                                      samplesPerPixel:4
+                                                                             hasAlpha:YES
+                                                                             isPlanar:NO
+                                                                       colorSpaceName:NSDeviceRGBColorSpace
+                                                                          bytesPerRow:(size * 4)
+                                                                         bitsPerPixel:32];
+        [cursorImage addRepresentation:imgrep];
 
-        NSData *cursorData = [NSData dataWithBytesNoCopy:&cursorBytes[0]
-                                                  length:sizeof(cursorBytes)
-                                            freeWhenDone:NO];
-        NSImage *cursorImage = [[NSImage alloc] initWithData:cursorData];
         invisibleCursor = [[NSCursor alloc] initWithImage:cursorImage
                                                   hotSpot:NSZeroPoint];
     }
@@ -373,12 +374,12 @@ bool Cocoa_InitMouse(SDL_VideoDevice *_this)
 {
     NSPoint location;
     SDL_Mouse *mouse = SDL_GetMouse();
-    SDL_MouseData *internal = (SDL_MouseData *)SDL_calloc(1, sizeof(SDL_MouseData));
-    if (internal == NULL) {
+    SDL_MouseData *data = (SDL_MouseData *)SDL_calloc(1, sizeof(SDL_MouseData));
+    if (data == NULL) {
         return false;
     }
 
-    mouse->internal = internal;
+    mouse->internal = data;
     mouse->CreateCursor = Cocoa_CreateCursor;
     mouse->CreateSystemCursor = Cocoa_CreateSystemCursor;
     mouse->ShowCursor = Cocoa_ShowCursor;
@@ -392,8 +393,8 @@ bool Cocoa_InitMouse(SDL_VideoDevice *_this)
     SDL_SetDefaultCursor(Cocoa_CreateDefaultCursor());
 
     location = [NSEvent mouseLocation];
-    internal->lastMoveX = location.x;
-    internal->lastMoveY = location.y;
+    data->lastMoveX = location.x;
+    data->lastMoveY = location.y;
     return true;
 }
 
@@ -585,13 +586,6 @@ void Cocoa_HandleMouseWarp(CGFloat x, CGFloat y)
 
 void Cocoa_QuitMouse(SDL_VideoDevice *_this)
 {
-    SDL_Mouse *mouse = SDL_GetMouse();
-    if (mouse) {
-        if (mouse->internal) {
-            SDL_free(mouse->internal);
-            mouse->internal = NULL;
-        }
-    }
 }
 
 #endif // SDL_VIDEO_DRIVER_COCOA
