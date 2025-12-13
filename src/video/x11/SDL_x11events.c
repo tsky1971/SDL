@@ -1011,13 +1011,10 @@ static int XLookupStringAsUTF8(XKeyEvent *event_struct, char *buffer_return, int
     return result;
 }
 
-SDL_WindowData *X11_FindWindow(SDL_VideoDevice *_this, Window window)
+SDL_WindowData *X11_FindWindow(SDL_VideoData *videodata, Window window)
 {
-    const SDL_VideoData *videodata = _this->internal;
-    int i;
-
     if (videodata && videodata->windowlist) {
-        for (i = 0; i < videodata->numwindows; ++i) {
+        for (int i = 0; i < videodata->numwindows; ++i) {
             if ((videodata->windowlist[i] != NULL) &&
                 (videodata->windowlist[i]->xwindow == window)) {
                 return videodata->windowlist[i];
@@ -1180,6 +1177,10 @@ void X11_HandleButtonRelease(SDL_VideoDevice *_this, SDL_WindowData *windowdata,
             button -= (8 - SDL_BUTTON_X1);
         }
         SDL_SendMouseButton(timestamp, window, mouseID, button, false);
+
+        if (window->internal->pending_grab) {
+            X11_SetWindowMouseGrab(_this, window, true);
+        }
     }
 }
 
@@ -1337,7 +1338,7 @@ static void X11_DispatchEvent(SDL_VideoDevice *_this, XEvent *xevent)
     // xsettings internally filters events for the windows it watches
     X11_HandleXsettingsEvent(_this, xevent);
 
-    data = X11_FindWindow(_this, xevent->xany.window);
+    data = X11_FindWindow(videodata, xevent->xany.window);
 
     if (!data) {
         // The window for KeymapNotify, etc events is 0
@@ -1418,31 +1419,33 @@ static void X11_DispatchEvent(SDL_VideoDevice *_this, XEvent *xevent)
 
                 X11_UpdateKeymap(_this, true);
             }
-        } else if (xevent->type == PropertyNotify && videodata && videodata->windowlist) {
+        } else if (xevent->type == PropertyNotify && videodata) {
             char *name_of_atom = X11_XGetAtomName(display, xevent->xproperty.atom);
-
-            if (SDL_strncmp(name_of_atom, "_ICC_PROFILE", sizeof("_ICC_PROFILE") - 1) == 0) {
-                XWindowAttributes attrib;
-                int screennum;
-                for (i = 0; i < videodata->numwindows; ++i) {
-                    if (videodata->windowlist[i] != NULL) {
-                        data = videodata->windowlist[i];
-                        X11_XGetWindowAttributes(display, data->xwindow, &attrib);
-                        screennum = X11_XScreenNumberOfScreen(attrib.screen);
-                        if (screennum == 0 && SDL_strcmp(name_of_atom, "_ICC_PROFILE") == 0) {
-                            SDL_SendWindowEvent(data->window, SDL_EVENT_WINDOW_ICCPROF_CHANGED, 0, 0);
-                        } else if (SDL_strncmp(name_of_atom, "_ICC_PROFILE_", sizeof("_ICC_PROFILE_") - 1) == 0 && SDL_strlen(name_of_atom) > sizeof("_ICC_PROFILE_") - 1) {
-                            int iccscreennum = SDL_atoi(&name_of_atom[sizeof("_ICC_PROFILE_") - 1]);
-
-                            if (screennum == iccscreennum) {
+            if (name_of_atom) {
+                if (SDL_startswith(name_of_atom, "_ICC_PROFILE")) {
+                    XWindowAttributes attrib;
+                    int screennum;
+                    for (i = 0; i < videodata->numwindows; ++i) {
+                        if (videodata->windowlist[i] != NULL) {
+                            data = videodata->windowlist[i];
+                            X11_XGetWindowAttributes(display, data->xwindow, &attrib);
+                            screennum = X11_XScreenNumberOfScreen(attrib.screen);
+                            if (screennum == 0 && SDL_strcmp(name_of_atom, "_ICC_PROFILE") == 0) {
                                 SDL_SendWindowEvent(data->window, SDL_EVENT_WINDOW_ICCPROF_CHANGED, 0, 0);
+                            } else if (SDL_strncmp(name_of_atom, "_ICC_PROFILE_", sizeof("_ICC_PROFILE_") - 1) == 0 && SDL_strlen(name_of_atom) > sizeof("_ICC_PROFILE_") - 1) {
+                                int iccscreennum = SDL_atoi(&name_of_atom[sizeof("_ICC_PROFILE_") - 1]);
+
+                                if (screennum == iccscreennum) {
+                                    SDL_SendWindowEvent(data->window, SDL_EVENT_WINDOW_ICCPROF_CHANGED, 0, 0);
+                                }
                             }
                         }
                     }
+                } else if (SDL_strcmp(name_of_atom, "_NET_WORKAREA") == 0) {
+                    for (i = 0; i < _this->num_displays; ++i) {
+                        SDL_SendDisplayEvent(_this->displays[i], SDL_EVENT_DISPLAY_USABLE_BOUNDS_CHANGED, 0, 0);
+                    }
                 }
-            }
-
-            if (name_of_atom) {
                 X11_XFree(name_of_atom);
             }
         }
@@ -2269,10 +2272,6 @@ int X11_WaitEventTimeout(SDL_VideoDevice *_this, Sint64 timeoutNS)
     }
 
     X11_DispatchEvent(_this, &xevent);
-
-#ifdef SDL_USE_LIBDBUS
-    SDL_DBus_PumpEvents();
-#endif
     return 1;
 }
 
@@ -2324,10 +2323,6 @@ void X11_PumpEvents(SDL_VideoDevice *_this)
     while (X11_PollEvent(data->display, &xevent)) {
         X11_DispatchEvent(_this, &xevent);
     }
-
-#ifdef SDL_USE_LIBDBUS
-    SDL_DBus_PumpEvents();
-#endif
 
     // FIXME: Only need to do this when there are pending focus changes
     X11_HandleFocusChanges(_this);

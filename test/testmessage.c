@@ -164,6 +164,11 @@ int main(int argc, char *argv[])
         quit(1);
     }
 
+    success = SDL_ShowSimpleMessageBox(0,
+                                       "No icon",
+                                       "This is a MessageBox with no icon!",
+                                       NULL);
+
     /* Google says this is Traditional Chinese for "beef with broccoli" */
     success = SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
                                        "UTF-8 Simple MessageBox",
@@ -207,6 +212,15 @@ int main(int argc, char *argv[])
     success = SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
                                        "Arabic",
                                        "يتم استخدام أنظمة الكتابة لتسجيل اللغة البشرية.",
+                                       NULL);
+    if (!success) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Error Presenting MessageBox: %s", SDL_GetError());
+        quit(1);
+    }
+    
+    success = SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
+                                       "Arabic (multi line)",
+                                       "سطر طويل جدًا من النص\nخط قصير\nسطر طويل للغاية من النص مذهل بشكل لا يصدق في اللغة العربية التي يتم التحدث بها في منطقة الشرق الأوسط وشمال أفريقيا",
                                        NULL);
     if (!success) {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Error Presenting MessageBox: %s", SDL_GetError());

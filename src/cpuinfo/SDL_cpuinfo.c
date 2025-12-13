@@ -29,7 +29,11 @@
 
 // CPU feature detection for SDL
 
-#ifdef HAVE_SYSCONF
+#if defined(HAVE_GETPAGESIZE) && !defined(SDL_PLATFORM_WINDOWS)
+#define USE_GETPAGESIZE
+#endif
+
+#if defined(HAVE_SYSCONF) || defined(USE_GETPAGESIZE)
 #include <unistd.h>
 #endif
 #ifdef HAVE_SYSCTLBYNAME
@@ -72,11 +76,7 @@
 #include <sys/param.h>
 #endif
 
-#if defined(SDL_PLATFORM_ANDROID) && defined(__arm__) && !defined(HAVE_GETAUXVAL)
-#include <cpu-features.h>
-#endif
-
-#if defined(HAVE_GETAUXVAL) || defined(HAVE_ELF_AUX_INFO)
+#if defined(HAVE_GETAUXVAL) || defined(HAVE_ELF_AUX_INFO) || defined(SDL_PLATFORM_ANDROID)
 #include <sys/auxv.h>
 #endif
 
@@ -488,22 +488,10 @@ static int CPU_haveNEON(void)
         return 0;
     }
     return (hasneon & HWCAP_NEON) == HWCAP_NEON;
-#elif (defined(SDL_PLATFORM_LINUX) || defined(SDL_PLATFORM_ANDROID)) && defined(HAVE_GETAUXVAL)
+#elif (defined(SDL_PLATFORM_LINUX) && defined(HAVE_GETAUXVAL)) || defined(SDL_PLATFORM_ANDROID)
     return (getauxval(AT_HWCAP) & HWCAP_NEON) == HWCAP_NEON;
 #elif defined(SDL_PLATFORM_LINUX)
     return readProcAuxvForNeon();
-#elif defined(SDL_PLATFORM_ANDROID)
-    // Use NDK cpufeatures to read either /proc/self/auxv or /proc/cpuinfo
-    {
-        AndroidCpuFamily cpu_family = android_getCpuFamily();
-        if (cpu_family == ANDROID_CPU_FAMILY_ARM) {
-            uint64_t cpu_features = android_getCpuFeatures();
-            if (cpu_features & ANDROID_CPU_ARM_FEATURE_NEON) {
-                return 1;
-            }
-        }
-        return 0;
-    }
 #elif defined(SDL_PLATFORM_RISCOS)
     // Use the VFPSupport_Features SWI to access the MVFR registers
     {
@@ -1212,6 +1200,65 @@ int SDL_GetSystemRAM(void)
     }
     return SDL_SystemRAM;
 }
+
+
+static int SDL_SystemPageSize = -1;
+
+int SDL_GetSystemPageSize(void)
+{
+    if (SDL_SystemPageSize == -1) {
+#ifdef SDL_PLATFORM_SYSTEM_PAGE_SIZE_PRIVATE  // consoles will define this in a platform-specific internal header.
+        SDL_SystemPageSize = SDL_PLATFORM_SYSTEM_PAGE_SIZE_PRIVATE;
+#endif
+#ifdef SDL_PLATFORM_3DS
+        SDL_SystemPageSize = 4096;  // It's an ARM11 CPU; I assume this is 4K.
+#endif
+#ifdef SDL_PLATFORM_VITA
+        SDL_SystemPageSize = 4096;  // It's an ARMv7 CPU; I assume this is 4K.
+#endif
+#ifdef SDL_PLATFORM_PS2
+        SDL_SystemPageSize = 4096;  // It's a MIPS R5900 CPU; I assume this is 4K.
+#endif
+#if defined(HAVE_SYSCONF) && (defined(_SC_PAGESIZE) || defined(_SC_PAGE_SIZE))
+        if (SDL_SystemPageSize <= 0) {
+            #if defined(_SC_PAGE_SIZE)
+            SDL_SystemPageSize = (int)sysconf(_SC_PAGE_SIZE);
+            #else
+            SDL_SystemPageSize = (int)sysconf(_SC_PAGESIZE);
+            #endif
+        }
+#endif
+#if defined(HAVE_SYSCTLBYNAME) && defined(HW_PAGESIZE)
+        if (SDL_SystemPageSize <= 0) {
+            // NetBSD, OpenBSD, FreeBSD, Darwin...everything agrees to use HW_PAGESIZE.
+            int mib[2] = { CTL_HW, HW_PAGESIZE };
+            int pagesize = 0;
+            size_t len = sizeof(pagesize);
+
+            if (sysctl(mib, 2, &pagesize, &len, NULL, 0) == 0) {
+                SDL_SystemPageSize = pagesize;
+            }
+        }
+#endif
+#ifdef USE_GETPAGESIZE
+        if (SDL_SystemPageSize <= 0) {
+            SDL_SystemPageSize = getpagesize();
+        }
+#endif
+#if defined(SDL_PLATFORM_WINDOWS)
+        if (SDL_SystemPageSize <= 0) {
+            SYSTEM_INFO sysinfo;
+            GetSystemInfo(&sysinfo);
+            SDL_SystemPageSize = (int) sysinfo.dwPageSize;
+        }
+#endif
+        if (SDL_SystemPageSize < 0) {  // in case we got a weird result somewhere, or no better information, force it to 0.
+            SDL_SystemPageSize = 0;  // unknown page size, sorry.
+        }
+    }
+    return SDL_SystemPageSize;
+}
+
 
 size_t SDL_GetSIMDAlignment(void)
 {

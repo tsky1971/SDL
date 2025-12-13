@@ -797,28 +797,18 @@ static bool GIP_AttachmentIsController(GIP_Attachment *attachment)
 
 static void GIP_MetadataFree(GIP_Metadata *metadata)
 {
-    if (metadata->device.audio_formats) {
-        SDL_free(metadata->device.audio_formats);
-    }
+    SDL_free(metadata->device.audio_formats);
     if (metadata->device.preferred_types) {
         int i;
         for (i = 0; i < metadata->device.num_preferred_types; i++) {
-            if (metadata->device.preferred_types[i]) {
-                SDL_free(metadata->device.preferred_types[i]);
-            }
+            SDL_free(metadata->device.preferred_types[i]);
         }
         SDL_free(metadata->device.preferred_types);
     }
-    if (metadata->device.supported_interfaces) {
-        SDL_free(metadata->device.supported_interfaces);
-    }
-    if (metadata->device.hid_descriptor) {
-        SDL_free(metadata->device.hid_descriptor);
-    }
+    SDL_free(metadata->device.supported_interfaces);
+    SDL_free(metadata->device.hid_descriptor);
 
-    if (metadata->message_metadata) {
-        SDL_free(metadata->message_metadata);
-    }
+    SDL_free(metadata->message_metadata);
     SDL_memset(metadata, 0, sizeof(*metadata));
 }
 
@@ -2695,6 +2685,8 @@ static GIP_Attachment * HIDAPI_DriverGIP_FindAttachment(SDL_HIDAPI_Device *devic
 {
     GIP_Device *ctx = (GIP_Device *)device->context;
     int i;
+
+    SDL_AssertJoysticksLocked();
 
     for (i = 0; i < MAX_ATTACHMENTS; i++) {
         if (ctx->attachments[i] && ctx->attachments[i]->joystick == joystick->instance_id) {

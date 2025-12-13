@@ -137,17 +137,13 @@ Uint32 SDL_GetNextObjectID(void)
 
 static SDL_InitState SDL_objects_init;
 static SDL_HashTable *SDL_objects;
-bool SDL_object_validation = false;
+bool SDL_object_validation = true;
 
 static void SDLCALL SDL_InvalidParamChecksChanged(void *userdata, const char *name, const char *oldValue, const char *hint)
 {
-    bool validation_enabled = false;
+    bool validation_enabled = true;
 
-#ifdef SDL_ASSERT_INVALID_PARAMS
-    // Full validation is enabled by default
-    validation_enabled = true;
-#endif
-
+#ifndef OBJECT_VALIDATION_REQUIRED
     if (hint) {
         switch (*hint) {
         case '0':
@@ -161,6 +157,8 @@ static void SDLCALL SDL_InvalidParamChecksChanged(void *userdata, const char *na
             break;
         }
     }
+#endif // !OBJECT_VALIDATION_REQUIRED
+
     SDL_object_validation = validation_enabled;
 }
 
@@ -252,7 +250,7 @@ static bool SDLCALL LogOneLeakedObject(void *userdata, const SDL_HashTable *tabl
         #undef SDLOBJTYPECASE
         default: break;
     }
-    SDL_Log("Leaked %s (%p)", type, object);
+    SDL_LogDebug(SDL_LOG_CATEGORY_SYSTEM, "Leaked %s (%p)", type, object);
     return true;  // keep iterating.
 }
 
@@ -261,7 +259,6 @@ void SDL_SetObjectsInvalid(void)
     if (SDL_ShouldQuit(&SDL_objects_init)) {
         // Log any leaked objects
         SDL_IterateHashTable(SDL_objects, LogOneLeakedObject, NULL);
-        SDL_assert(SDL_HashTableEmpty(SDL_objects));
         SDL_DestroyHashTable(SDL_objects);
         SDL_objects = NULL;
         SDL_SetInitialized(&SDL_objects_init, false);
@@ -577,12 +574,9 @@ char *SDL_CreateDeviceName(Uint16 vendor, Uint16 product, const char *vendor_nam
     return name;
 }
 
-#define SDL_DEBUG_LOG_INTRO "SDL_DEBUG: "
 
 void SDL_DebugLogBackend(const char *subsystem, const char *backend)
 {
-    if (SDL_GetHintBoolean(SDL_HINT_DEBUG_LOGGING, false)) {
-        SDL_Log(SDL_DEBUG_LOG_INTRO "chose %s backend '%s'", subsystem, backend);
-    }
+    SDL_LogDebug(SDL_LOG_CATEGORY_SYSTEM, "SDL chose %s backend '%s'", subsystem, backend);
 }
 

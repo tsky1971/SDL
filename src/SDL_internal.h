@@ -63,7 +63,6 @@
 #include "SDL_build_config.h"
 
 #include "dynapi/SDL_dynapi.h"
-#include "dynapi/SDL_dynapi_dlopennote.h"
 
 #if SDL_DYNAMIC_API
 #include "dynapi/SDL_dynapi_overrides.h"
@@ -266,6 +265,7 @@ extern "C" {
 #include "SDL_utils_c.h"
 #include "SDL_hashtable.h"
 
+
 /* SDL_ExitProcess is not declared in any public header, although
    it is shared between some parts of SDL, because we don't want
    anything calling it without an extremely good reason. */
@@ -291,11 +291,13 @@ extern SDL_NORETURN void SDL_ExitProcess(int exitcode);
 // If you define SDL_DISABLE_INVALID_PARAMS, you're promising that you'll
 // never pass an invalid parameter to SDL, since it may crash or lead to
 // hard to diagnose bugs. Let's assert that this is true in debug builds.
+#define OBJECT_VALIDATION_REQUIRED
 #define CHECK_PARAM(invalid) SDL_assert_always(!(invalid)); if (false)
 #else
 #define CHECK_PARAM(invalid) if (false)
 #endif
 #elif defined(SDL_ASSERT_INVALID_PARAMS)
+#define OBJECT_VALIDATION_REQUIRED
 #define CHECK_PARAM(invalid) SDL_assert_always(!(invalid)); if (invalid)
 #else
 #define CHECK_PARAM(invalid) if (invalid)

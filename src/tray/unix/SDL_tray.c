@@ -307,6 +307,7 @@ SDL_Tray *SDL_CreateTray(SDL_Surface *icon, const char *tooltip)
 
     SDL_RegisterTray(tray);
     SDL_Gtk_ExitContext(gtk);
+    SDL_free(sdl_dir);
 
     return tray;
 
@@ -317,9 +318,7 @@ sdl_dir_error:
     SDL_free(sdl_dir);
 
 tray_error:
-    if (tray) {
-        SDL_free(tray);
-    }
+    SDL_free(tray);
 
     if (gtk) {
         SDL_Gtk_ExitContext(gtk);

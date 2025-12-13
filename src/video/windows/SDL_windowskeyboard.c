@@ -815,9 +815,7 @@ static void IME_GetCompositionString(SDL_VideoData *videodata, HIMC himc, DWORD 
 
     length = ImmGetCompositionStringW(himc, string, NULL, 0);
     if (length > 0 && videodata->ime_composition_length < length) {
-        if (videodata->ime_composition) {
-            SDL_free(videodata->ime_composition);
-        }
+        SDL_free(videodata->ime_composition);
 
         videodata->ime_composition = (WCHAR *)SDL_malloc(length + sizeof(WCHAR));
         videodata->ime_composition_length = length;
@@ -1087,6 +1085,14 @@ bool WIN_HandleIMEMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM *lParam, SD
             trap = true;
         } else {
             SDL_DebugIMELog("WM_KEYDOWN normal");
+        }
+        break;
+    case WM_SYSKEYDOWN:
+        if (wParam == VK_PROCESSKEY) {
+            SDL_DebugIMELog("WM_SYSKEYDOWN VK_PROCESSKEY");
+            trap = true;
+        } else {
+            SDL_DebugIMELog("WM_SYSKEYDOWN normal");
         }
         break;
     case WM_INPUTLANGCHANGE:

@@ -60,7 +60,7 @@ struct SDL_Window
     bool external_graphics_context;
     bool fullscreen_exclusive;  // The window is currently fullscreen exclusive
     SDL_DisplayID last_fullscreen_exclusive_display;  // The last fullscreen_exclusive display
-    SDL_DisplayID last_displayID;
+    SDL_DisplayID displayID;
     SDL_DisplayID pending_displayID;
 
     /* Stored position and size for the window in the non-fullscreen state,
@@ -312,6 +312,7 @@ struct SDL_VideoDevice
     bool (*FlashWindow)(SDL_VideoDevice *_this, SDL_Window *window, SDL_FlashOperation operation);
     bool (*ApplyWindowProgress)(SDL_VideoDevice *_this, SDL_Window *window);
     bool (*SetWindowFocusable)(SDL_VideoDevice *_this, SDL_Window *window, bool focusable);
+    bool (*SetWindowFillDocument)(SDL_VideoDevice *_this, SDL_Window *window, bool fill);
     bool (*SyncWindow)(SDL_VideoDevice *_this, SDL_Window *window);
     bool (*ReconfigureWindow)(SDL_VideoDevice *_this, SDL_Window *window, SDL_WindowFlags flags);
 
@@ -372,7 +373,6 @@ struct SDL_VideoDevice
     void (*ShowScreenKeyboard)(SDL_VideoDevice *_this, SDL_Window *window, SDL_PropertiesID props);
     void (*HideScreenKeyboard)(SDL_VideoDevice *_this, SDL_Window *window);
     void (*SetTextInputProperties)(SDL_VideoDevice *_this, SDL_Window *window, SDL_PropertiesID props);
-    bool (*IsScreenKeyboardShown)(SDL_VideoDevice *_this, SDL_Window *window);
 
     // Clipboard
     const char **(*GetTextMimeTypes)(SDL_VideoDevice *_this, size_t *num_mime_types);
@@ -422,6 +422,8 @@ struct SDL_VideoDevice
     bool setting_display_mode;
     Uint32 device_caps;
     SDL_SystemTheme system_theme;
+    bool screen_keyboard_shown;
+    bool is_quitting;
 
     /* * * */
     // Data used by the GL drivers
@@ -612,5 +614,8 @@ extern SDL_TextInputType SDL_GetTextInputType(SDL_PropertiesID props);
 extern SDL_Capitalization SDL_GetTextInputCapitalization(SDL_PropertiesID props);
 extern bool SDL_GetTextInputAutocorrect(SDL_PropertiesID props);
 extern bool SDL_GetTextInputMultiline(SDL_PropertiesID props);
+
+extern void SDL_SendScreenKeyboardShown(void);
+extern void SDL_SendScreenKeyboardHidden(void);
 
 #endif // SDL_sysvideo_h_

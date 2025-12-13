@@ -171,10 +171,13 @@ int SDL_GetDefaultSampleFramesFromFreq(const int freq)
 
 int *SDL_ChannelMapDup(const int *origchmap, int channels)
 {
-    const size_t chmaplen = sizeof (*origchmap) * channels;
-    int *chmap = (int *)SDL_malloc(chmaplen);
-    if (chmap) {
-        SDL_memcpy(chmap, origchmap, chmaplen);
+    int *chmap = NULL;
+    if ((channels > 0) && origchmap) {
+        const size_t chmaplen = sizeof (*origchmap) * channels;
+        chmap = (int *)SDL_malloc(chmaplen);
+        if (chmap) {
+            SDL_memcpy(chmap, origchmap, chmaplen);
+        }
     }
     return chmap;
 }
@@ -1295,7 +1298,11 @@ void SDL_PlaybackAudioThreadShutdown(SDL_AudioDevice *device)
     const int frames = device->buffer_size / SDL_AUDIO_FRAMESIZE(device->spec);
     // Wait for the audio to drain if device didn't die.
     if (!SDL_GetAtomicInt(&device->zombie)) {
-        SDL_Delay(((frames * 1000) / device->spec.freq) * 2);
+        int delay = ((frames * 1000) / device->spec.freq) * 2;
+        if (delay > 100) {
+            delay = 100;
+        }
+        SDL_Delay(delay);
     }
     current_audio.impl.ThreadDeinit(device);
     SDL_AudioThreadFinalize(device);
@@ -1572,6 +1579,14 @@ const char *SDL_GetAudioDeviceName(SDL_AudioDeviceID devid)
         // remains valid (in case the device is unplugged at the wrong moment), we hold the
         // subsystem_rwlock while we copy the string.
         SDL_LockRWLockForReading(current_audio.subsystem_rwlock);
+
+        // Allow default device IDs to be used, just return the current default physical device's name.
+        if (devid == SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK) {
+            devid = current_audio.default_playback_device_id;
+        } else if (devid == SDL_AUDIO_DEVICE_DEFAULT_RECORDING) {
+            devid = current_audio.default_recording_device_id;
+        }
+
         SDL_FindInHashTable(islogical ? current_audio.device_hash_logical : current_audio.device_hash_physical, (const void *) (uintptr_t) devid, &vdev);
         if (!vdev) {
             SDL_SetError("Invalid audio device instance ID");
@@ -1617,9 +1632,7 @@ int *SDL_GetAudioDeviceChannelMap(SDL_AudioDeviceID devid, int *count)
     SDL_AudioDevice *device = ObtainPhysicalAudioDeviceDefaultAllowed(devid);
     if (device) {
         channels = device->spec.channels;
-        if (channels > 0 && device->chmap) {
-            result = SDL_ChannelMapDup(device->chmap, channels);
-        }
+        result = SDL_ChannelMapDup(device->chmap, channels);
     }
     ReleaseAudioDevice(device);
 

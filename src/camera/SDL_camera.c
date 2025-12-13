@@ -150,7 +150,7 @@ static size_t GetFrameBufLen(const SDL_CameraSpec *spec)
     return wxh * SDL_BYTESPERPIXEL(fmt);
 }
 
-static SDL_CameraFrameResult ZombieAcquireFrame(SDL_Camera *device, SDL_Surface *frame, Uint64 *timestampNS)
+static SDL_CameraFrameResult ZombieAcquireFrame(SDL_Camera *device, SDL_Surface *frame, Uint64 *timestampNS, float *rotation)
 {
     const SDL_CameraSpec *spec = &device->actual_spec;
 
@@ -229,10 +229,15 @@ static void ZombieReleaseFrame(SDL_Camera *device, SDL_Surface *frame) // Reclai
     // we just leave zombie_pixels alone, as we'll reuse it for every new frame until the camera is closed.
 }
 
+
+static void ObtainPhysicalCameraObj(SDL_Camera *device);
+static void ReleaseCamera(SDL_Camera *device);
+
+
 static void ClosePhysicalCamera(SDL_Camera *device)
 {
-    if (!device) {
-        return;
+    if (!device || (device->hidden == NULL)) {
+        return;  // device is not open.
     }
 
     SDL_SetAtomicInt(&device->shutdown, 1);
@@ -243,6 +248,8 @@ static void ClosePhysicalCamera(SDL_Camera *device)
         SDL_WaitThread(device->thread, NULL);
         device->thread = NULL;
     }
+
+    ObtainPhysicalCameraObj(device);
 
     // release frames that are queued up somewhere...
     if (!device->needs_conversion && !device->needs_scaling) {
@@ -255,6 +262,7 @@ static void ClosePhysicalCamera(SDL_Camera *device)
     }
 
     camera_driver.impl.CloseDevice(device);
+    device->hidden = NULL;  // just in case backend didn't reset this.
 
     SDL_DestroyProperties(device->props);
 
@@ -280,13 +288,16 @@ static void ClosePhysicalCamera(SDL_Camera *device)
     device->adjust_timestamp = 0;
 
     SDL_zero(device->spec);
+    UnrefPhysicalCamera(device);  // we're closed, release a reference.
+
+    ReleaseCamera(device);
 }
 
 // Don't hold the device lock when calling this, as we may destroy the device!
 void UnrefPhysicalCamera(SDL_Camera *device)
 {
     if (SDL_AtomicDecRef(&device->refcount)) {
-        // take it out of the device list.
+        // take it out of the device list. This will call DestroyCameraHashItem to clean up the object.
         SDL_LockRWLockForWriting(camera_driver.device_hash_lock);
         if (SDL_RemoveFromHashTable(camera_driver.device_hash, (const void *) (uintptr_t) device->instance_id)) {
             SDL_AddAtomicInt(&camera_driver.device_count, -1);
@@ -555,6 +566,8 @@ void SDL_CameraDisconnected(SDL_Camera *device)
             pending_tail->next = p;
             pending_tail = p;
         }
+
+        UnrefPhysicalCamera(device);   // camera is disconnected, drop its reference
     }
 
     ReleaseCamera(device);
@@ -819,9 +832,10 @@ bool SDL_CameraThreadIterate(SDL_Camera *device)
     SDL_Surface *output_surface = NULL;
     SurfaceList *slist = NULL;
     Uint64 timestampNS = 0;
+    float rotation = 0.0f;
 
     // AcquireFrame SHOULD NOT BLOCK, as we are holding a lock right now. Block in WaitDevice instead!
-    const SDL_CameraFrameResult rc = device->AcquireFrame(device, device->acquire_surface, &timestampNS);
+    const SDL_CameraFrameResult rc = device->AcquireFrame(device, device->acquire_surface, &timestampNS, &rotation);
 
     if (rc == SDL_CAMERA_FRAME_READY) {  // new frame acquired!
         #if DEBUG_CAMERA
@@ -915,6 +929,8 @@ bool SDL_CameraThreadIterate(SDL_Camera *device)
         acquired->pixels = NULL;
         acquired->pitch = 0;
 
+        SDL_SetFloatProperty(SDL_GetSurfaceProperties(output_surface), SDL_PROP_SURFACE_ROTATION_FLOAT, rotation);
+
         // make the filled output surface available to the app.
         SDL_LockMutex(device->lock);
         slist->next = device->filled_output_surfaces.next;
@@ -941,6 +957,8 @@ static int SDLCALL CameraThread(void *devicep)
     SDL_Log("CAMERA: dev[%p] Start thread 'CameraThread'", devicep);
     #endif
 
+    RefPhysicalCamera(device);  // this thread holds a reference.
+
     SDL_assert(device != NULL);
     SDL_CameraThreadSetup(device);
 
@@ -951,6 +969,8 @@ static int SDLCALL CameraThread(void *devicep)
     } while (SDL_CameraThreadIterate(device));
 
     SDL_CameraThreadShutdown(device);
+
+    UnrefPhysicalCamera(device);  // this thread no longer holds a reference.
 
     #if DEBUG_CAMERA
     SDL_Log("CAMERA: dev[%p] End thread 'CameraThread'", devicep);
@@ -1076,7 +1096,6 @@ static void ChooseBestCameraSpec(SDL_Camera *device, const SDL_CameraSpec *spec,
     // that.
 
     SDL_zerop(closest);
-    SDL_assert(((Uint32) SDL_PIXELFORMAT_UNKNOWN) == 0);  // since we SDL_zerop'd to this value.
 
     if (device->num_specs == 0) {  // device listed no specs! You get whatever you want!
         if (spec) {
@@ -1244,6 +1263,8 @@ SDL_Camera *SDL_OpenCamera(SDL_CameraID instance_id, const SDL_CameraSpec *spec)
             return NULL;
         }
     }
+
+    RefPhysicalCamera(device);  // we're open, hold a reference.
 
     ReleaseCamera(device);  // unlock, we're good to go!
 
@@ -1443,6 +1464,11 @@ void SDL_QuitCamera(void)
 static void SDLCALL DestroyCameraHashItem(void *userdata, const void *key, const void *value)
 {
     SDL_Camera *device = (SDL_Camera *) value;
+
+    #if DEBUG_CAMERA
+    SDL_Log("DESTROYING CAMERA '%s'", device->name);
+    #endif
+
     ClosePhysicalCamera(device);
     camera_driver.impl.FreeDeviceHandle(device);
     SDL_DestroyMutex(device->lock);

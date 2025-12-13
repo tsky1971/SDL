@@ -5,7 +5,7 @@ if(NOT DEFINED CMAKE_BUILD_TYPE)
 endif()
 
 # See docs/release_checklist.md
-project(SDL3 LANGUAGES C VERSION "3.3.0")
+project(SDL3 LANGUAGES C VERSION "3.3.5")
 
 if(CMAKE_SOURCE_DIR STREQUAL PROJECT_SOURCE_DIR)
   set(SDL3_MAINPROJECT ON)
@@ -169,12 +169,12 @@ else()
 endif()
 
 set(SDL_ASSEMBLY_DEFAULT OFF)
-if(USE_CLANG OR USE_GCC OR USE_INTELCC OR MSVC_VERSION GREATER 1400)
+if(USE_CLANG OR USE_GCC OR USE_INTELCC OR USE_TCC OR MSVC_VERSION GREATER 1400)
   set(SDL_ASSEMBLY_DEFAULT ON)
 endif()
 
 set(SDL_GCC_ATOMICS_DEFAULT OFF)
-if(USE_GCC OR USE_CLANG OR USE_INTELCC OR USE_QCC)
+if(USE_GCC OR USE_CLANG OR USE_INTELCC OR USE_QCC OR USE_TCC)
   set(SDL_GCC_ATOMICS_DEFAULT ON)
 endif()
 
@@ -347,6 +347,10 @@ dep_option(SDL_X11_XSCRNSAVER      "Enable Xscrnsaver support" ON SDL_X11 OFF)
 dep_option(SDL_X11_XSHAPE          "Enable XShape support" ON SDL_X11 OFF)
 dep_option(SDL_X11_XSYNC           "Enable Xsync support" ON SDL_X11 OFF)
 dep_option(SDL_X11_XTEST           "Enable XTest support" ON SDL_X11 OFF)
+dep_option(SDL_FRIBIDI             "Enable Fribidi support" ON SDL_X11 OFF)
+dep_option(SDL_FRIBIDI_SHARED      "Dynamically load Fribidi support" ON "SDL_FRIBIDI;SDL_DEPS_SHARED" OFF)
+dep_option(SDL_LIBTHAI             "Enable Thai support" ON SDL_X11 OFF)
+dep_option(SDL_LIBTHAI_SHARED      "Dynamically load Thai support" ON "SDL_LIBTHAI;SDL_DEPS_SHARED" OFF)
 dep_option(SDL_WAYLAND             "Use Wayland video driver" ${UNIX_SYS} "SDL_VIDEO" OFF)
 dep_option(SDL_WAYLAND_SHARED      "Dynamically load Wayland support" ON "SDL_WAYLAND;SDL_DEPS_SHARED" OFF)
 dep_option(SDL_WAYLAND_LIBDECOR    "Use client-side window decorations on Wayland" ON "SDL_WAYLAND" OFF)
@@ -389,7 +393,7 @@ cmake_dependent_option(SDL_SHARED "Build a shared version of the library" ${SDL_
 cmake_dependent_option(SDL_STATIC "Build a static version of the library" ${SDL_STATIC_DEFAULT} ${SDL_STATIC_AVAILABLE} OFF)
 option(SDL_TEST_LIBRARY   "Build the SDL3_test library" ON)
 
-dep_option(SDL_TESTS           "Build the test directory" OFF SDL_TEST_LIBRARY OFF)
+dep_option(SDL_TESTS           "Build the test directory" ${SDL3_MAINPROJECT} SDL_TEST_LIBRARY OFF)
 dep_option(SDL_INSTALL_TESTS   "Install test-cases" OFF "SDL_INSTALL;NOT SDL_FRAMEWORK" OFF)
 dep_option(SDL_TESTS_LINK_SHARED "link tests to shared SDL library" "${SDL_SHARED}" "SDL_SHARED;SDL_STATIC" "${SDL_SHARED}")
 set(SDL_TESTS_TIMEOUT_MULTIPLIER "1" CACHE STRING "Timeout multiplier to account for really slow machines")
@@ -461,7 +465,10 @@ if(SDL_SHARED)
   if ("c_std_99" IN_LIST CMAKE_C_COMPILE_FEATURES)
     target_compile_features(SDL3-shared PRIVATE c_std_99)
   else()
-    message(WARNING "target_compile_features does not know c_std_99 for C compiler")
+    # tcc does support the subset of C99 used by SDL
+    if (NOT USE_TCC)
+      message(WARNING "target_compile_features does not know c_std_99 for C compiler")
+    endif()
   endif()
 endif()
 
@@ -474,7 +481,9 @@ if(SDL_STATIC)
   if ("c_std_99" IN_LIST CMAKE_C_COMPILE_FEATURES)
     target_compile_features(SDL3-static PRIVATE c_std_99)
   else()
-    message(WARNING "target_compile_features does not know c_std_99 for C compiler")
+    if (NOT USE_TCC)
+      message(WARNING "target_compile_features does not know c_std_99 for C compiler")
+    endif()
   endif()
 endif()
 
@@ -508,7 +517,10 @@ check_linker_supports_version_file(HAVE_WL_VERSION_SCRIPT)
 if(HAVE_WL_VERSION_SCRIPT)
   sdl_shared_link_options("-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/src/dynapi/SDL_dynapi.sym")
 else()
-  if((LINUX AND LIBC_IS_GLIBC) OR ANDROID)
+   # When building with tcc on Linux+glibc or Android, avoid emitting an error
+   # for lack of support of the version-script linker flag: the option will be
+   # silently ignored by the compiler and the build will still succeed.
+   if(((LINUX AND LIBC_IS_GLIBC) OR ANDROID) AND (NOT USE_TCC))
     message(FATAL_ERROR "Linker does not support '-Wl,--version-script=xxx.sym'. This is required on the current host platform (${SDL_CMAKE_PLATFORM}).")
   endif()
 endif()
@@ -912,6 +924,7 @@ if(SDL_ASSEMBLY)
         set(HAVE_ALTIVEC TRUE)
         set(SDL_ALTIVEC_BLITTERS 1)
         sdl_compile_options(PRIVATE "-maltivec")
+        sdl_compile_options(PRIVATE "-fno-tree-vectorize")
         set_property(SOURCE "${SDL3_SOURCE_DIR}/src/video/SDL_blit_N.c" APPEND PROPERTY COMPILE_DEFINITIONS "SDL_ENABLE_ALTIVEC")
         set_property(SOURCE "${SDL3_SOURCE_DIR}/src/video/SDL_blit_N.c" PROPERTY SKIP_PRECOMPILE_HEADERS 1)
       endif()
@@ -929,7 +942,17 @@ if(SDL_ASSEMBLY)
       cmake_pop_check_state()
 
       if(COMPILER_SUPPORTS_LSX AND HAVE_LSXINTRIN_H)
-        set_property(SOURCE "${SDL3_SOURCE_DIR}/src/video/yuv2rgb/yuv_rgb_lsx.c" APPEND PROPERTY COMPILE_OPTIONS "-mlsx")
+        set_property(SOURCE
+            "${SDL3_SOURCE_DIR}/src/video/yuv2rgb/yuv_rgb_lsx.c"
+            "${SDL3_SOURCE_DIR}/src/video/SDL_blit_A.c"
+            "${SDL3_SOURCE_DIR}/src/video/SDL_fillrect.c"
+            APPEND PROPERTY COMPILE_OPTIONS "-mlsx")
+
+        set_property(SOURCE
+            "${SDL3_SOURCE_DIR}/src/video/yuv2rgb/yuv_rgb_lsx.c"
+            "${SDL3_SOURCE_DIR}/src/video/SDL_blit_A.c"
+            "${SDL3_SOURCE_DIR}/src/video/SDL_fillrect.c"
+            PROPERTY SKIP_PRECOMPILE_HEADERS 1)
         set(HAVE_LSX TRUE)
       endif()
     endif()
@@ -1003,7 +1026,14 @@ set(SDL_DISABLE_ALLOCA 0)
 check_include_file("alloca.h" "HAVE_ALLOCA_H")
 if(MSVC)
   check_include_file("malloc.h" "HAVE_MALLOC_H")
-  check_symbol_exists("_alloca" "malloc.h" _ALLOCA_IN_MALLOC_H)
+  # Cannot use CheckSymbolExists for _alloca: purely intrinsic functions have no address (C7552)
+  if(NOT DEFINED _ALLOCA_IN_MALLOC_H)
+    message(STATUS "Looking for _alloca in malloc.h")
+    set(testsrc "${CMAKE_CURRENT_SOURCE_DIR}/test_malloc_alloca.c")
+    file(WRITE "${testsrc}" "#include <malloc.h>\n\nint main(int argc, char *argv[]) { void *ptr = _alloca(argc * (int)argv[0][0]); return ptr != (void *)0; }")
+    try_compile(_ALLOCA_IN_MALLOC_H "${CMAKE_CURRENT_BINARY_DIR}/alloca_in_malloc_h" SOURCES "${testsrc}")
+    message(STATUS "Looking for _alloca in malloc.h - ${_ALLOCA_IN_MALLOC_H}")
+  endif()
   if(NOT HAVE_ALLOCA_H AND NOT _ALLOCA_IN_MALLOC_H)
     set(SDL_DISABLE_ALLOCA 1)
   endif()
@@ -1142,7 +1172,7 @@ if(SDL_LIBC)
     check_symbol_exists(sysctlbyname "sys/types.h;sys/sysctl.h" HAVE_SYSCTLBYNAME)
     check_symbol_exists(getauxval "sys/auxv.h" HAVE_GETAUXVAL)
     check_symbol_exists(elf_aux_info "sys/auxv.h" HAVE_ELF_AUX_INFO)
-    check_symbol_exists(poll "poll.h" HAVE_POLL)
+    check_symbol_exists(ppoll "poll.h" HAVE_PPOLL)
     check_symbol_exists(memfd_create "sys/mman.h" HAVE_MEMFD_CREATE)
     check_symbol_exists(posix_fallocate "fcntl.h" HAVE_POSIX_FALLOCATE)
     check_symbol_exists(posix_spawn_file_actions_addchdir "spawn.h" HAVE_POSIX_SPAWN_FILE_ACTIONS_ADDCHDIR)
@@ -1387,8 +1417,6 @@ if(ANDROID)
     "${SDL3_SOURCE_DIR}/src/core/android/*.c"
     "${SDL3_SOURCE_DIR}/src/core/android/*.h"
   )
-  sdl_sources("${CMAKE_ANDROID_NDK}/sources/android/cpufeatures/cpu-features.c")
-  set_property(SOURCE "${CMAKE_ANDROID_NDK}/sources/android/cpufeatures/cpu-features.c" APPEND_STRING PROPERTY COMPILE_FLAGS " -Wno-declaration-after-statement")
 
   sdl_glob_sources(
     "${SDL3_SOURCE_DIR}/src/misc/android/*.c"
@@ -1614,6 +1642,9 @@ if(ANDROID)
       endif()
     endif()
   endif()
+  if(TARGET SDL3-static)
+    target_link_options(SDL3-static INTERFACE "-Wl,-u,JNI_OnLoad")
+  endif()
 
 elseif(EMSCRIPTEN)
   # Hide noisy warnings that intend to aid mostly during initial stages of porting a new
@@ -1703,6 +1734,15 @@ elseif(EMSCRIPTEN)
     set(HAVE_CLOCK_GETTIME 1)
   endif()
 
+  if(SDL_SENSOR)
+    set(SDL_SENSOR_EMSCRIPTEN 1)
+    set(HAVE_SDL_SENSORS TRUE)
+    sdl_glob_sources(
+      "${SDL3_SOURCE_DIR}/src/sensor/emscripten/*.c"
+      "${SDL3_SOURCE_DIR}/src/sensor/emscripten/*.h"
+    )
+  endif()
+
   if(SDL_VIDEO)
     set(SDL_VIDEO_DRIVER_EMSCRIPTEN 1)
     sdl_glob_sources(
@@ -1736,9 +1776,10 @@ elseif(UNIX AND NOT APPLE AND NOT RISCOS AND NOT HAIKU)
       return argc + dlnote.hdr.a;
     }
     ]==])
+    set(SDL_DISABLE_DLOPEN_NOTES FALSE)
     check_c_source_compiles("${CHECK_ELF_DLNOTES_SRC}" COMPILER_SUPPORTS_ELFNOTES)
-    if(COMPILER_SUPPORTS_ELFNOTES)
-      set(HAVE_DLOPEN_NOTES TRUE)
+    if(NOT COMPILER_SUPPORTS_ELFNOTES)
+      set(SDL_DISABLE_DLOPEN_NOTES TRUE)
     endif()
   endif()
 
@@ -1773,6 +1814,8 @@ elseif(UNIX AND NOT APPLE AND NOT RISCOS AND NOT HAIKU)
     # Need to check for ROCKCHIP platform and get rid of "Can't window GBM/EGL surfaces on window creation."
     CheckROCKCHIP()
     CheckX11()
+    CheckFribidi()
+    CheckLibThai()
     # Need to check for EGL first because KMSDRM and Wayland depend on it.
     CheckEGL()
     CheckKMSDRM()
@@ -1922,7 +1965,6 @@ elseif(UNIX AND NOT APPLE AND NOT RISCOS AND NOT HAIKU)
           set(HAVE_LIBURING TRUE)
         endif()
       endif()
-
       if((FREEBSD OR NETBSD) AND NOT HAVE_INOTIFY)
         set(LibInotify_PKG_CONFIG_SPEC libinotify)
         pkg_check_modules(PC_LIBINOTIFY IMPORTED_TARGET ${LibInotify_PKG_CONFIG_SPEC})
@@ -2130,7 +2172,7 @@ elseif(WINDOWS)
     target_compile_options(SDL_uclibc PRIVATE $<$<COMPILE_LANGUAGE:C,CXX>:/GS-> $<$<COMPILE_LANGUAGE:C,CXX>:/Gs1048576>)
     if(SDL_CPU_X86)
       target_compile_options(SDL3-shared PRIVATE "/arch:SSE")
-      target_compile_options(SDL3-SDL_uclibc PRIVATE "/arch:SSE")
+      target_compile_options(SDL_uclibc PRIVATE "/arch:SSE")
     endif()
   endif()
 
@@ -3439,7 +3481,10 @@ int main(void)
     return 0;
 }
 " HAVE_POSIX_SPAWN)
-  if(HAVE_POSIX_SPAWN)
+  if(NOT APPLE)
+    check_symbol_exists(vfork "unistd.h" LIBC_HAS_VFORK)
+  endif()
+  if(HAVE_POSIX_SPAWN AND (APPLE OR LIBC_HAS_VFORK))
     sdl_glob_sources(
       "${SDL3_SOURCE_DIR}/src/process/posix/*.c"
       "${SDL3_SOURCE_DIR}/src/process/posix/*.h"
@@ -3638,14 +3683,15 @@ endforeach()
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/REVISION.txt")
   file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/REVISION.txt" revisions)
   list(GET revisions 0 revisions_0)
-  string(STRIP "${revisions_0}" SDL_REVISION)
+  string(STRIP "${revisions_0}" revisions_0_stripped)
+  set(SDL_REVISION "SDL-${revisions_0_stripped}")
 else()
   set(SDL_REVISION "" CACHE STRING "Custom SDL revision (only used when REVISION.txt does not exist)")
 endif()
 if(NOT SDL_REVISION)
   # If SDL_REVISION is not overrided, use git to describe
   git_describe(SDL_REVISION_GIT)
-  set(SDL_REVISION "SDL3-${SDL3_VERSION}-${SDL_REVISION_GIT}")
+  set(SDL_REVISION "SDL-${SDL3_VERSION}-${SDL_REVISION_GIT}")
 endif()
 
 execute_process(COMMAND "${CMAKE_COMMAND}" -E make_directory "${SDL3_BINARY_DIR}/include-revision/SDL3")
@@ -3780,10 +3826,6 @@ if(CMAKE_SIZEOF_VOID_P EQUAL 8)
   set(ARCH_64 TRUE)
 else()
   set(ARCH_64 FALSE)
-endif()
-
-if(ANDROID)
-  sdl_include_directories(PRIVATE SYSTEM "${CMAKE_ANDROID_NDK}/sources/android/cpufeatures")
 endif()
 
 if(APPLE)
