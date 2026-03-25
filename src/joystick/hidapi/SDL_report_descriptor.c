@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2025 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2026 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -460,7 +460,7 @@ static bool ParseLocalItem(DescriptorContext *ctx, int tag, int size, const Uint
     return true;
 }
 
-bool ParseDescriptor(DescriptorContext *ctx, const Uint8 *descriptor, int descriptor_size)
+static bool ParseDescriptor(DescriptorContext *ctx, const Uint8 *descriptor, int descriptor_size)
 {
     SDL_zerop(ctx);
 

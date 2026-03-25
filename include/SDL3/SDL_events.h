@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2025 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2026 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -151,7 +151,7 @@ typedef enum SDL_EventType
     SDL_EVENT_WINDOW_FOCUS_LOST,        /**< Window has lost keyboard focus */
     SDL_EVENT_WINDOW_CLOSE_REQUESTED,   /**< The window manager requests that the window be closed */
     SDL_EVENT_WINDOW_HIT_TEST,          /**< Window had a hit test that wasn't SDL_HITTEST_NORMAL */
-    SDL_EVENT_WINDOW_ICCPROF_CHANGED,   /**< The ICC profile of the window's display has changed */
+    SDL_EVENT_WINDOW_ICCPROF_CHANGED,   /**< The window's ICC profile has changed */
     SDL_EVENT_WINDOW_DISPLAY_CHANGED,   /**< Window has been moved to display data1 */
     SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED, /**< Window display scale has been changed */
     SDL_EVENT_WINDOW_SAFE_AREA_CHANGED, /**< The window safe area has been changed */
@@ -1256,15 +1256,13 @@ extern SDL_DECLSPEC void SDLCALL SDL_FlushEvents(Uint32 minType, Uint32 maxType)
  * Poll for currently pending events.
  *
  * If `event` is not NULL, the next event is removed from the queue and stored
- * in the SDL_Event structure pointed to by `event`. The 1 returned refers to
- * this event, immediately stored in the SDL Event structure -- not an event
- * to follow.
+ * in the SDL_Event structure pointed to by `event`.
  *
- * If `event` is NULL, it simply returns 1 if there is an event in the queue,
- * but will not remove it from the queue.
+ * If `event` is NULL, it simply returns true if there is an event in the
+ * queue, but will not remove it from the queue.
  *
  * As this function may implicitly call SDL_PumpEvents(), you can only call
- * this function in the thread that set the video mode.
+ * this function in the thread that initialized the video subsystem.
  *
  * SDL_PollEvent() is the favored way of receiving system events since it can
  * be done from the main loop and does not suspend the main loop while waiting

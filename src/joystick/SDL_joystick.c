@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2025 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2026 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -564,6 +564,7 @@ static Uint32 initial_wheel_devices[] = {
     MAKE_VIDPID(0x046d, 0xc29a), // Logitech Driving Force GT
     MAKE_VIDPID(0x046d, 0xc29b), // Logitech G27
     MAKE_VIDPID(0x046d, 0xca03), // Logitech Momo Racing
+    MAKE_VIDPID(0x045e, 0x02a2), // Xbox 360 Wireless Racing Wheel
     MAKE_VIDPID(0x0483, 0x0522), // Simagic Wheelbase (including M10, Alpha Mini, Alpha, Alpha U)
     MAKE_VIDPID(0x0483, 0xa355), // VRS DirectForce Pro Wheel Base
     MAKE_VIDPID(0x0583, 0xa132), // Padix USB Wireless 2.4GHz Wheelpad
@@ -601,11 +602,61 @@ static Uint32 initial_wheel_devices[] = {
     MAKE_VIDPID(0x346e, 0x0004), // Moza R5 Wheelbase
     MAKE_VIDPID(0x346e, 0x0005), // Moza R3 Wheelbase
     MAKE_VIDPID(0x346e, 0x0006), // Moza R12 Wheelbase
+    MAKE_VIDPID(0x36e6, 0x400f), // PXN VD6 Wheelbase
 };
 static SDL_vidpid_list wheel_devices = {
     SDL_HINT_JOYSTICK_WHEEL_DEVICES, 0, 0, NULL,
     SDL_HINT_JOYSTICK_WHEEL_DEVICES_EXCLUDED, 0, 0, NULL,
     SDL_arraysize(initial_wheel_devices), initial_wheel_devices,
+    false
+};
+
+static Uint32 initial_guitar_devices[] = {
+	MAKE_VIDPID(0x12ba, 0x0100), // PS3 Guitar Hero Guitar
+	MAKE_VIDPID(0x12ba, 0x0200), // PS3 Rock Band Guitar
+	MAKE_VIDPID(0x12ba, 0x074b), // PS3 / Wii U Guitar Hero Live Guitar
+	MAKE_VIDPID(0x1BAD, 0x0004), // Wii RB1 Guitar (Uses PS3 protocol)
+	MAKE_VIDPID(0x1BAD, 0x3010), // Wii RB2 Guitar (Uses PS3 protocol)
+	MAKE_VIDPID(0x0351, 0x1000), // CRKD Guitar
+	MAKE_VIDPID(0x0351, 0x2000), // CRKD Guitar
+	MAKE_VIDPID(0x0738, 0x02A6), // Mad Catz Wireless Rock Band Guitar
+	MAKE_VIDPID(0x0738, 0x02AB), // Mad Catz Wireless Precision Bass Guitar
+	MAKE_VIDPID(0x0738, 0x9806), // Mad Catz Precision Bass Guitar
+	MAKE_VIDPID(0x1430, 0x02a7), // Guitar Hero Wireless Guitar (Linux)
+	MAKE_VIDPID(0x1430, 0x0705), // Guitar Hero 5 Guitar
+	MAKE_VIDPID(0x1430, 0x070B), // Guitar Hero Live Guitar
+	MAKE_VIDPID(0x1430, 0x4734), // Guitar Hero World Tour Kiosk
+	MAKE_VIDPID(0x1430, 0x4748), // RedOctane Guitar Hero X-plorer
+	MAKE_VIDPID(0x1bad, 0x02a6), // Rock Band 2 Wireless Guitar (Linux)
+	MAKE_VIDPID(0x1bad, 0x02ab), // Rock Band Wireless Bass Guitar (Linux)
+	MAKE_VIDPID(0x2068, 0x0001), // Power Gig Guitar
+	MAKE_VIDPID(0x3651, 0x1000), // CRKD Guitar
+	MAKE_VIDPID(0x3651, 0x6000), // CRKD Guitar
+};
+static SDL_vidpid_list guitar_devices = {
+    SDL_HINT_JOYSTICK_GUITAR_DEVICES, 0, 0, NULL,
+    NULL, 0, 0, NULL,
+    SDL_arraysize(initial_guitar_devices), initial_guitar_devices,
+    false
+};
+
+static Uint32 initial_drum_devices[] = {
+	MAKE_VIDPID(0x12ba, 0x0120), // PS3 Guitar Hero Drums
+	MAKE_VIDPID(0x12ba, 0x0210), // PS3 Rock Band Drums
+	MAKE_VIDPID(0x12ba, 0x0218), // PS3 Midi Pro Adapter - Drums Mode
+	MAKE_VIDPID(0x1BAD, 0x0005), // Wii RB1 Drums (Uses PS3 protocol)
+	MAKE_VIDPID(0x1BAD, 0x3110), // Wii RB2 Drums (Uses PS3 protocol)
+	MAKE_VIDPID(0x1BAD, 0x3138), // Wii RB3 Midi Pro Adapter - Drums Mode (Uses PS3 protocol)
+	MAKE_VIDPID(0x1430, 0x02a8), // Guitar Hero Wireless Drum Kit (Linux)
+	MAKE_VIDPID(0x1430, 0x0805), // Band Hero Wireless Drum Kit
+	MAKE_VIDPID(0x1bad, 0x0003), // Harmonix Rock Band Drumkit
+	MAKE_VIDPID(0x1bad, 0x0130), // ION Drum Rocker
+	MAKE_VIDPID(0x2068, 0x0002), // Power Gig Drums
+};
+static SDL_vidpid_list drum_devices = {
+    SDL_HINT_JOYSTICK_DRUM_DEVICES, 0, 0, NULL,
+    NULL, 0, 0, NULL,
+    SDL_arraysize(initial_drum_devices), initial_drum_devices,
     false
 };
 
@@ -651,6 +702,15 @@ void SDL_LockJoysticks(void)
     (void)SDL_AtomicDecRef(&SDL_joystick_lock_pending);
 
     ++SDL_joysticks_locked;
+}
+
+bool SDL_TryLockJoysticks(void)
+{
+    if (SDL_TryLockMutex(SDL_joystick_lock)) {
+        ++SDL_joysticks_locked;
+        return true;
+    }
+    return false;
 }
 
 void SDL_UnlockJoysticks(void)
@@ -841,8 +901,10 @@ bool SDL_InitJoysticks(void)
     SDL_LoadVIDPIDList(&old_xboxone_controllers);
     SDL_LoadVIDPIDList(&arcadestick_devices);
     SDL_LoadVIDPIDList(&blacklist_devices);
+    SDL_LoadVIDPIDList(&drum_devices);
     SDL_LoadVIDPIDList(&flightstick_devices);
     SDL_LoadVIDPIDList(&gamecube_devices);
+    SDL_LoadVIDPIDList(&guitar_devices);
     SDL_LoadVIDPIDList(&rog_gamepad_mice);
     SDL_LoadVIDPIDList(&throttle_devices);
     SDL_LoadVIDPIDList(&wheel_devices);
@@ -2274,8 +2336,10 @@ void SDL_QuitJoysticks(void)
     SDL_FreeVIDPIDList(&old_xboxone_controllers);
     SDL_FreeVIDPIDList(&arcadestick_devices);
     SDL_FreeVIDPIDList(&blacklist_devices);
+    SDL_FreeVIDPIDList(&drum_devices);
     SDL_FreeVIDPIDList(&flightstick_devices);
     SDL_FreeVIDPIDList(&gamecube_devices);
+    SDL_FreeVIDPIDList(&guitar_devices);
     SDL_FreeVIDPIDList(&rog_gamepad_mice);
     SDL_FreeVIDPIDList(&throttle_devices);
     SDL_FreeVIDPIDList(&wheel_devices);
@@ -3305,6 +3369,15 @@ bool SDL_IsJoystickFlydigiController(Uint16 vendor_id, Uint16 product_id)
     return false;
 }
 
+bool SDL_IsJoystickGameSirController(Uint16 vendor_id, Uint16 product_id)
+{
+    if (vendor_id != USB_VENDOR_GAMESIR) {
+        return false;
+    }
+
+    return (product_id == USB_PRODUCT_GAMESIR_GAMEPAD_G7_PRO_8K);
+}
+
 bool SDL_IsJoystickSteamDeck(Uint16 vendor_id, Uint16 product_id)
 {
     EControllerType eType = GuessControllerType(vendor_id, product_id);
@@ -3325,6 +3398,11 @@ bool SDL_IsJoystickXInput(SDL_GUID guid)
 bool SDL_IsJoystickWGI(SDL_GUID guid)
 {
     return (guid.data[14] == 'w') ? true : false;
+}
+
+bool SDL_IsJoystickGameInput(SDL_GUID guid)
+{
+    return (guid.data[14] == 'g') ? true : false;
 }
 
 bool SDL_IsJoystickHIDAPI(SDL_GUID guid)
@@ -3367,6 +3445,16 @@ static bool SDL_IsJoystickThrottle(Uint16 vendor_id, Uint16 product_id)
     return SDL_VIDPIDInList(vendor_id, product_id, &throttle_devices);
 }
 
+static bool SDL_IsJoystickGuitar(Uint16 vendor_id, Uint16 product_id)
+{
+    return SDL_VIDPIDInList(vendor_id, product_id, &guitar_devices);
+}
+
+static bool SDL_IsJoystickDrumKit(Uint16 vendor_id, Uint16 product_id)
+{
+    return SDL_VIDPIDInList(vendor_id, product_id, &drum_devices);
+}
+
 static SDL_JoystickType SDL_GetJoystickGUIDType(SDL_GUID guid)
 {
     Uint16 vendor;
@@ -3388,6 +3476,14 @@ static SDL_JoystickType SDL_GetJoystickGUIDType(SDL_GUID guid)
 
     if (SDL_IsJoystickThrottle(vendor, product)) {
         return SDL_JOYSTICK_TYPE_THROTTLE;
+    }
+
+    if (SDL_IsJoystickGuitar(vendor, product)) {
+        return SDL_JOYSTICK_TYPE_GUITAR;
+    }
+
+    if (SDL_IsJoystickDrumKit(vendor, product)) {
+        return SDL_JOYSTICK_TYPE_DRUM_KIT;
     }
 
     if (SDL_IsJoystickXInput(guid)) {
@@ -3417,6 +3513,10 @@ static SDL_JoystickType SDL_GetJoystickGUIDType(SDL_GUID guid)
     }
 
     if (SDL_IsJoystickWGI(guid)) {
+        return (SDL_JoystickType)guid.data[15];
+    }
+
+    if (SDL_IsJoystickGameInput(guid)) {
         return (SDL_JoystickType)guid.data[15];
     }
 
@@ -3961,9 +4061,15 @@ void SDL_LoadVIDPIDList(SDL_vidpid_list *list)
 
     if (list->included_hint_name) {
         included_list = SDL_GetHint(list->included_hint_name);
+        if (!included_list) {
+            included_list = SDL_getenv_unsafe(list->included_hint_name);
+        }
     }
     if (list->excluded_hint_name) {
         excluded_list = SDL_GetHint(list->excluded_hint_name);
+        if (!excluded_list) {
+            excluded_list = SDL_getenv_unsafe(list->excluded_hint_name);
+        }
     }
     SDL_LoadVIDPIDListFromHints(list, included_list, excluded_list);
 }

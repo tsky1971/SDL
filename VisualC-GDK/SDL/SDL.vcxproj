@@ -722,6 +722,7 @@
     <ClCompile Include="..\..\src\joystick\hidapi\SDL_hidapijoystick.c" />
     <ClCompile Include="..\..\src\joystick\hidapi\SDL_hidapi_8bitdo.c" />
     <ClCompile Include="..\..\src\joystick\hidapi\SDL_hidapi_flydigi.c" />
+    <ClCompile Include="..\..\src\joystick\hidapi\SDL_hidapi_gamesir.c" />
     <ClCompile Include="..\..\src\joystick\hidapi\SDL_hidapi_combined.c" />
     <ClCompile Include="..\..\src\joystick\hidapi\SDL_hidapi_gamecube.c" />
     <ClCompile Include="..\..\src\joystick\hidapi\SDL_hidapi_gip.c" />
@@ -927,6 +928,12 @@
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|Gaming.Xbox.XboxOne.x64'">CompileAsCpp</CompileAs>
     </ClCompile>
     <ClCompile Include="..\..\src\gpu\vulkan\SDL_gpu_vulkan.c" />
+    <ClCompile Include="..\..\src\gpu\xr\SDL_gpu_openxr.c" />
+    <ClCompile Include="..\..\src\gpu\xr\SDL_openxrdyn.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\src\gpu\xr\SDL_gpu_openxr_c.h" />
+    <ClInclude Include="..\..\src\gpu\xr\SDL_openxr_internal.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\..\src\core\windows\version.rc" />

@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2025 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2026 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -2464,11 +2464,9 @@ void SDL_DefaultAudioDeviceChanged(SDL_AudioDevice *new_default_device)
 
                 SDL_SetAudioPostmixCallback(logdev->instance_id, logdev->postmix, logdev->postmix_userdata);
 
-                SDL_PendingAudioDeviceEvent *p;
-
                 // Queue an event for each logical device we moved.
                 if (spec_changed) {
-                    p = (SDL_PendingAudioDeviceEvent *)SDL_malloc(sizeof(SDL_PendingAudioDeviceEvent));
+                    SDL_PendingAudioDeviceEvent *p = (SDL_PendingAudioDeviceEvent *)SDL_malloc(sizeof(SDL_PendingAudioDeviceEvent));
                     if (p) { // if this failed, no event for you, but you have deeper problems anyhow.
                         p->type = SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED;
                         p->devid = logdev->instance_id;

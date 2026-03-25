@@ -1,6 +1,6 @@
 /*
  Simple DirectMedia Layer
- Copyright (C) 1997-2025 Sam Lantinga <slouken@libsdl.org>
+ Copyright (C) 1997-2026 Sam Lantinga <slouken@libsdl.org>
 
  This software is provided 'as-is', without any express or implied
  warranty.  In no event will the authors be held liable for any damages
@@ -68,6 +68,11 @@
     CGSize size = self.bounds.size;
     size.width *= self.layer.contentsScale;
     size.height *= self.layer.contentsScale;
+
+    // Skip invalid sizes (can happen on visionOS before scene geometry is applied)
+    if (size.width <= 0 || size.height <= 0) {
+        return;
+    }
 
     CAMetalLayer *metallayer = ((CAMetalLayer *)self.layer);
     if (metallayer.drawableSize.width != size.width ||

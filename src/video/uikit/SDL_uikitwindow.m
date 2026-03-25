@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2025 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2026 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -163,10 +163,17 @@ bool UIKit_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_Properti
         }
 
         if (data.uiscreen == [UIScreen mainScreen]) {
-            if (window->flags & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_BORDERLESS)) {
-                [UIApplication sharedApplication].statusBarHidden = YES;
+            if (@available(iOS 13.0, *)) {
+                // iOS 13+ uses view controller's prefersStatusBarHidden
             } else {
-                [UIApplication sharedApplication].statusBarHidden = NO;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+                if (window->flags & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_BORDERLESS)) {
+                    [UIApplication sharedApplication].statusBarHidden = YES;
+                } else {
+                    [UIApplication sharedApplication].statusBarHidden = NO;
+                }
+#pragma clang diagnostic pop
             }
         }
 #endif // !SDL_PLATFORM_TVOS
@@ -179,6 +186,23 @@ bool UIKit_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_Properti
             }
             if (scene) {
                 uiwindow = [[UIWindow alloc] initWithWindowScene:scene];
+
+#ifdef SDL_PLATFORM_VISIONOS
+                /* On visionOS, the window scene may not have its final geometry yet
+                 * when the UIWindow is first created. Request the desired size now
+                 * and set the UIWindow frame to match so views have valid initial
+                 * dimensions before the async geometry update completes. */
+                CGSize desiredSize = CGSizeMake(window->w, window->h);
+                uiwindow.frame = CGRectMake(0, 0, desiredSize.width, desiredSize.height);
+
+                UIWindowSceneGeometryPreferences *preferences =
+                    [[UIWindowSceneGeometryPreferencesVision alloc] initWithSize:desiredSize];
+                [scene requestGeometryUpdateWithPreferences:preferences errorHandler:^(NSError * _Nonnull error) {
+                    SDL_LogWarn(SDL_LOG_CATEGORY_VIDEO,
+                                "Initial geometry request failed: %s",
+                                [[error localizedDescription] UTF8String]);
+                }];
+#endif
             }
         }
         if (!uiwindow) {
@@ -193,17 +217,20 @@ bool UIKit_CreateWindow(SDL_VideoDevice *_this, SDL_Window *window, SDL_Properti
         // put the window on an external display if appropriate.
 #ifndef SDL_PLATFORM_VISIONOS
         if (data.uiscreen != [UIScreen mainScreen]) {
-            [uiwindow setScreen:data.uiscreen];
+            if (@available(iOS 13.0, tvOS 13.0, *)) {
+                // iOS 13+ uses UIWindowScene to manage screen association
+            } else {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+                [uiwindow setScreen:data.uiscreen];
+#pragma clang diagnostic pop
+            }
         }
 #endif
 
         if (!SetupWindowData(_this, window, uiwindow, true)) {
             return false;
         }
-
-#ifdef SDL_PLATFORM_VISIONOS
-        SDL_SetWindowSize(window, window->w, window->h);
-#endif
     }
 
     return true;
@@ -277,10 +304,17 @@ static void UIKit_UpdateWindowBorder(SDL_VideoDevice *_this, SDL_Window *window)
 
 #if !defined(SDL_PLATFORM_TVOS) && !defined(SDL_PLATFORM_VISIONOS)
     if (data.uiwindow.screen == [UIScreen mainScreen]) {
-        if (window->flags & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_BORDERLESS)) {
-            [UIApplication sharedApplication].statusBarHidden = YES;
+        if (@available(iOS 13.0, *)) {
+            // iOS 13+ uses view controller's prefersStatusBarHidden
         } else {
-            [UIApplication sharedApplication].statusBarHidden = NO;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            if (window->flags & (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_BORDERLESS)) {
+                [UIApplication sharedApplication].statusBarHidden = YES;
+            } else {
+                [UIApplication sharedApplication].statusBarHidden = NO;
+            }
+#pragma clang diagnostic pop
         }
 
         [viewcontroller setNeedsStatusBarAppearanceUpdate];

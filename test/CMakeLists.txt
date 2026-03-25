@@ -88,9 +88,13 @@ foreach(resource_file IN LISTS RESOURCE_FILES)
     get_filename_component(res_file_name ${resource_file} NAME)
     list(APPEND RESOURCE_FILE_NAMES "${res_file_name}")
     set(resource_file_bindir "${test_bin_dir}/${res_file_name}")
+    set(depends_resource_file "${resource_file}")
+    if(PROJECT_SOURCE_DIR STREQUAL PROJECT_BINARY_DIR)
+        set(depends_resource_file "${CMAKE_CURRENT_LIST_FILE}")
+    endif()
     add_custom_command(OUTPUT "${resource_file_bindir}"
         COMMAND "${CMAKE_COMMAND}" -E copy "${resource_file}" "${resource_file_bindir}"
-        DEPENDS "${resource_file}"
+        DEPENDS "${depends_resource_file}"
     )
     list(APPEND RESOURCE_FILES_BINDIR "${resource_file_bindir}")
 endforeach()
@@ -378,6 +382,8 @@ add_sdl_test_executable(testgpu_simple_clear SOURCES testgpu_simple_clear.c)
 add_sdl_test_executable(testgpu_spinning_cube SOURCES testgpu_spinning_cube.c ${icon_png_header} DEPENDS generate-icon_png_header)
 add_sdl_test_executable(testgpurender_effects MAIN_CALLBACKS NEEDS_RESOURCES TESTUTILS SOURCES testgpurender_effects.c)
 add_sdl_test_executable(testgpurender_msdf MAIN_CALLBACKS NEEDS_RESOURCES TESTUTILS SOURCES testgpurender_msdf.c)
+add_sdl_test_executable(testgpu_spinning_cube_xr SOURCES testgpu_spinning_cube_xr.c)
+
 if(ANDROID)
     target_link_libraries(testgles PRIVATE GLESv1_CM)
 elseif(IOS OR TVOS)
@@ -746,7 +752,35 @@ if(ANDROID AND TARGET SDL3::Jar)
             configure_file(android/cmake/SDLTestActivity.java.cmake "${JAVA_PACKAGE_DIR}/SDLTestActivity.java" @ONLY)
             configure_file(android/cmake/res/values/strings.xml.cmake android/res/values/strings-${TEST}.xml @ONLY)
             configure_file(android/cmake/res/xml/shortcuts.xml.cmake "${GENERATED_RES_FOLDER}/xml/shortcuts.xml" @ONLY)
-            configure_file(android/cmake/AndroidManifest.xml.cmake "${generated_manifest_path}" @ONLY)
+            # Use XR-specific manifest for XR tests, standard manifest for others
+            if("${TEST}" MATCHES "_xr$")
+                # Meta Quest-specific manifest sections (enabled by default, set to empty to disable)
+                # These are ignored by non-Meta runtimes but required for proper Quest integration
+                if(NOT DEFINED SDL_ANDROID_XR_META_SUPPORT OR SDL_ANDROID_XR_META_SUPPORT)
+                    set(ANDROID_XR_META_FEATURES
+"    <!-- Meta Quest hand tracking support -->
+    <uses-feature android:name=\"oculus.software.handtracking\" android:required=\"false\" />
+")
+                    set(ANDROID_XR_META_METADATA
+"        <!-- Meta Quest supported devices -->
+        <meta-data android:name=\"com.oculus.supportedDevices\" android:value=\"quest|quest2|questpro|quest3|quest3s\" />
+        <meta-data android:name=\"com.oculus.vr.focusaware\" android:value=\"true\" />
+        <!-- Hand tracking support level (V2 allows launching without controllers) -->
+        <meta-data android:name=\"com.oculus.handtracking.version\" android:value=\"V2.0\" />
+        <meta-data android:name=\"com.oculus.handtracking.frequency\" android:value=\"HIGH\" />
+")
+                    set(ANDROID_XR_META_INTENT_CATEGORY
+"                <!-- VR intent category for Meta Quest -->
+                <category android:name=\"com.oculus.intent.category.VR\" />")
+                else()
+                    set(ANDROID_XR_META_FEATURES "")
+                    set(ANDROID_XR_META_METADATA "")
+                    set(ANDROID_XR_META_INTENT_CATEGORY "")
+                endif()
+                configure_file(android/cmake/AndroidManifest.xr.xml.cmake "${generated_manifest_path}" @ONLY)
+            else()
+                configure_file(android/cmake/AndroidManifest.xml.cmake "${generated_manifest_path}" @ONLY)
+            endif()
             file(GENERATE
                 OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/android/${TEST}-$<CONFIG>/res/values/strings.xml"
                 INPUT "${CMAKE_CURRENT_BINARY_DIR}/android/res/values/strings-${TEST}.xml"
